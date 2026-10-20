@@ -1,0 +1,623 @@
+@import "tailwindcss";
+@import "chessground/assets/chessground.base.css";
+@import "chessground/assets/chessground.cburnett.css";
+
+@custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));
+
+/* GitHub dark (default) and light. Kept in CSS, not inline styles, so the
+   loud glow variants further down can swap the accent colours. */
+:root,
+[data-mode="dark"] {
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-2: #212830;
+  --fg: #f0f6fc;
+  --muted: #9198a1;
+  --border: #3d444d;
+  --accent: #4493f8;
+  --accent-fg: #fff;
+  --accent-2: #ab7df8;
+  --good: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+  --board-light: #c9d4e0;
+  --board-dark: #5b7290;
+}
+[data-mode="light"] {
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --surface-2: #f6f8fa;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --border: #d1d9e0;
+  --accent: #0969da;
+  --accent-fg: #fff;
+  --accent-2: #8250df;
+  --good: #1a7f37;
+  --warn: #9a6700;
+  --bad: #d1242f;
+  --board-light: #e6edf3;
+  --board-dark: #8aa4c2;
+}
+:root {
+  /* Style variables (the glow variants below override some of them). */
+  --font-body: "Inter Variable", system-ui, sans-serif;
+  --font-display: var(--font-body);
+  --font-num: "JetBrains Mono Variable", ui-monospace, monospace;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --bw: 1px;
+  --pad: 1rem;
+  --gap: 1rem;
+  --blur: 0px;
+  --input-bg: var(--bg);
+  --btn-h: 2.25rem;
+  --hover: color-mix(in oklab, var(--fg) 6%, transparent);
+  --tonal: color-mix(in oklab, var(--accent) 14%, var(--surface));
+  --display-weight: 600;
+  --display-tracking: -0.02em;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-2: var(--accent-2);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-hover: var(--hover);
+  --color-tonal: var(--tonal);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-num: var(--font-num);
+  --radius-ui: var(--radius);
+  --radius-ui-lg: var(--radius-lg);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--page-bg);
+  background-attachment: fixed;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  border-color: var(--border);
+}
+::selection {
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Components ---------- */
+@layer components {
+  .ui-card {
+    background: var(--card-bg);
+    border: var(--bw) solid var(--card-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(var(--blur)) saturate(1.3);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(1.3);
+  }
+  .ui-pad {
+    padding: var(--pad);
+  }
+  .ui-h1 {
+    font-family: var(--font-display);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+    font-size: 1.6rem;
+    line-height: 1.15;
+  }
+  .ui-h2 {
+    font-family: var(--font-display);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+    font-size: 1.1rem;
+    line-height: 1.25;
+  }
+  .ui-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .ui-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: var(--btn-h);
+    padding: 0 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 560;
+    white-space: nowrap;
+    border-radius: var(--radius);
+    border: var(--bw) solid transparent;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      box-shadow 0.15s,
+      transform 0.08s,
+      border-color 0.15s,
+      filter 0.15s;
+    user-select: none;
+  }
+  .ui-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .ui-btn-sm {
+    height: calc(var(--btn-h) - 0.5rem);
+    padding: 0 0.6rem;
+    font-size: 0.78rem;
+  }
+  .ui-btn-lg {
+    height: calc(var(--btn-h) + 0.5rem);
+    padding: 0 1.3rem;
+    font-size: 0.95rem;
+  }
+  .ui-btn-icon {
+    padding: 0;
+    width: var(--btn-h);
+  }
+  .ui-btn-primary {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  .ui-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+  .ui-btn-secondary {
+    background: var(--surface-2);
+    color: var(--fg);
+    border-color: var(--border);
+  }
+  .ui-btn-secondary:hover:not(:disabled),
+  .ui-btn-ghost:hover:not(:disabled) {
+    background: var(--hover);
+  }
+  .ui-btn-ghost {
+    background: transparent;
+    color: var(--fg);
+  }
+  .ui-btn-danger {
+    background: color-mix(in oklab, var(--bad) 14%, transparent);
+    color: var(--bad);
+    border-color: color-mix(in oklab, var(--bad) 35%, transparent);
+  }
+  .ui-btn-danger:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--bad) 22%, transparent);
+  }
+  .ui-input {
+    height: var(--btn-h);
+    padding: 0 0.7rem;
+    background: var(--input-bg);
+    color: var(--fg);
+    border: var(--bw) solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    outline: none;
+    min-width: 0;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+  .ui-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+  }
+  select.ui-input {
+    padding-right: 1.8rem;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 14px) 52%,
+      calc(100% - 9px) 52%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .ui-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 1.35rem;
+    padding: 0 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border: var(--bw) solid transparent;
+  }
+  .ui-seg {
+    display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    background: var(--surface-2);
+    border: var(--bw) solid var(--border);
+    border-radius: calc(var(--radius) + 3px);
+  }
+  .ui-seg > button {
+    height: calc(var(--btn-h) - 8px);
+    padding: 0 0.75rem;
+    border-radius: var(--radius);
+    font-size: 0.8rem;
+    font-weight: 560;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .ui-seg > button[data-on="true"] {
+    background: var(--surface);
+    color: var(--fg);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+  }
+  .ui-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.84rem;
+  }
+  .ui-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    padding: 0.55rem 0.6rem;
+    border-bottom: var(--bw) solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--card-bg);
+    z-index: 1;
+  }
+  .ui-table td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+    vertical-align: middle;
+  }
+  .ui-table tbody tr {
+    transition: background 0.1s;
+  }
+  .ui-table tbody tr:hover {
+    background: var(--hover);
+  }
+  .ui-table tr[data-hl="true"] {
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
+  }
+  .ui-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: var(--radius);
+    font-size: 0.86rem;
+    font-weight: 520;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background 0.12s,
+      color 0.12s;
+  }
+  .ui-nav:hover {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .ui-nav[data-active="true"] {
+    background: color-mix(in oklab, var(--fg) 9%, transparent);
+    color: var(--fg);
+  }
+  .ui-nav[aria-disabled="true"] {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  .ui-link {
+    color: var(--accent);
+    cursor: pointer;
+    text-underline-offset: 3px;
+  }
+  .ui-link:hover {
+    text-decoration: underline;
+  }
+  .ui-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--fg) 10%, transparent);
+    overflow: hidden;
+  }
+  .ui-progress > div {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.3s;
+  }
+  .ui-progress[data-indeterminate="true"] > div {
+    width: 35% !important;
+    animation: ui-indet 1.2s infinite ease-in-out;
+  }
+  .ui-switch {
+    width: 2.1rem;
+    height: 1.2rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--fg) 18%, transparent);
+    position: relative;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .ui-switch[data-state="checked"] {
+    background: var(--accent);
+  }
+  .ui-switch > span {
+    display: block;
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 999px;
+    background: #fff;
+    transform: translateX(0.15rem);
+    transition: transform 0.15s;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  }
+  .ui-switch[data-state="checked"] > span {
+    transform: translateX(1.05rem);
+  }
+  .ui-range {
+    accent-color: var(--accent);
+    width: 100%;
+  }
+  .ui-alert {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    padding: 0.65rem 0.85rem;
+    border-radius: var(--radius);
+    font-size: 0.84rem;
+    border: var(--bw) solid;
+  }
+  .ui-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(3px);
+    z-index: 50;
+  }
+  .ui-dialog {
+    position: fixed;
+    z-index: 51;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+    width: calc(100vw - 2rem);
+    background: var(--surface);
+    --card-bg: var(--surface);
+  }
+  .ui-kbd {
+    font-family: var(--font-num);
+    font-size: 0.7rem;
+    padding: 0.05rem 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+  }
+  .ui-move {
+    padding: 0.05rem 0.3rem;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .ui-move:hover {
+    background: var(--hover);
+  }
+  .ui-move[data-on="true"] {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+}
+
+@keyframes ui-indet {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+/* ---------- Board (chessground) ---------- */
+.board-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+}
+.board-wrap .cg-wrap {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--board-radius, 4px);
+  overflow: hidden;
+}
+/* Squares drawn from the palette: a 2x2 conic tile repeated 4x4. */
+cg-board {
+  background-color: var(--board-light);
+  background-image: conic-gradient(var(--board-dark) 0 25%, var(--board-light) 0 50%, var(--board-dark) 0 75%, var(--board-light) 0);
+  background-size: 25% 25%;
+}
+cg-board square.move-dest {
+  background: radial-gradient(rgba(20, 85, 30, 0.5) 22%, rgba(0, 0, 0, 0) 0);
+}
+cg-board square.oc.move-dest {
+  background: radial-gradient(transparent 0%, transparent 79%, rgba(20, 85, 0, 0.3) 80%);
+}
+cg-board square.move-dest:hover {
+  background: rgba(20, 85, 30, 0.3);
+}
+cg-board square.premove-dest {
+  background: radial-gradient(rgba(20, 30, 85, 0.5) 22%, rgba(0, 0, 0, 0) 0);
+}
+cg-board square.oc.premove-dest {
+  background: radial-gradient(transparent 0%, transparent 79%, rgba(20, 30, 85, 0.2) 80%);
+}
+cg-board square.last-move {
+  background-color: rgba(155, 199, 0, 0.41);
+}
+cg-board square.selected {
+  background-color: rgba(20, 85, 30, 0.5);
+}
+cg-board square.check {
+  background: radial-gradient(ellipse at center, rgba(255, 0, 0, 1) 0%, rgba(231, 0, 0, 1) 25%, rgba(169, 0, 0, 0) 89%, rgba(158, 0, 0, 0) 100%);
+}
+cg-board square.current-premove {
+  background-color: rgba(20, 30, 85, 0.5);
+}
+.cg-wrap coords {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: max(9px, min(1.6vw, 11px));
+}
+/* Each coordinate takes the colour of the other square colour, as on Lichess.
+   White's view: a1 (files, first) is dark and h1 (ranks, first) is light;
+   black's view flips both. */
+.cg-wrap.orientation-white coords.files coord:nth-child(odd),
+.cg-wrap.orientation-white coords.ranks coord:nth-child(even),
+.cg-wrap.orientation-black coords.files coord:nth-child(even),
+.cg-wrap.orientation-black coords.ranks coord:nth-child(odd) {
+  color: var(--board-light);
+}
+.cg-wrap.orientation-white coords.files coord:nth-child(even),
+.cg-wrap.orientation-white coords.ranks coord:nth-child(odd),
+.cg-wrap.orientation-black coords.files coord:nth-child(odd),
+.cg-wrap.orientation-black coords.ranks coord:nth-child(even) {
+  color: var(--board-dark);
+}
+.cg-wrap coords.ranks {
+  left: auto;
+  right: 2px;
+  top: 2px;
+}
+/* Rank numbers in the top-right corner of each square, as on Lichess. */
+.cg-wrap coords.ranks coord {
+  transform: none;
+}
+.cg-wrap coords.files {
+  left: 3px;
+  bottom: 1px;
+  text-align: left;
+}
+
+/* ================= AI dark glow ================= */
+/* The settled glow: halfway between round 4's "Soft" and round 3's original.
+   Knobs:
+     --g1 --g2             glow hues (g2 shifts 3/4 of the way to purple)
+     --g-top --g-corner    strength of the page halos
+     --g-card --g-board    glow under cards and around the board
+     --g-border            how much the accent tints card borders
+     --head-grad           heading fill
+     --btn-bg --btn-glow   primary button fill and halo
+   Round 4's other variants are in poc/archive/app-glow-round4. */
+:root {
+  --g1: var(--accent);
+  --g2: color-mix(in oklab, var(--accent) 25%, var(--accent-2));
+  --g-top: 22%;
+  --g-corner: 12%;
+  --g-card: 42%;
+  --g-board: 42%;
+  --g-border: 18%;
+  --head-grad: linear-gradient(90deg, var(--fg), color-mix(in oklab, var(--accent) 58%, var(--fg)), color-mix(in oklab, var(--accent) 50%, var(--accent-2)));
+  --head-glow: none;
+  --btn-bg: linear-gradient(135deg, var(--accent), color-mix(in oklab, var(--accent) 28%, var(--accent-2)));
+  --btn-glow: 0 0 21px -5px color-mix(in oklab, var(--accent) 65%, transparent);
+  --card-bg: color-mix(in oklab, var(--surface) 82%, transparent);
+  --card-border: color-mix(in oklab, var(--g1) var(--g-border), var(--border));
+  --shadow: 0 0 0 1px color-mix(in oklab, var(--g1) 7%, transparent), 0 20px 60px -30px color-mix(in oklab, var(--g1) var(--g-card), transparent);
+  --board-glow: 0 0 0 1px color-mix(in oklab, var(--g1) 38%, transparent), 0 0 60px -11px color-mix(in oklab, var(--g1) var(--g-board), transparent);
+  --page-bg:
+    radial-gradient(1200px 500px at 50% -10%, color-mix(in oklab, var(--g1) var(--g-top), transparent), transparent 70%),
+    radial-gradient(700px 400px at 100% 100%, color-mix(in oklab, var(--g2) var(--g-corner), transparent), transparent 70%), var(--bg);
+  --board-radius: 10px;
+}
+
+.ui-h1,
+.ui-h2 {
+  background: var(--head-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: var(--head-glow);
+}
+/* Words that should stand out (opening names): the primary button's blue to purple. */
+.ui-grad-text {
+  background: var(--btn-bg);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 600;
+}
+/* Icons inside gradient headings would inherit the transparent text colour. */
+.ui-h1 svg,
+.ui-h2 svg {
+  color: var(--accent);
+}
+.ui-btn-primary {
+  background: var(--btn-bg);
+  box-shadow: var(--btn-glow);
+}
+.ui-input:focus {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 20px -4px var(--accent);
+}
+.ui-nav[data-active="true"] {
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent);
+}
+.ui-label {
+  font-family: var(--font-num);
+  text-transform: lowercase;
+  letter-spacing: 0;
+}
+.board-wrap .cg-wrap {
+  box-shadow: var(--board-glow);
+}
+
+/* ---------- Live game clock ---------- */
+@keyframes clock-flash {
+  0%,
+  100% {
+    filter: none;
+  }
+  40% {
+    filter: brightness(1.9) saturate(1.4);
+    transform: scale(1.02);
+  }
+}
+.clock-flash {
+  animation: clock-flash 0.6s ease-in-out 1;
+}
+
+/* Board column (shell): never taller than the window allows. */
+@media (min-width: 1024px) {
+  /* board + card padding + eval bar */
+  .board-col > * {
+    max-width: calc(var(--board-max, 100vw) + 2 * var(--pad) + 1.5rem);
+    margin-inline: auto;
+  }
+}

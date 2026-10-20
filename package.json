@@ -1,0 +1,32 @@
+{
+  "name": "outofbook",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "assets": "node scripts/fetch-assets.mjs",
+    "build:book": "npm run build:book -w @outofbook/core",
+    "build": "npm run build:book && npm run build -w @outofbook/web && npm run build -w @outofbook/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm test -w @outofbook/core && npm test -w @outofbook/api",
+    "e2e": "playwright test",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  }
+}

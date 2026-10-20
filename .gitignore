@@ -1,0 +1,20 @@
+# The proof of concept stays in place, outside the product repo.
+poc/
+
+node_modules/
+dist/
+.env
+*.log
+
+# Generated or downloaded (npm run build:book, npm run assets).
+packages/core/src/data/book.json
+apps/web/public/engines/
+apps/web/public/ort/
+apps/web/public/maia3/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Real users' games for local tests only (not committed).
+packages/core/test/fixtures/local/

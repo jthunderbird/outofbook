@@ -1,0 +1,65 @@
+# OutOfBook dev stack: Vite dev server (HTTPS :7444, hot reload), Fastify API
+# (tsx watch) and Postgres. Source is mounted from this checkout.
+#   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
+# Runs beside the PoC (poc/, port 7443) on the next port: separate project, containers and DB volume.
+name: outofbook-dev
+
+x-node: &node
+  image: node:22-slim
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+  working_dir: /repo
+  volumes:
+    - .:/repo
+  environment:
+    HOME: /tmp
+
+services:
+  # One-shot: install dependencies, fetch engine/model assets, build the book.
+  deps:
+    <<: *node
+    command: sh -c "npm install --no-audit --no-fund && npm run assets && npm run build:book"
+
+  web:
+    <<: *node
+    command: npm run dev -w @outofbook/web
+    environment:
+      HOME: /tmp
+      API_URL: http://api:8080
+    ports:
+      - "7444:7444"
+    depends_on:
+      deps: { condition: service_completed_successfully }
+      api: { condition: service_started }
+    restart: unless-stopped
+
+  api:
+    <<: *node
+    command: npm run dev -w @outofbook/api
+    environment:
+      HOME: /tmp
+      DATABASE_URL: postgres://outofbook:outofbook@db:5432/outofbook
+      UNLIMITED_USERS: jtaylor42,mherms,wdorr
+      # Test-only header login (X-Dev-User) for e2e tests. Never enable outside a trusted LAN;
+      # the API ignores it when NODE_ENV=production.
+      DEV_AUTH: ${DEV_AUTH:-0}
+    depends_on:
+      deps: { condition: service_completed_successfully }
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: outofbook
+      POSTGRES_PASSWORD: outofbook
+      POSTGRES_DB: outofbook
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U outofbook"]
+      interval: 2s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,21 @@
+{
+  "name": "@outofbook/core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OutOfBook's chess logic, shared by the web app and the API: import parsing, book naming, repertoire build, move verdicts.",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "build:book": "node scripts/build-book.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "chess.js": "1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5"
+  }
+}

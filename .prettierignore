@@ -1,0 +1,9 @@
+poc/
+node_modules/
+dist/
+package-lock.json
+packages/core/src/data/
+packages/core/scripts/openings/
+apps/web/public/
+test-results/
+playwright-report/
