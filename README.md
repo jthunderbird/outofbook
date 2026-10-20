@@ -82,7 +82,8 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 One container serves the built app and `/api` on `127.0.0.1:8080`, with
-Postgres beside it. Put a TLS reverse proxy (SWAG) in front: the Lichess
+Postgres beside it. Set `APP_PORT`, and set `APP_BIND=0.0.0.0` when the
+proxy runs on another machine. Put a TLS reverse proxy (SWAG) in front: the Lichess
 login (WebCrypto) and cross-origin isolation need HTTPS.
 
 ## Licences of what is included
