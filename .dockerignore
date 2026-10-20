@@ -1,0 +1,11 @@
+poc
+**/node_modules
+**/dist
+.git
+apps/web/public/engines
+apps/web/public/ort
+apps/web/public/maia3
+packages/core/src/data
+packages/core/test/fixtures/local
+test-results
+playwright-report

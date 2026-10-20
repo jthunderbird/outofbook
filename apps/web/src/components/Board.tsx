@@ -36,6 +36,7 @@ export function EvalBar({ line, orientation, big }: { line?: Line | { cp?: numbe
   const whiteAhead = wp >= 50;
   return (
     <div
+      data-testid="eval-bar"
       className={`relative flex shrink-0 overflow-hidden rounded-[4px] ${big ? "w-[38px]" : "w-[22px]"}`}
       style={{ flexDirection: whiteBottom ? "column" : "column-reverse", background: "#f2f2f2", outline: "1px solid color-mix(in oklab, var(--fg) 25%, transparent)" }}
     >

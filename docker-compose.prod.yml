@@ -1,0 +1,36 @@
+# OutOfBook production stack: the app (API + built web) and Postgres.
+# Set POSTGRES_PASSWORD (and UNLIMITED_USERS) in a .env file next to this one.
+# The app listens on 127.0.0.1:8080 for a reverse proxy (SWAG) to put HTTPS in front.
+name: outofbook
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: outofbook:latest
+    environment:
+      DATABASE_URL: postgres://outofbook:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/outofbook
+      UNLIMITED_USERS: ${UNLIMITED_USERS:-}
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: outofbook
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: outofbook
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U outofbook"]
+      interval: 2s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  pgdata:

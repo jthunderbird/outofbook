@@ -46,8 +46,44 @@ npm run assets       # engine and model files
 npm run build:book   # opening book data
 npm run check        # format check, lint, typecheck, unit tests
 docker compose exec api npm test -w @outofbook/api   # API tests against Postgres
-npm run e2e          # Playwright, against the dev stack
+npm run e2e          # Playwright, against the dev stack (see below)
 ```
+
+### End-to-end tests
+
+The tests run against the dev stack. They need three things:
+
+- **The API with the test login on:** run
+  `DEV_AUTH=1 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d api`.
+  Switch it back off afterwards.
+- **Real games for the analysis and storage tests:**
+  `packages/core/test/fixtures/local/games300.json`, a JSON array of 300
+  imported games. It is kept out of git, and those tests skip without it.
+- **A browser, on hosts where Playwright cannot install one** (such as
+  Ubuntu 20.04): point `E2E_CHROMIUM` at an existing Chromium.
+
+The tests cover these areas:
+
+- the app shell, with cross-origin isolation;
+- every analysis view, the min-games filter, the book explorer and game
+  review;
+- the server-backed storage: a new device gets the model from the server, and
+  a refresh uses the browser copy;
+- play against Stockfish and Maia;
+- the live-game demo (opponent leaves and the win is claimed; the side
+  switch), on desktop and phone sizes.
+
+## Production
+
+```sh
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
+echo "UNLIMITED_USERS=jtaylor42,mherms,wdorr" >> .env
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+One container serves the built app and `/api` on `127.0.0.1:8080`, with
+Postgres beside it. Put a TLS reverse proxy (SWAG) in front: the Lichess
+login (WebCrypto) and cross-origin isolation need HTTPS.
 
 ## Licences of what is included
 

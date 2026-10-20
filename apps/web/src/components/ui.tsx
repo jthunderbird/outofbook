@@ -84,7 +84,8 @@ export function Seg<V extends string>({ value, onChange, options, className }: {
   return (
     <div className={cx("ui-seg", className)} role="radiogroup">
       {options.map(([v, l]) => (
-        <button key={v} type="button" role="radio" aria-checked={v === value} data-on={v === value} onClick={() => onChange(v)}>
+        // aria-label: inside a Field's <label>, a button would otherwise be named by the whole label text.
+        <button key={v} type="button" role="radio" aria-checked={v === value} aria-label={typeof l === "string" ? l : undefined} data-on={v === value} onClick={() => onChange(v)}>
           {l}
         </button>
       ))}
