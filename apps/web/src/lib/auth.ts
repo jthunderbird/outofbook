@@ -88,7 +88,9 @@ export async function logout() {
   if (t) await fetch(`${LICHESS}/api/token`, { method: "DELETE", headers: { Authorization: `Bearer ${t}` } }).catch(() => {});
 }
 
-export async function account(token: string): Promise<{ username: string } | null> {
+/** Ratings by speed, as /api/account gives them (prov: still provisional). */
+export type Perfs = Partial<Record<"bullet" | "blitz" | "rapid" | "classical" | "correspondence", { rating: number; prov?: boolean; games: number }>>;
+export async function account(token: string): Promise<{ username: string; perfs?: Perfs } | null> {
   const r = await fetch(`${LICHESS}/api/account`, { headers: { Authorization: `Bearer ${token}` } });
   return r.ok ? r.json() : null;
 }

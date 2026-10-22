@@ -221,6 +221,10 @@ body {
       border-color 0.15s,
       box-shadow 0.15s;
   }
+  .ui-input:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
   .ui-input:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);

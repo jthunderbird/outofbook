@@ -139,3 +139,14 @@ for (const [w, h] of [
     await expect(page.getByTestId("live-result")).toBeVisible();
     await ctx.close();
   });
+
+for (const oppWarn of [true, false])
+  test(`demo: the opponent's clock ${oppWarn ? "changes" : "keeps its"} color when low, as set`, async ({ page }) => {
+    await page.addInitScript((w) => localStorage.setItem("liveSettings", JSON.stringify({ oppClockWarn: w })), oppWarn);
+    await page.goto("/?demo");
+    await openDemo(page);
+    // You are White: the first clock is the opponent's.
+    await page.evaluate(() => (window as unknown as { demoClocks: (w: number, b: number) => void }).demoClocks(3000, 3000));
+    await expect(page.getByTestId("clock").last()).toHaveAttribute("data-level", "2");
+    await expect(page.getByTestId("clock").first()).toHaveAttribute("data-level", oppWarn ? "2" : "0");
+  });

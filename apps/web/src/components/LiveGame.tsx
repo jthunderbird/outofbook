@@ -8,7 +8,7 @@ import type { Api } from "chessground/api";
 import { ArrowLeftRight, ChevronLeft, ChevronRight, Flag, Handshake, X } from "lucide-react";
 import { uciParams } from "@outofbook/core/chess";
 import { buzz, playMoveSound, playSound, preloadSounds } from "../lib/gameFeel";
-import { ANIMATION_MS, type LichessPrefs } from "../lib/lichessPrefs";
+import { ANIMATION_MS, LICHESS_DEFAULTS, type LichessPrefs } from "../lib/lichessPrefs";
 import { abort, claimDraw, claimVictory, exportGame, offerDraw, resign, sendMove, streamGame, type GameFull, type GameState, type OpponentGone } from "../lib/lichessBoard";
 import type { RawGame, Side } from "@outofbook/core/types";
 import { Board, type BoardFeel, type PremoveQueue } from "./Board";
@@ -16,59 +16,69 @@ import { Button, cx } from "./ui";
 import { LichessIcon } from "./LichessIcon";
 
 export interface LiveSettings {
+  // OutOfBook's own settings, on top of Lichess's.
   warnPct: number; // clock turns yellow at or below this share of the initial time
   dangerPct: number; // red
-  premove: boolean;
-  sound: boolean;
-  /** Follow the user's Lichess preferences (premove, auto queen, sounds, clock tenths...) when we have them. */
-  useLichessPrefs: boolean;
+  oppClockWarn: boolean; // the opponent's clock changes color too (else only ours)
+  multiPremove: boolean; // queue several premoves, as on chess.com (needs Lichess premoves on)
   vibrate: boolean;
-  soundSet: string; // used when not following Lichess prefs
   columnLeft: boolean; // wide screens: clocks and buttons left of the board (switched in game)
-  multiPremove: boolean; // queue several premoves, as on chess.com (needs premoves on)
+  // Lichess's settings: imported from the account, or set here; one or the other.
+  useLichessPrefs: boolean;
+  lichess: LichessPrefs; // used when not importing
 }
 export const LIVE_DEFAULTS: LiveSettings = {
   warnPct: 50,
   dangerPct: 10,
-  premove: true,
-  sound: true,
-  useLichessPrefs: true,
-  vibrate: true,
-  soundSet: "standard",
-  columnLeft: false,
+  oppClockWarn: true,
   multiPremove: false,
+  vibrate: true,
+  columnLeft: false,
+  useLichessPrefs: true,
+  lichess: LICHESS_DEFAULTS,
 };
 
-/** What a game screen should do, from our settings and (when followed) the Lichess prefs. */
+/** The Lichess settings in force: the account's when imported (Lichess's defaults until they load), else ours. */
+export const lichessSettings = (settings: LiveSettings, prefs: LichessPrefs | null): LichessPrefs => (settings.useLichessPrefs ? (prefs ?? LICHESS_DEFAULTS) : settings.lichess);
+
+/** What a game screen should do, from our settings and the Lichess settings in force. */
 export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null) {
-  const p = settings.useLichessPrefs ? prefs : null;
-  const feel: BoardFeel = p
-    ? {
-        autoQueen: p.autoQueen,
-        animationMs: ANIMATION_MS[p.animation] ?? 250,
-        showDests: p.destination,
-        highlight: p.highlight,
-        coords: p.coords,
-        rookCastle: p.rookCastle === 1,
-        moveEvent: p.moveEvent,
-      }
-    : { autoQueen: 2 };
+  const p = lichessSettings(settings, prefs);
+  const feel: BoardFeel = {
+    autoQueen: p.autoQueen,
+    animationMs: ANIMATION_MS[p.animation] ?? 250,
+    showDests: p.destination,
+    highlight: p.highlight,
+    coords: p.coords,
+    rookCastle: p.rookCastle === 1,
+    moveEvent: p.moveEvent,
+  };
   return {
-    fromLichess: !!p,
+    fromLichess: settings.useLichessPrefs,
     feel,
-    premove: p ? p.premove : settings.premove,
-    multiPremove: (p ? p.premove : settings.premove) && settings.multiPremove,
-    soundSet: !settings.sound ? "silent" : p ? p.soundSet : settings.soundSet,
-    tenths: p ? p.clockTenths : 1,
-    lowTime: settings.sound && (p ? p.clockSound : true),
-    confirm: p ? p.confirmResign === 1 : true,
-    ratings: p ? p.ratings === 1 : true,
+    premove: p.premove,
+    multiPremove: p.premove && settings.multiPremove,
+    soundSet: p.soundSet,
+    tenths: p.clockTenths,
+    lowTime: p.clockSound && p.soundSet !== "silent",
+    confirm: p.confirmResign === 1,
+    ratings: p.ratings, // 0 hide, 1 show, 2 hide during games
     vibrate: settings.vibrate,
+    oppClockWarn: settings.oppClockWarn,
   };
 }
 export const loadLive = (): LiveSettings => {
   try {
-    return { ...LIVE_DEFAULTS, ...JSON.parse(localStorage.getItem("liveSettings") ?? "{}") };
+    const saved = JSON.parse(localStorage.getItem("liveSettings") ?? "{}");
+    // Before the split, premoves and sounds were our own top-level settings.
+    const lichess: LichessPrefs = {
+      ...LICHESS_DEFAULTS,
+      ...(saved.premove !== undefined ? { premove: saved.premove } : {}),
+      ...(saved.soundSet ? { soundSet: saved.soundSet } : {}),
+      ...(saved.sound === false ? { soundSet: "silent" } : {}),
+      ...saved.lichess,
+    };
+    return { ...LIVE_DEFAULTS, ...saved, lichess };
   } catch {
     return LIVE_DEFAULTS;
   }
@@ -131,7 +141,8 @@ const realConn = (token: string, id: string): Conn => ({
 });
 
 /** Offline demo: you are White vs a random mover, 1+1 so the clock colors show quickly.
- * From the browser console, window.demoOpponentGone(seconds) makes the opponent "leave". */
+ * From the browser console, window.demoOpponentGone(seconds) makes the opponent "leave",
+ * and window.demoClocks(whiteMs, blackMs) sets the clocks. */
 function demoConn(username: string): Conn {
   const initial = 60_000;
   const inc = 1000;
@@ -160,6 +171,7 @@ function demoConn(username: string): Conn {
     stream: (onFull, onState, onGone, signal) => {
       onS = onState;
       (window as { demoOpponentGone?: (s: number) => void }).demoOpponentGone = (s) => onGone({ gone: true, claimWinInSeconds: s });
+      (window as { demoClocks?: (w: number, b: number) => void }).demoClocks = (w, b) => push({ wtime: w, btime: b });
       onFull({
         id: "demo",
         white: { id: username.toLowerCase() || "you", name: username || "You", rating: 1650 },
@@ -552,7 +564,7 @@ export function LiveGame({
   const mat = material(fens.out[fens.out.length - 1]);
 
   const name = (p?: GameFull["white"]) => (p?.aiLevel ? `Lichess AI · level ${p.aiLevel}` : (p?.name ?? "?"));
-  const rating = (p?: GameFull["white"]) => (p?.rating && (g.ratings || !live) ? String(p.rating) : "");
+  const rating = (p?: GameFull["white"]) => (p?.rating && (g.ratings === 1 || (g.ratings === 2 && !live)) ? String(p.rating) : "");
   const player = (s: Side) => (s === "w" ? full?.white : full?.black);
   const canAbort = live && serverMoves.length < 2;
 
@@ -612,7 +624,17 @@ export function LiveGame({
   const clockH = `${Math.round(clockPx)}px`;
 
   const clock = (side: Side) => (
-    <ClockFace ms={clockMs(side)} tenths={g.tenths} initial={initial} warnPct={settings.warnPct} dangerPct={settings.dangerPct} active={live && turn === side} height={clockH} wide={wide} />
+    <ClockFace
+      ms={clockMs(side)}
+      tenths={g.tenths}
+      initial={initial}
+      warnPct={settings.warnPct}
+      dangerPct={settings.dangerPct}
+      active={live && turn === side}
+      height={clockH}
+      wide={wide}
+      warn={side === myColor || g.oppClockWarn}
+    />
   );
   const info = (side: Side, align: "left" | "right" = "left") => {
     const p = player(side);
@@ -844,7 +866,9 @@ function ClockFace({
   active,
   height,
   wide,
+  warn = true,
 }: {
+  warn?: boolean; // false: never changes color (the opponent's clock, when the user turned that off)
   ms: number;
   tenths: 0 | 1 | 2;
   initial: number;
@@ -855,7 +879,7 @@ function ClockFace({
   wide: boolean;
 }) {
   const pct = initial ? (ms / initial) * 100 : 100;
-  const level = pct <= dangerPct ? 2 : pct <= warnPct ? 1 : 0;
+  const level = !warn ? 0 : pct <= dangerPct ? 2 : pct <= warnPct ? 1 : 0;
   // Flash once each time the clock crosses into a new level.
   const prev = useRef(level);
   const [flash, setFlash] = useState(0);

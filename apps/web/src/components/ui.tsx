@@ -65,10 +65,10 @@ export function Field({ label, children, className, hint }: { label: ReactNode; 
   );
 }
 
-export function Switch({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label?: ReactNode; hint?: ReactNode }) {
+export function Switch({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label?: ReactNode; hint?: ReactNode; disabled?: boolean }) {
   return (
-    <label className="flex cursor-pointer items-start gap-2.5 select-none">
-      <S.Root className="ui-switch mt-0.5" checked={checked} onCheckedChange={onChange}>
+    <label className={cx("flex items-start gap-2.5 select-none", disabled ? "cursor-default opacity-60" : "cursor-pointer")}>
+      <S.Root className="ui-switch mt-0.5" checked={checked} onCheckedChange={onChange} disabled={disabled}>
         <S.Thumb />
       </S.Root>
       {label && (

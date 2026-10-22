@@ -14,8 +14,8 @@ const FULL = (id: string, status = "started") => ({
   state: { type: "gameState", moves: "", wtime: 600000, btime: 600000, status },
 });
 
-async function fakeLichess(page: Page) {
-  const calls = { events: 0, game: 0 };
+async function fakeLichess(page: Page, opts: { finishAfter?: number } = {}) {
+  const calls = { events: 0, game: 0, account: 0 };
   // Logged in once, on the first load only, so logging out sticks.
   await page.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return;
@@ -26,11 +26,18 @@ async function fakeLichess(page: Page) {
     const url = new URL(r.request().url());
     const p = url.pathname;
     if (p === "/api/token/test") return r.fulfill({ json: { "fake-token": { scopes: "board:play preference:read", userId: "tester" } } });
-    if (p === "/api/account") return r.fulfill({ json: { id: "tester", username: "tester" } });
+    if (p === "/api/account") {
+      calls.account++;
+      // The rapid rating goes up once a game has finished.
+      const rapid = opts.finishAfter && calls.events > opts.finishAfter ? 1512 : 1500;
+      return r.fulfill({ json: { id: "tester", username: "tester", perfs: { rapid: { rating: rapid, games: 20 }, classical: { rating: 1600, games: 3, prov: true } } } });
+    }
+    if (p === "/api/account/preferences") return r.fulfill({ json: { prefs: { premove: false, soundSet: "piano", autoQueen: 3, clockTenths: 2, animation: 0, rookCastle: 0, ratings: 2 } } });
     // Each stream response ends at once: to the app that is a dropped connection.
     if (p === "/api/stream/event") {
       calls.events++;
-      return r.fulfill({ contentType: "application/x-ndjson", body: "\n" });
+      const finish = opts.finishAfter !== undefined && calls.events === opts.finishAfter + 1;
+      return r.fulfill({ contentType: "application/x-ndjson", body: finish ? JSON.stringify({ type: "gameFinish", game: { id: "x" } }) + "\n" : "\n" });
     }
     if (p === "/api/challenge/ai") return r.fulfill({ json: { id: "aigame01" } });
     if (p.startsWith("/api/board/game/stream/")) {
@@ -121,4 +128,41 @@ test("logging out stops the analysis and removes the games from this device", as
       }),
   );
   expect(left).toBe(0);
+});
+
+test("ratings: rapid and classical above the game types, updated when a game ends", async ({ page }) => {
+  await fakeLichess(page, { finishAfter: 3 });
+  await page.goto("/");
+  await nav(page, "lichess");
+  const ratings = page.getByTestId("ratings");
+  await expect(ratings).toContainText(/rapid\s*1500/i);
+  await expect(ratings).toContainText(/classical\s*1600\?/i);
+  // The fourth event stream (a few seconds in) carries a gameFinish; the ratings are read again.
+  await expect(ratings).toContainText(/rapid\s*1512/i, { timeout: 30_000 });
+});
+
+test("Lichess settings: imported ones are shown and locked; set here, they are editable and kept apart", async ({ page }) => {
+  await fakeLichess(page);
+  await page.goto("/");
+  await nav(page, "lichess");
+  const box = page.getByTestId("lichess-settings");
+  const sound = box.getByRole("combobox", { name: "Sound" });
+  await expect(sound).toHaveValue("piano");
+  await expect(sound).toBeDisabled();
+  await expect(box.getByRole("switch", { name: /Premoves/ })).not.toBeChecked();
+  await expect(box.getByRole("switch", { name: /Premoves/ })).toBeDisabled();
+  // Set here instead: starts from the imported values, now editable.
+  await box.getByRole("switch", { name: /Import from my Lichess account/ }).click();
+  await expect(sound).toBeEnabled();
+  await expect(sound).toHaveValue("piano");
+  await sound.selectOption("robot");
+  await box.getByRole("switch", { name: /Premoves/ }).click();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("liveSettings") ?? "{}"));
+  expect(saved).toMatchObject({ useLichessPrefs: false, lichess: { soundSet: "robot", premove: true } });
+  // Back to importing: the account's values again, locked.
+  await box.getByRole("switch", { name: /Import from my Lichess account/ }).click();
+  await expect(sound).toHaveValue("piano");
+  await expect(sound).toBeDisabled();
+  // Our own settings are a separate panel.
+  await expect(page.getByTestId("oob-settings").getByRole("switch", { name: /Multiple premoves/ })).toBeEnabled();
 });
