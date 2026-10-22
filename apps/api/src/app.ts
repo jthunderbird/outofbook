@@ -4,7 +4,10 @@
 // browser keeps a copy and reads it first.
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import compress from "@fastify/compress";
+import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type pg from "pg";
 
 export const SAVE_LIMIT = 200;
@@ -19,6 +22,8 @@ export interface AppOptions {
   staticDir?: string;
   /** How the API asks Lichess who a token belongs to; replaced in tests. */
   lichessAccount?: (authorization: string) => Promise<{ id: string; username: string } | null>;
+  /** Origins of other apps allowed to call the API: the bundled Android app runs at https://localhost. */
+  corsOrigins?: string[];
   logger?: boolean;
 }
 
@@ -34,6 +39,7 @@ export async function buildApp(o: AppOptions): Promise<FastifyInstance> {
   // gzip at a low level: 2,000 evals (678 KB) shrink to about 150 KB in a few ms;
   // higher levels and brotli cost more server time than they save on the wire.
   await app.register(compress, { threshold: 1024, encodings: ["gzip"], zlibOptions: { level: 1 } });
+  if (o.corsOrigins?.length) await app.register(cors, { origin: o.corsOrigins, methods: ["GET", "POST", "PUT", "DELETE"], maxAge: 86400 });
   app.addContentTypeParser("application/gzip", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
 
   // A Lichess token identifies the user; we never see a password. Cached briefly.
@@ -72,6 +78,27 @@ export async function buildApp(o: AppOptions): Promise<FastifyInstance> {
     const unlimited = await upsertUser(u);
     const c = await pool.query("SELECT count(*)::int AS n FROM games WHERE user_id = $1", [u.id]);
     return { username: u.name, unlimited, savedGames: c.rows[0].n, limit: unlimited ? null : SAVE_LIMIT };
+  });
+
+  // Account deletion (Google Play requires it): the user's games, model and user row.
+  // Shared evals carry no personal data and stay.
+  app.delete("/api/me", async (req, reply) => {
+    const u = await userOf(req);
+    if (!u) return reply.code(401).send({ error: "not logged in" });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const g = await client.query("DELETE FROM games WHERE user_id = $1", [u.id]);
+      await client.query("DELETE FROM models WHERE user_id = $1", [u.id]);
+      await client.query("DELETE FROM users WHERE id = $1", [u.id]);
+      await client.query("COMMIT");
+      return { deleted: true, games: g.rowCount };
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
   });
 
   // Replace the user's saved set. Over the limit: refused, nothing saved.
@@ -169,6 +196,13 @@ export async function buildApp(o: AppOptions): Promise<FastifyInstance> {
       reply.header("Cross-Origin-Opener-Policy", "same-origin");
       reply.header("Cross-Origin-Embedder-Policy", "require-corp");
     });
+    // Digital Asset Links: lets the Android app open this site without a browser bar.
+    app.get("/.well-known/assetlinks.json", async (_req, reply) =>
+      reply
+        .type("application/json")
+        .header("Cache-Control", "no-cache")
+        .send(await readFile(join(o.staticDir!, ".well-known/assetlinks.json"), "utf8").catch(() => "[]")),
+    );
     await app.register(fastifyStatic, {
       root: o.staticDir,
       // Vite's hashed bundles never change; everything else is revalidated.

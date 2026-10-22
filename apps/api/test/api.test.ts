@@ -85,6 +85,28 @@ describe.runIf(url)("API", () => {
     expect((await app.inject({ url: "/api/model?hash=other", headers: as("alice") })).statusCode).toBe(404);
   });
 
+  it("deletes the account with its games and model, keeping the shared evals", async () => {
+    const h = as("leaver");
+    await app.inject({ method: "PUT", url: "/api/games", headers: h, payload: [game(1), game(2)] });
+    await app.inject({ method: "PUT", url: "/api/model?hash=x", headers: { ...h, "content-type": "application/gzip" }, payload: gzipSync("{}") });
+    await app.inject({ method: "POST", url: "/api/evals/put", headers: h, payload: [{ key: "leaver-pos", eval: { depth: 10, lines: [{ cp: 1, pv: ["e2e4"] }] } }] });
+    const del = await app.inject({ method: "DELETE", url: "/api/me", headers: h });
+    expect(del.json()).toEqual({ deleted: true, games: 2 });
+    for (const t of ["games", "models"]) expect((await pool.query(`SELECT count(*)::int AS n FROM ${t} WHERE user_id = 'leaver'`)).rows[0].n).toBe(0);
+    expect((await pool.query("SELECT count(*)::int AS n FROM users WHERE id = 'leaver'")).rows[0].n).toBe(0);
+    expect((await pool.query("SELECT count(*)::int AS n FROM evals WHERE key = 'leaver-pos'")).rows[0].n).toBe(1);
+    expect((await app.inject({ method: "DELETE", url: "/api/me" })).statusCode).toBe(401);
+  });
+
+  it("allows the bundled Android app's origin, and only it", async () => {
+    const withCors = await buildApp({ pool, unlimited: new Set(), devAuth: false, corsOrigins: ["https://localhost"] });
+    const pre = (origin: string) =>
+      withCors.inject({ method: "OPTIONS", url: "/api/me", headers: { origin, "access-control-request-method": "GET", "access-control-request-headers": "authorization" } });
+    expect((await pre("https://localhost")).headers["access-control-allow-origin"]).toBe("https://localhost");
+    expect((await pre("https://evil.example")).headers["access-control-allow-origin"]).toBeUndefined();
+    await withCors.close();
+  });
+
   it("ignores the dev header when dev auth is off", async () => {
     const strict = await buildApp({ pool, unlimited: new Set(), devAuth: false });
     expect((await strict.inject({ url: "/api/me", headers: as("alice") })).statusCode).toBe(401);

@@ -8,6 +8,7 @@ import { localModel, modelHash, saveLocalModel, saveServerModel, serverModel } f
 import { runAnalysis, type AnalysisProgress } from "./lib/analysis";
 import { classify } from "@outofbook/core/classify";
 import { askRepertoire } from "./lib/claude";
+import { IN_APP } from "./lib/platform";
 import { posKey, START_FEN, uciToSan } from "@outofbook/core/chess";
 import { defaultPoolSize } from "./lib/engine";
 import { countEvals, kvGet, kvSet } from "./lib/evalCache";
@@ -329,8 +330,9 @@ export default function App() {
         if (route && route !== "repertoire") setTab(route);
       } else if (route) setTab(route);
     }
-    if (!settings.claudeKey) {
-      setAnswer({ q, note: (note || (route ? `Opened ${TITLES[route][0]}.` : "No matching view or opening.")) + " Add an Anthropic API key in Settings for a written answer from Claude." });
+    if (!settings.claudeKey || IN_APP) {
+      const found = note || (route ? `Opened ${TITLES[route][0]}.` : "No matching view or opening.");
+      setAnswer({ q, note: IN_APP ? found : `${found} Add an Anthropic API key in Settings for a written answer from Claude.` });
       return;
     }
     setAnswer({ q, note, busy: true });

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node precache.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

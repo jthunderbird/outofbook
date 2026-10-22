@@ -2,6 +2,7 @@
 // PoC): the browser keeps the latest one in IndexedDB; the server keeps each
 // user's, so a new device or a cleared browser gets it without building.
 // Both are keyed by a hash of the games and the build settings.
+import { API_BASE } from "./platform";
 import { kvGet, kvSet } from "./evalCache";
 import { authHeaders, hasAuth } from "./server";
 import type { RawGame, RepertoireModel } from "@outofbook/core/types";
@@ -23,7 +24,7 @@ export const saveLocalModel = (hash: string, model: RepertoireModel) => kvSet("m
 
 export async function serverModel(hash: string): Promise<RepertoireModel | null> {
   if (!hasAuth()) return null;
-  const r = await fetch(`/api/model?hash=${hash}`, { headers: authHeaders() }).catch(() => null);
+  const r = await fetch(`${API_BASE}/api/model?hash=${hash}`, { headers: authHeaders() }).catch(() => null);
   return r?.ok ? r.json() : null;
 }
 
@@ -31,5 +32,5 @@ export async function serverModel(hash: string): Promise<RepertoireModel | null>
 export async function saveServerModel(hash: string, model: RepertoireModel) {
   if (!hasAuth()) return;
   const gz = await new Response(new Blob([JSON.stringify(model)]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
-  await fetch(`/api/model?hash=${hash}`, { method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/gzip" }, body: gz }).catch(() => {});
+  await fetch(`${API_BASE}/api/model?hash=${hash}`, { method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/gzip" }, body: gz }).catch(() => {});
 }

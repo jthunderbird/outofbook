@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.jthunderbird.outofbook.twa",
+      "sha256_cert_fingerprints": ["AD:3E:8F:CC:11:96:56:B5:C8:6D:44:9B:BE:87:2B:A0:80:D7:0F:F6:27:81:22:2D:27:61:37:BD:3E:4F:96:C2"]
+    }
+  }
+]

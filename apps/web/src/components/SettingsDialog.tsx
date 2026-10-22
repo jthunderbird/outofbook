@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { MODES, useDesign } from "../design/design";
+import { IN_APP, IS_CAPACITOR } from "../lib/platform";
+import { deleteAccount, hasAuth } from "../lib/server";
 import type { Settings } from "../lib/settings";
 import type { Verdict } from "@outofbook/core/types";
 import { Button, Dialog, Field, Input, Seg, Switch } from "./ui";
@@ -35,16 +37,18 @@ export function SettingsDialog({ open, value, onClose }: { open: boolean; value:
         </section>
         <section className="flex flex-col gap-3">
           <div className="ui-h2">Analysis</div>
-          <Field label="Engine" hint="Used for all analysis. Full is stronger and slower; it downloads 113 MB once.">
-            <Seg
-              value={s.engineBuild}
-              onChange={(engineBuild) => setS({ ...s, engineBuild })}
-              options={[
-                ["lite", "Stockfish 18 lite (7 MB)"],
-                ["full", "Stockfish 18 (113 MB)"],
-              ]}
-            />
-          </Field>
+          {!IS_CAPACITOR && (
+            <Field label="Engine" hint="Used for all analysis. Full is stronger and slower; it downloads 113 MB once.">
+              <Seg
+                value={s.engineBuild}
+                onChange={(engineBuild) => setS({ ...s, engineBuild })}
+                options={[
+                  ["lite", "Stockfish 18 lite (7 MB)"],
+                  ["full", "Stockfish 18 (113 MB)"],
+                ]}
+              />
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Review: live engine depth (0 = until stopped)">
               <Input type="number" value={s.reviewDepth} onChange={(e) => setS({ ...s, reviewDepth: num(e.target.value, 0, 40) })} />
@@ -84,13 +88,71 @@ export function SettingsDialog({ open, value, onClose }: { open: boolean; value:
             ))}
           </div>
         </section>
-        <section className="flex flex-col gap-3">
-          <div className="ui-h2">Claude</div>
-          <Field label="Anthropic API key (kept in this browser only)" hint={'Used by "Ask Claude" on mistakes, in game review and in the chat layout. Billed to your own Anthropic API account.'}>
-            <Input type="password" value={s.claudeKey} onChange={(e) => setS({ ...s, claudeKey: e.target.value })} placeholder="sk-ant-…" />
-          </Field>
-        </section>
+        {!IN_APP && (
+          <section className="flex flex-col gap-3">
+            <div className="ui-h2">Claude</div>
+            <Field label="Anthropic API key (kept in this browser only)" hint={'Used by "Ask Claude" on mistakes, in game review and in the chat layout. Billed to your own Anthropic API account.'}>
+              <Input type="password" value={s.claudeKey} onChange={(e) => setS({ ...s, claudeKey: e.target.value })} placeholder="sk-ant-…" />
+            </Field>
+          </section>
+        )}
+        <AccountSection />
       </div>
     </Dialog>
+  );
+}
+
+/** Privacy, source code (AGPL-3.0) and deleting the account with everything the server keeps for it. */
+function AccountSection() {
+  const [confirm, setConfirm] = useState(false);
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  const remove = async () => {
+    setState("busy");
+    if (!(await deleteAccount())) return setState("failed");
+    // This device's copy goes too: the login, the games, the model and the cached evals.
+    try {
+      localStorage.removeItem("lichessToken");
+    } catch {
+      /* private mode */
+    }
+    indexedDB.deleteDatabase("outofbook");
+    location.replace("/");
+  };
+  return (
+    <section className="flex flex-col gap-3" data-testid="account-section">
+      <div className="ui-h2">Account and privacy</div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <a className="ui-link" href="https://chess.conft.io/privacy.html" target="_blank" rel="noreferrer">
+          Privacy policy
+        </a>
+        <a className="ui-link" href="https://github.com/jthunderbird/outofbook" target="_blank" rel="noreferrer">
+          Source code (AGPL-3.0)
+        </a>
+      </div>
+      {hasAuth() && (
+        <div className="flex flex-wrap items-center gap-2">
+          {!confirm ? (
+            <Button size="sm" variant="ghost" onClick={() => setConfirm(true)}>
+              Delete my account and data
+            </Button>
+          ) : (
+            <>
+              <span className="text-sm">Delete your saved games and repertoire from the server and this device? This cannot be undone.</span>
+              <Button size="sm" variant="primary" onClick={remove} disabled={state === "busy"}>
+                {state === "busy" ? "Deleting…" : "Yes, delete everything"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+                Cancel
+              </Button>
+              {state === "failed" && (
+                <span className="text-sm" style={{ color: "var(--bad)" }}>
+                  Could not reach the server. Try again when online.
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

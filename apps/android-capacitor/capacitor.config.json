@@ -1,0 +1,19 @@
+{
+  "appId": "com.jthunderbird.outofbook.offline",
+  "appName": "OutOfBook",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": [
+      "lichess.org"
+    ]
+  },
+  "android": {
+    "backgroundColor": "#0D1117"
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "DARK"
+    }
+  }
+}

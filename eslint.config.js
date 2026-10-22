@@ -7,7 +7,20 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["poc/", "**/node_modules/", "**/dist/", "apps/web/public/", "packages/core/src/data/", "test-results/", "playwright-report/"] },
+  {
+    ignores: [
+      "poc/",
+      "**/node_modules/",
+      "**/dist/",
+      "apps/web/public/",
+      "apps/android-capacitor/android/",
+      "apps/android-capacitor/www/",
+      "apps/android-twa/",
+      "packages/core/src/data/",
+      "test-results/",
+      "playwright-report/",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

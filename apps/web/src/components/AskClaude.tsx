@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { explainMove, type ExplainInput } from "../lib/claude";
+import { IN_APP } from "../lib/platform";
 import { loadSettings } from "../lib/settings";
 import { Alert, Button } from "./ui";
 
-/** "Ask Claude" button that explains one move; needs an Anthropic API key in Settings. */
-export function AskClaude({ input, disabled }: { input: () => ExplainInput; disabled?: boolean }) {
+/** "Ask Claude" button that explains one move; needs an Anthropic API key in Settings. Not in the Android apps. */
+export const AskClaude = (p: { input: () => ExplainInput; disabled?: boolean }) => (IN_APP ? null : <AskClaudeButton {...p} />);
+
+function AskClaudeButton({ input, disabled }: { input: () => ExplainInput; disabled?: boolean }) {
   const [text, setText] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

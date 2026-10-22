@@ -1,5 +1,6 @@
 import type { Verdict } from "@outofbook/core/types";
 import type { EngineBuild } from "./engine";
+import { IS_CAPACITOR } from "./platform";
 
 export interface Settings {
   depth: number;
@@ -41,7 +42,8 @@ export const loadSettings = (): Settings => {
     const saved = JSON.parse(localStorage.getItem("settings") ?? "{}");
     // Version 2 had no engine fields: keep its values, the new fields take their defaults.
     if (saved.version !== VERSION && saved.version !== 2) return DEFAULTS;
-    return { ...DEFAULTS, ...saved };
+    // The bundled Android app ships only the lite engine (the full one is 113 MB).
+    return { ...DEFAULTS, ...saved, ...(IS_CAPACITOR ? { engineBuild: "lite" } : {}) };
   } catch {
     return DEFAULTS;
   }

@@ -16,6 +16,7 @@ import { cloudEval, evalNow, getEval, putEval } from "../lib/evalCache";
 import { hasAuth, shareEval } from "../lib/server";
 import { trackLine } from "@outofbook/core/lineTracker";
 import { buildRepertoire } from "@outofbook/core/repertoire";
+import { IS_CAPACITOR } from "../lib/platform";
 import type { Settings } from "../lib/settings";
 import { BAD_VERDICTS, type Line, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
 import { AskClaude } from "./AskClaude";
@@ -527,14 +528,16 @@ export function GameReview({
         </div>
       </div>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <Seg
-          value={build}
-          onChange={(engineBuild) => onSettings({ engineBuild })}
-          options={[
-            ["lite", "Lite"],
-            ["full", "Full"],
-          ]}
-        />
+        {!IS_CAPACITOR && (
+          <Seg
+            value={build}
+            onChange={(engineBuild) => onSettings({ engineBuild })}
+            options={[
+              ["lite", "Lite"],
+              ["full", "Full"],
+            ]}
+          />
+        )}
         <Select aria-label="Engine depth" value={String(target)} onChange={(e) => onSettings({ reviewDepth: +e.target.value })} options={DEPTHS} />
         <Select
           aria-label="Engine lines"

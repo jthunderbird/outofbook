@@ -1,0 +1,7 @@
+app-release-*.apk
+app-release-*.aab
+app/build/
+build/
+.gradle/
+local.properties
+*.idsig

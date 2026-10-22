@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OutOfBook</string>
+    <string name="title_activity_main">OutOfBook</string>
+    <string name="package_name">com.jthunderbird.outofbook.offline</string>
+    <string name="custom_url_scheme">com.jthunderbird.outofbook.offline</string>
+</resources>

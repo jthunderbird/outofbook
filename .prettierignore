@@ -7,3 +7,7 @@ packages/core/scripts/openings/
 apps/web/public/
 test-results/
 playwright-report/
+# Generated Android projects and their bundled web copy.
+apps/android-capacitor/android/
+apps/android-capacitor/www/
+apps/android-twa/

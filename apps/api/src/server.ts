@@ -20,6 +20,10 @@ const app = await buildApp({
   // Test-only header login: ignored in production whatever the variable says.
   devAuth: !production && process.env.DEV_AUTH === "1",
   staticDir: production ? process.env.STATIC_DIR : undefined,
+  corsOrigins: (process.env.CORS_ORIGINS ?? "https://localhost")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   logger: true,
 });
 await app.listen({ host: "0.0.0.0", port: Number(process.env.PORT ?? 8080) });

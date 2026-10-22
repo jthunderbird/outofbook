@@ -1,6 +1,7 @@
 // Client for the PoC API: account, saved games, shared eval cache.
 import { getToken } from "./auth";
 import { standardEval } from "./evalCache";
+import { API_BASE } from "./platform";
 import type { PosEval, RawGame } from "@outofbook/core/types";
 
 export const authHeaders = (): Record<string, string> => {
@@ -30,24 +31,30 @@ export interface Me {
 }
 
 export async function me(): Promise<Me | null> {
-  const r = await fetch("/api/me", { headers: authHeaders() }).catch(() => null);
+  const r = await fetch(`${API_BASE}/api/me`, { headers: authHeaders() }).catch(() => null);
   return r?.ok ? r.json() : null;
 }
 
 export async function saveGames(games: RawGame[]): Promise<{ saved: number } | { error: string }> {
-  const r = await fetch("/api/games", { method: "PUT", headers: authHeaders(), body: JSON.stringify(games) });
+  const r = await fetch(`${API_BASE}/api/games`, { method: "PUT", headers: authHeaders(), body: JSON.stringify(games) });
   return r.json();
 }
 
+/** Deletes the account and everything the server keeps for it (games, model); shared evals are not personal and stay. */
+export async function deleteAccount(): Promise<boolean> {
+  const r = await fetch(`${API_BASE}/api/me`, { method: "DELETE", headers: authHeaders() }).catch(() => null);
+  return !!r?.ok;
+}
+
 export async function loadSavedGames(): Promise<RawGame[]> {
-  const r = await fetch("/api/games", { headers: authHeaders() });
+  const r = await fetch(`${API_BASE}/api/games`, { headers: authHeaders() });
   return r.ok ? r.json() : [];
 }
 
 export async function serverEvals(keys: string[], minDepth: number): Promise<Record<string, PosEval>> {
   const out: Record<string, PosEval> = {};
   for (let i = 0; i < keys.length; i += 1000) {
-    const r = await fetch("/api/evals/get", { method: "POST", headers: authHeaders(), body: JSON.stringify({ keys: keys.slice(i, i + 1000), minDepth }) }).catch(() => null);
+    const r = await fetch(`${API_BASE}/api/evals/get`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ keys: keys.slice(i, i + 1000), minDepth }) }).catch(() => null);
     if (r?.ok) for (const [k, e] of Object.entries((await r.json()) as Record<string, PosEval>)) out[k] = standardEval(k, e);
   }
   return out;
@@ -64,6 +71,6 @@ export function shareEval(key: string, e: PosEval, canWrite: boolean) {
       const batch = queue;
       queue = [];
       timer = null;
-      await fetch("/api/evals/put", { method: "POST", headers: authHeaders(), body: JSON.stringify(batch) }).catch(() => {});
+      await fetch(`${API_BASE}/api/evals/put`, { method: "POST", headers: authHeaders(), body: JSON.stringify(batch) }).catch(() => {});
     }, 3000);
 }

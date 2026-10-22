@@ -93,6 +93,38 @@ Postgres beside it. Set `APP_PORT`, and set `APP_BIND=0.0.0.0` when the
 proxy runs on another machine. Put a TLS reverse proxy (SWAG) in front: the Lichess
 login (WebCrypto) and cross-origin isolation need HTTPS.
 
+## Android apps
+
+Two builds of the same app, being compared before one goes to Google Play:
+
+|            | `apps/android-twa/`                                                                                                                       | `apps/android-capacitor/`                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| What it is | A Trusted Web Activity ([Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap)): opens https://chess.conft.io full screen in Chrome | [Capacitor](https://capacitorjs.com): the web app bundled inside, in the system WebView |
+| Package    | `com.jthunderbird.outofbook.twa`                                                                                                          | `com.jthunderbird.outofbook.offline`                                                    |
+| Size       | 3 MB (files download on first launch)                                                                                                     | 57 MB                                                                                   |
+| Offline    | Yes, after the first launch (the service worker keeps the app, the lite engine and Maia)                                                  | Yes, from install                                                                       |
+| Updates    | Every site deploy                                                                                                                         | A new release                                                                           |
+| Engines    | Lite and full Stockfish, Maia with threads                                                                                                | Lite Stockfish, Maia on one thread (the WebView is not cross-origin isolated)           |
+
+Neither includes Claude. Both talk to the public server for accounts and saved games.
+
+Builds need JDK 21 and the Android SDK (API 36). Release signing reads
+`~/.outofbook-android/keystore.properties` (`storeFile`, `storePassword`,
+`keyAlias`, `keyPassword`), which is never committed.
+
+```sh
+# Capacitor: builds the web app into www/, syncs, and builds the APK and AAB
+npm run apk -w @outofbook/android-capacitor
+# TWA: twa-manifest.json is the source; Bubblewrap regenerates and builds the project
+cd apps/android-twa && BUBBLEWRAP_KEYSTORE_PASSWORD=... BUBBLEWRAP_KEY_PASSWORD=... npx @bubblewrap/cli build
+```
+
+The TWA only opens without a browser bar when
+`apps/web/public/.well-known/assetlinks.json` lists its package and signing-key
+fingerprint (the upload key for local installs, Play's app-signing key for Play
+installs). The privacy policy is at `/privacy.html` and account deletion at
+`/delete-account.html`.
+
 ## Licenses of what is included
 
 - chessground, chess.js, Stockfish.js and the Maia 3 model and worker:
