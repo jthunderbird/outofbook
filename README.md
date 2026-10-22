@@ -97,14 +97,14 @@ login (WebCrypto) and cross-origin isolation need HTTPS.
 
 Two builds of the same app, being compared before one goes to Google Play:
 
-|            | `apps/android-twa/`                                                                                                                       | `apps/android-capacitor/`                                                               |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+|            | `apps/android-twa/`                                                                                                                      | `apps/android-capacitor/`                                                               |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | What it is | A Trusted Web Activity ([Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap)): opens https://outofbook.net full screen in Chrome | [Capacitor](https://capacitorjs.com): the web app bundled inside, in the system WebView |
-| Package    | `com.jthunderbird.outofbook.twa`                                                                                                          | `com.jthunderbird.outofbook.offline`                                                    |
-| Size       | 3 MB (files download on first launch)                                                                                                     | 57 MB                                                                                   |
-| Offline    | Yes, after the first launch (the service worker keeps the app, the lite engine and Maia)                                                  | Yes, from install                                                                       |
-| Updates    | Every site deploy                                                                                                                         | A new release                                                                           |
-| Engines    | Lite and full Stockfish, Maia with threads                                                                                                | Lite Stockfish, Maia on one thread (the WebView is not cross-origin isolated)           |
+| Package    | `com.jthunderbird.outofbook.twa`                                                                                                         | `com.jthunderbird.outofbook.offline`                                                    |
+| Size       | 3 MB (files download on first launch)                                                                                                    | 57 MB                                                                                   |
+| Offline    | Yes, after the first launch (the service worker keeps the app, the lite engine and Maia)                                                 | Yes, from install                                                                       |
+| Updates    | Every site deploy                                                                                                                        | A new release                                                                           |
+| Engines    | Lite and full Stockfish, Maia with threads                                                                                               | Lite Stockfish, Maia on one thread (the WebView is not cross-origin isolated)           |
 
 Neither includes Claude. Both talk to the public server for accounts and saved games.
 
