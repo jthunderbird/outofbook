@@ -129,7 +129,7 @@ const realConn = (token: string, id: string): Conn => ({
   claimDraw: () => claimDraw(token, id),
 });
 
-/** Offline demo: you are White vs a random mover, 1+1 so the clock colours show quickly.
+/** Offline demo: you are White vs a random mover, 1+1 so the clock colors show quickly.
  * From the browser console, window.demoOpponentGone(seconds) makes the opponent "leave". */
 function demoConn(username: string): Conn {
   const initial = 60_000;

@@ -29,7 +29,7 @@ const keyAfter = (sans: string) => {
 describe("buildRepertoire", () => {
   const m = buildRepertoire([game("e4 c6 d4 d5 e5"), game("e4 c6 d4 d5 Nc3"), game("Nf3 d5 d4 Nf6"), game("d4 d5 Nf3 Nf6"), game("e4 e5 Nf3", "b", "0-1")], OPTS);
 
-  it("counts the user's moves per position, per colour", () => {
+  it("counts the user's moves per position, per color", () => {
     const root = m.graphs.w[m.rootKey];
     expect(root.edges.find((e) => e.san === "e4")?.count).toBe(2);
     expect(m.graphs.b[m.rootKey].edges.find((e) => e.san === "e4")?.count).toBe(1);

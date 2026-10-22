@@ -1,4 +1,4 @@
-// How the bot chooses its move: opening behaviour first (stay in the named book,
+// How the bot chooses its move: opening behavior first (stay in the named book,
 // copy what your opponents played, follow one named line), then the engine
 // (Stockfish limited to an Elo, or Maia at a rating).
 import { Chess } from "chess.js";

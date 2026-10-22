@@ -114,7 +114,7 @@ export function ImportPanel({
       </div>
       {saveLimit !== null && saveLimit !== undefined && f.max > saveLimit && (
         <Alert tone="info">
-          More than {saveLimit} games: they are analysed in this browser session but will <b>not be saved</b> to your account.
+          More than {saveLimit} games: they are analyzed in this browser session but will <b>not be saved</b> to your account.
         </Alert>
       )}
       {saveLimit === undefined && <Alert tone="info">Log in with Lichess to save up to {SERVER_SAVE_LIMIT} games to your account and share engine work with other users.</Alert>}

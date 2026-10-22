@@ -1,6 +1,6 @@
 // Sounds and vibration like a Lichess board. The sounds are Lichess's own,
 // streamed from its asset CDN at run time (not bundled: the standard set is not
-// under a free licence, see COPYING.md in lichess-org/lila). Same choice of
+// under a free license, see COPYING.md in lichess-org/lila). Same choice of
 // sound as lila's ui/site/src/sound.ts: capture or move, then check/checkmate.
 export type SoundName = "move" | "capture" | "check" | "checkmate" | "genericNotify" | "lowTime";
 

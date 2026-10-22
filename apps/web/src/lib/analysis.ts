@@ -93,7 +93,7 @@ export function runAnalysis(moves: MoveStat[], opts: AnalysisOptions, onEval: (k
         p.cache++;
         await finish(item.key, e);
       } else if (new Chess(item.fen).isGameOver()) {
-        // Mate or stalemate: nothing to analyse (the engine returns no lines, so it was never cached).
+        // Mate or stalemate: nothing to analyze (the engine returns no lines, so it was never cached).
         p.cache++;
         await finish(item.key, { lines: [], depth: opts.depth, source: "cache" });
       } else misses.push(item);
@@ -140,7 +140,7 @@ export function runAnalysis(moves: MoveStat[], opts: AnalysisOptions, onEval: (k
           await new Promise((r) => setTimeout(r, 100));
           continue;
         }
-        const e = await (pool ??= new EnginePool(opts.poolSize, opts.build)).analyse(item.fen, opts.depth, 2);
+        const e = await (pool ??= new EnginePool(opts.poolSize, opts.build)).analyze(item.fen, opts.depth, 2);
         p.engine++;
         await finish(item.key, e);
       }

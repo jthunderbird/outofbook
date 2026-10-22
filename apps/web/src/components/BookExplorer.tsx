@@ -152,7 +152,7 @@ export function BookExplorer({ target, depth, onClose }: { target: ExploreTarget
   const want = useMemo(() => [{ fen: root, mpv: 3 }, { fen: curFen, mpv: 3 }, ...rows.map((r) => ({ fen: r.fen, mpv: 2 }))], [root, curFen, rows]);
   useEffect(() => {
     let live = true;
-    const engine = (f: string, d: number, mpv: number) => pool.current!.analyse(f, d, mpv);
+    const engine = (f: string, d: number, mpv: number) => pool.current!.analyze(f, d, mpv);
     for (const w of want) {
       const k = posKey(w.fen);
       if (evals[k]) continue;
@@ -339,7 +339,7 @@ export function BookExplorer({ target, depth, onClose }: { target: ExploreTarget
             <Button size="sm" variant="ghost" icon onClick={() => selRow && sel && setSel({ ...sel, idx: selRow.line.length - 1 })} disabled={!selRow}>
               <ChevronsRight size={16} />
             </Button>
-            <span className="num ml-2 text-xs text-muted">{curEval?.lines[0]?.pv[0] ? `best ${uciToSan(curFen, curEval.lines[0].pv[0])} · d${curEval.depth} ${curEval.source}` : "analysing…"}</span>
+            <span className="num ml-2 text-xs text-muted">{curEval?.lines[0]?.pv[0] ? `best ${uciToSan(curFen, curEval.lines[0].pv[0])} · d${curEval.depth} ${curEval.source}` : "analyzing…"}</span>
           </div>
         </div>
       </div>

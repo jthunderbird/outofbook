@@ -59,7 +59,7 @@ export function Overview({
         {progress && (
           <div className="mt-4 flex items-center gap-3">
             <Progress value={pct} className="flex-1" />
-            <span className="num text-xs text-muted">{progress.running ? `analysing ${progress.done}/${progress.total}` : "analysis done"}</span>
+            <span className="num text-xs text-muted">{progress.running ? `analyzing ${progress.done}/${progress.total}` : "analysis done"}</span>
           </div>
         )}
       </Card>

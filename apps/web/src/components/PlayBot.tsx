@@ -233,7 +233,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
     const pool = judge.current;
     if (!myTurn || !fenNow || !pool) return;
     let live = true;
-    const eng = (f: string, d: number, m: number) => pool.analyse(f, d, m);
+    const eng = (f: string, d: number, m: number) => pool.analyze(f, d, m);
     const legal = new Chess(fenNow).moves().length;
     (async () => {
       const ev = await evalNow(fenNow, depth, 5, eng, Math.min(5, legal));
@@ -275,7 +275,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   const judgeMove = (ply: number, fenBefore: string, uci: string, fenAfter: string, prevFen?: string, prevUci?: string, usualUci?: string) => {
     const pool = judge.current;
     if (!pool) return;
-    const eng = (f: string, d: number, m: number) => pool.analyse(f, d, m);
+    const eng = (f: string, d: number, m: number) => pool.analyze(f, d, m);
     const usualFen = usualUci ? applyMovesFrom(fenBefore, usualUci) : undefined;
     Promise.all([evalNow(fenBefore, depth, 2, eng), evalNow(fenAfter, depth, 2, eng), usualFen ? evalNow(usualFen, depth, 2, eng) : undefined])
       .then(([b, a, u]) => {
@@ -373,7 +373,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   const shownPly = viewPly ?? hist.length;
   const boardFen = viewPly !== null ? applyMoves(hist.slice(0, viewPly)).fen() : (game?.chess.fen() ?? applyMoves(startUcis).fen());
   // The bar keeps the last known eval until a new one arrives, instead of
-  // dropping to 0.00 while the next position is being analysed.
+  // dropping to 0.00 while the next position is being analyzed.
   const heldEval = useRef<Line | undefined>(undefined);
   const evalNowShown = viewPly === null ? (top && top.fen === fenNow ? top.ev.lines[0] : lastEval) : judged[viewPly - 1]?.evalAfter?.lines[0];
   if (!game) heldEval.current = undefined;
@@ -673,7 +673,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
                   <input className="ui-range" type="range" value={userElo} min={600} max={2600} step={50} onChange={(e) => setUserElo(+e.target.value)} />
                 </Field>
               )}
-              <Field label="Bot's opening behaviour" hint={BOOK_MODES.find((b) => b[0] === bookMode)?.[2]}>
+              <Field label="Bot's opening behavior" hint={BOOK_MODES.find((b) => b[0] === bookMode)?.[2]}>
                 <Select value={bookMode} onChange={(e) => setBookMode(e.target.value as BookMode)} options={BOOK_MODES.map(([v, l]) => [v, l])} />
               </Field>
               {bookMode === "line" && (
@@ -790,7 +790,7 @@ function TopMovesCard({ top, current, myTurn, myColor, graph }: { top: TopMoves 
   const fen = top?.fen ?? "";
   const node = graph?.[posKey(fen)];
   const book = new Map(top ? bookChildren(fen).map((b) => [b.uci, b]) : []);
-  const status = current ? `depth ${top!.ev.depth}` : myTurn ? "analysing…" : "for your next move";
+  const status = current ? `depth ${top!.ev.depth}` : myTurn ? "analyzing…" : "for your next move";
   const rows = !top
     ? []
     : [...new Set([...top.ev.lines.slice(0, 5).map((l) => l.pv[0]), ...candidateMoves(fen, graph)])]
@@ -801,7 +801,7 @@ function TopMovesCard({ top, current, myTurn, myColor, graph }: { top: TopMoves 
       <details open>
         <summary className="ui-label cursor-pointer select-none">top moves · {status}</summary>
         {!top ? (
-          <div className="mt-2 text-sm text-muted">Analysing…</div>
+          <div className="mt-2 text-sm text-muted">Analyzing…</div>
         ) : (
           <table className={`mt-1 w-full table-fixed text-sm ${current ? "" : "opacity-50"}`}>
             <colgroup>

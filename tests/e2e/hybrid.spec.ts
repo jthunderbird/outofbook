@@ -1,6 +1,6 @@
 // Server as the source of truth, browser copy first (needs DEV_AUTH=1 on the API).
 import { expect, test, type Browser } from "@playwright/test";
-import { analysed, games300, hasGames } from "./helpers";
+import { analyzed, games300, hasGames } from "./helpers";
 
 const user = `e2e${Date.now()}`;
 const H = { "x-dev-user": user };
@@ -25,7 +25,7 @@ test("first device builds the model; another device gets it from the server; a r
   const first = await device(browser);
   const p1 = await first.newPage();
   await p1.goto("/");
-  await analysed(p1);
+  await analyzed(p1);
   expect((await modelSource(p1)).source).toBe("built");
   await expect(p1.getByTestId("build-metrics").first()).toContainText("150 games");
   // The upload happens after the build; wait for it.
@@ -34,11 +34,11 @@ test("first device builds the model; another device gets it from the server; a r
   const second = await device(browser);
   const p2 = await second.newPage();
   await p2.goto("/");
-  await analysed(p2);
+  await analyzed(p2);
   expect((await modelSource(p2)).source).toBe("server");
 
   await p2.reload();
-  await analysed(p2);
+  await analyzed(p2);
   const m = await modelSource(p2);
   expect(m.source).toBe("browser");
   expect(m.ms).toBeLessThan(1000);

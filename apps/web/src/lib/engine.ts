@@ -70,7 +70,7 @@ class Engine {
       for (const c of cmds) this.w.postMessage(c);
     });
   }
-  async analyse(fen: string, depth: number, multiPv: number): Promise<PosEval> {
+  async analyze(fen: string, depth: number, multiPv: number): Promise<PosEval> {
     await this.ready;
     const white = fen.split(" ")[1] === "w";
     const lines: Line[] = [];
@@ -109,10 +109,10 @@ export class EnginePool {
     if (next) next(e);
     else e.busy = false;
   }
-  async analyse(fen: string, depth: number, multiPv = 2) {
+  async analyze(fen: string, depth: number, multiPv = 2) {
     const e = await this.acquire();
     try {
-      return await e.analyse(fen, depth, multiPv);
+      return await e.analyze(fen, depth, multiPv);
     } finally {
       this.release(e);
     }
@@ -160,7 +160,7 @@ export class LiveEngine {
     });
   }
   /** Calls onUpdate whenever every line has reached a new depth; resolves with the last eval (or null when replaced). */
-  async analyse(fen: string, depth: number, multiPv: number, onUpdate: (e: PosEval) => void): Promise<PosEval | null> {
+  async analyze(fen: string, depth: number, multiPv: number, onUpdate: (e: PosEval) => void): Promise<PosEval | null> {
     const run = ++this.run;
     this.w.postMessage("stop");
     await this.searching;

@@ -34,7 +34,7 @@ export async function seedGames(page: Page, games: unknown[]) {
 }
 
 /** Waits for the app's startup marks (App.tsx): model ready, analysis complete. */
-export const analysed = (page: Page) => page.waitForFunction(() => performance.getEntriesByName("oob-analysed").length > 0, null, { timeout: 170_000, polling: 250 });
+export const analyzed = (page: Page) => page.waitForFunction(() => performance.getEntriesByName("oob-analyzed").length > 0, null, { timeout: 170_000, polling: 250 });
 
 export const nav = async (page: Page, id: string) => {
   const menu = page.getByRole("button", { name: "Menu" });

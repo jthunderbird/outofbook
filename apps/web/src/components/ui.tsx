@@ -17,7 +17,8 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(function Button({ 
   return <button ref={ref} className={cx("ui-btn", `ui-btn-${variant}`, size !== "md" && `ui-btn-${size}`, icon && "ui-btn-icon", className)} {...p} />;
 });
 
-export function Card({ className, children, pad = true, ...p }: { className?: string; children: ReactNode; pad?: boolean } & React.HTMLAttributes<HTMLDivElement>) {
+// React 19: `ref` is an ordinary prop, passed on to the div with the rest.
+export function Card({ className, children, pad = true, ...p }: { className?: string; children: ReactNode; pad?: boolean; ref?: React.Ref<HTMLDivElement> } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cx("ui-card", pad && "ui-pad", className)} {...p}>
       {children}

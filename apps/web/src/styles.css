@@ -5,7 +5,7 @@
 @custom-variant dark (&:where([data-mode="dark"], [data-mode="dark"] *));
 
 /* GitHub dark (default) and light. Kept in CSS, not inline styles, so the
-   loud glow variants further down can swap the accent colours. */
+   loud glow variants further down can swap the accent colors. */
 :root,
 [data-mode="dark"] {
   --bg: #0d1117;
@@ -492,7 +492,7 @@ cg-board square.current-premove {
   font-weight: 700;
   font-size: max(9px, min(1.6vw, 11px));
 }
-/* Each coordinate takes the colour of the other square colour, as on Lichess.
+/* Each coordinate takes the color of the other square color, as on Lichess.
    White's view: a1 (files, first) is dark and h1 (ranks, first) is light;
    black's view flips both. */
 .cg-wrap.orientation-white coords.files coord:nth-child(odd),
@@ -570,7 +570,7 @@ cg-board square.current-premove {
   color: transparent;
   font-weight: 600;
 }
-/* Icons inside gradient headings would inherit the transparent text colour. */
+/* Icons inside gradient headings would inherit the transparent text color. */
 .ui-h1 svg,
 .ui-h2 svg {
   color: var(--accent);

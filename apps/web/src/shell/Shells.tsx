@@ -9,7 +9,7 @@ export interface NavItem {
   short?: string;
   icon: ComponentType<{ size?: number; className?: string }>;
   disabled?: boolean;
-  group: "Analyse" | "Play" | "Game";
+  group: "Analyze" | "Play" | "Game";
 }
 
 export interface ShellProps {

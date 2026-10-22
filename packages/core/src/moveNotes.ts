@@ -41,7 +41,7 @@ export interface MoveNote {
 }
 
 export interface MoveNoteInput {
-  me: Side; // the user's colour in this game
+  me: Side; // the user's color in this game
   mover: Side;
   san: string;
   uci: string;

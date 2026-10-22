@@ -1,4 +1,4 @@
-// The Lichess logo (lila public/logo/lichess.svg, by sadsnake1). Its licence
+// The Lichess logo (lila public/logo/lichess.svg, by sadsnake1). Its license
 // (lila COPYING.md) is "Only use to refer to lichess.org": so it marks things
 // that are Lichess (login, playing there, links to its games), never OutOfBook.
 export function LichessIcon({ size = 16, className }: { size?: number; className?: string }) {

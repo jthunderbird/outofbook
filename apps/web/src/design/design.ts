@@ -1,6 +1,6 @@
 // Settled design (PoC round 5): AI dark glow, command bar layout with the board
 // docked right, GitHub dark/light. The only choice left is dark or light; the
-// glow and the theme colours are CSS (src/styles.css) keyed on html[data-mode].
+// glow and the theme colors are CSS (src/styles.css) keyed on html[data-mode].
 // Earlier galleries are archived in poc/archive/.
 import { createContext, useContext } from "react";
 

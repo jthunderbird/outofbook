@@ -3,7 +3,7 @@
 OutOfBook imports your games from Lichess and Chess.com and maps your opening
 repertoire. It shows where you (or your opponents) leave the named book, which
 mistakes you repeat, and the strong moves nobody has named yet. You can
-practise your lines against Maia or Stockfish, and play real Lichess games
+practice your lines against Maia or Stockfish, and play real Lichess games
 from the same board, with no engine help during play.
 
 ## Run (development)
@@ -96,5 +96,5 @@ login (WebCrypto) and cross-origin isolation need HTTPS.
 - Lichess's sounds are streamed from Lichess at play time, not shipped. Its
   standard set is not freely licensed.
 
-OutOfBook's own licence is still to be decided. It must be compatible with
+OutOfBook's own license is still to be decided. It must be compatible with
 GPL-3.0.

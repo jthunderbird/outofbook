@@ -1,12 +1,12 @@
 // The analysis views on the user's real games (local fixture, 300 games).
 import { expect, test } from "@playwright/test";
-import { analysed, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
+import { analyzed, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
 
 test.skip(!hasGames, "needs packages/core/test/fixtures/local/games300.json");
 
 test.beforeEach(async ({ page }) => {
   await seedGames(page, games300());
-  await analysed(page);
+  await analyzed(page);
 });
 
 test("overview counts games and positions", async ({ page }) => {

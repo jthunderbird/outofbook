@@ -1,12 +1,12 @@
 // The game review page: layout, repertoire alerts, the live engine and its choices.
 import { expect, test, type Page } from "@playwright/test";
-import { analysed, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
+import { analyzed, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
 
 test.skip(!hasGames, "needs packages/core/test/fixtures/local/games300.json");
 
 test.beforeEach(async ({ page }) => {
   await seedGames(page, games300());
-  await analysed(page);
+  await analyzed(page);
 });
 
 /** Opens the n-th game of the Games list in review. */
@@ -33,6 +33,16 @@ test("layout: repertoire on top left, graph and engine side by side, summary and
   expect(summary.y).toBeGreaterThan(board.y + 300);
   expect(Math.abs(summary.x - board.x)).toBeLessThan(5);
   expect(moves.y).toBeGreaterThan(summary.y);
+  // The repertoire box has the board card's height on every move; the game's header line sits under it.
+  const card = await box(page, "review-board-card");
+  const heights = new Set<number>();
+  for (let i = 0; i < 12; i++) {
+    heights.add(Math.round((await box(page, "review-repertoire")).height));
+    await page.getByRole("button", { name: "Next move" }).click();
+  }
+  expect([...heights]).toEqual([Math.round(card.height)]);
+  expect(Math.abs(rep.y - card.y)).toBeLessThan(2);
+  expect((await page.getByRole("button", { name: "Close" }).boundingBox())!.y).toBeGreaterThan(rep.y + rep.height);
   await page.screenshot({ path: "test-results/review-layout.png", fullPage: true });
   expect(errors).toEqual([]);
 });
@@ -55,7 +65,7 @@ test("engine: five lines with the played move highlighted; choices are remembere
   expect(errors).toEqual([]);
 });
 
-test("the full engine downloads once, then analyses", async ({ page }) => {
+test("the full engine downloads once, then analyzes", async ({ page }) => {
   const errors = pageErrors(page);
   await openGame(page);
   await page.getByTestId("review-engine").getByRole("radio", { name: "Full" }).click();
@@ -100,15 +110,16 @@ test("repertoire alerts follow the current move, with jump buttons and move-list
   expect(errors).toEqual([]);
 });
 
-test("practise from here opens the bot at this position", async ({ page }) => {
+test("practice from here opens the bot at this position", async ({ page }) => {
   await openGame(page);
   for (let i = 0; i < 6; i++) await page.getByRole("button", { name: "Next move" }).click();
-  await page.getByRole("button", { name: "Practise from here" }).click();
+  await page.getByRole("button", { name: "Practice from here" }).click();
   await expect(page.getByRole("button", { name: /Start game/ })).toBeVisible();
   await expect(page.getByTestId("main")).toContainText("1.");
 });
 
-test("phone: the board first, then the repertoire @phone", async ({ page }) => {
+test("phone: the board first, then the repertoire @phone", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone", "phone layout only");
   await openGame(page);
   const board = await box(page, "review-board");
   const rep = await box(page, "review-repertoire");

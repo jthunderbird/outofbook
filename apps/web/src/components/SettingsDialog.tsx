@@ -61,7 +61,7 @@ export function SettingsDialog({ open, value, onClose }: { open: boolean; value:
             <Field label="Cloud eval up to ply">
               <Input type="number" value={s.cloudMaxPly} onChange={(e) => setS({ ...s, cloudMaxPly: num(e.target.value, 0, 60) })} />
             </Field>
-            <Field label="Moves analysed after book ends (plies)" hint="Changing this rebuilds the repertoire.">
+            <Field label="Moves analyzed after book ends (plies)" hint="Changing this rebuilds the repertoire.">
               <Input type="number" value={s.pliesAfterBook} onChange={(e) => setS({ ...s, pliesAfterBook: num(e.target.value, 0, 40) })} />
             </Field>
           </div>

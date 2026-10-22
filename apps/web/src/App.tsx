@@ -32,7 +32,7 @@ import { Shell, type NavItem } from "./shell/Shells";
 import { CommandPalette } from "./shell/CommandPalette";
 
 type View = "overview" | "repertoire" | "mistakes" | "outofbook" | "whocares" | "openings" | "games" | "play" | "lichess" | "review";
-const ANALYSE: View[] = ["overview", "repertoire", "mistakes", "outofbook", "whocares", "openings", "games"];
+const ANALYZE: View[] = ["overview", "repertoire", "mistakes", "outofbook", "whocares", "openings", "games"];
 
 export interface BoardState {
   fen: string;
@@ -183,7 +183,7 @@ export default function App() {
         dirty = true;
       },
       (p) => {
-        if (!p.running) performance.mark("oob-analysed");
+        if (!p.running) performance.mark("oob-analyzed");
         setProgress(p);
         const w = window as unknown as { __oob: Record<string, unknown> };
         w.__oob = { ...(w.__oob ?? {}), analysis: p };
@@ -274,13 +274,13 @@ export default function App() {
   };
 
   const nav: NavItem[] = [
-    { id: "overview", label: "Overview", icon: LayoutDashboard, group: "Analyse", disabled: !model },
-    { id: "repertoire", label: "Repertoire", icon: GitBranch, group: "Analyse", disabled: !model },
-    { id: "mistakes", label: "Mistakes", icon: AlertTriangle, group: "Analyse", disabled: !model },
-    { id: "outofbook", label: "Out of book", icon: SignpostBig, group: "Analyse", disabled: !model },
-    { id: "whocares", label: "Book? Who cares", icon: Gem, group: "Analyse", disabled: !model },
-    { id: "openings", label: "Who left the book", short: "Who left", icon: DoorOpen, group: "Analyse", disabled: !model },
-    { id: "games", label: "Games", icon: ListOrdered, group: "Analyse", disabled: !model },
+    { id: "overview", label: "Overview", icon: LayoutDashboard, group: "Analyze", disabled: !model },
+    { id: "repertoire", label: "Repertoire", icon: GitBranch, group: "Analyze", disabled: !model },
+    { id: "mistakes", label: "Mistakes", icon: AlertTriangle, group: "Analyze", disabled: !model },
+    { id: "outofbook", label: "Out of book", icon: SignpostBig, group: "Analyze", disabled: !model },
+    { id: "whocares", label: "Book? Who cares", icon: Gem, group: "Analyze", disabled: !model },
+    { id: "openings", label: "Who left the book", short: "Who left", icon: DoorOpen, group: "Analyze", disabled: !model },
+    { id: "games", label: "Games", icon: ListOrdered, group: "Analyze", disabled: !model },
     { id: "play", label: "Play vs bot", short: "Bots", icon: Bot, group: "Play" },
     { id: "lichess", label: "Play on Lichess", short: "Lichess", icon: LichessIcon, group: "Play" },
     ...(reviewGame ? [{ id: "review", label: `${reviewGame.white} vs ${reviewGame.black}`, short: "Review", icon: FileSearch, group: "Game" as const }] : []),
@@ -340,7 +340,7 @@ export default function App() {
   };
 
   const t = TITLES[tab];
-  const analyseView = ANALYSE.includes(tab);
+  const analyseView = ANALYZE.includes(tab);
   const statusText = building ? (
     `Building repertoire from ${games.length} games…`
   ) : progress && model ? (
@@ -500,7 +500,7 @@ export default function App() {
           setSettings(s);
           saveSettings(s);
         }}
-        onPractise={(color, ucis) => (setBotStart({ color, ucis }), setTab("play"))}
+        onPractice={(color, ucis) => (setBotStart({ color, ucis }), setTab("play"))}
         onClose={() => history.back()}
       />
     );

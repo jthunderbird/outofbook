@@ -66,7 +66,7 @@ export function GameReview({
   verdictOf,
   settings,
   onSettings,
-  onPractise,
+  onPractice,
   onClose,
 }: {
   game: RawGame;
@@ -77,8 +77,8 @@ export function GameReview({
   settings: Settings;
   /** Saves engine choices made on this page (they become the defaults). */
   onSettings: (s: Partial<Settings>) => void;
-  /** Opens Play vs bot from this position, as the user's colour. */
-  onPractise: (color: Side, ucis: string[]) => void;
+  /** Opens Play vs bot from this position, as the user's color. */
+  onPractice: (color: Side, ucis: string[]) => void;
   onClose: () => void;
 }) {
   // Games outside the loaded set (e.g. bot games) get a summary of their own.
@@ -105,7 +105,7 @@ export function GameReview({
   const graph = model.graphs[s.color];
   // This game is counted in its own positions when it is part of the loaded set (the tree stops at treeMaxPly).
   const thisGame = (i: number): 0 | 1 => (inModel && i < settings.treeMaxPly ? 1 : 0);
-  // Your usual move where you played another: its position is analysed too, to compare.
+  // Your usual move where you played another: its position is analyzed too, to compare.
   const usualFens = useMemo(
     () =>
       ucis.map((u, i) => {
@@ -185,7 +185,7 @@ export function GameReview({
         const k = posKey(fen);
         let e = await getEval(k, settings.depth);
         if (!e && live) {
-          e = await (pool ??= new EnginePool(settings.poolSize || defaultPoolSize(), build)).analyse(fen, settings.depth, 2);
+          e = await (pool ??= new EnginePool(settings.poolSize || defaultPoolSize(), build)).analyze(fen, settings.depth, 2);
           if (e.lines.length) await putEval(k, e);
         }
         if (!live || !e) return;
@@ -278,6 +278,22 @@ export function GameReview({
   // Live engine on the current position: the cache or Lichess cloud when deep enough, else the chosen build, deepening.
   const [liveEv, setLiveEv] = useState<{ fen: string; ev: PosEval } | null>(null);
   const engineRef = useRef<LiveEngine | null>(null);
+  // The repertoire box takes the board card's height.
+  const boardCard = useRef<HTMLDivElement>(null);
+  const repBody = useRef<HTMLDivElement>(null);
+  const [boardH, setBoardH] = useState(0);
+  useEffect(() => {
+    const el = boardCard.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setBoardH(Math.round(el.getBoundingClientRect().height)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Each move starts at its alerts.
+  // (Braces: this Chromium's scrollTo returns a Promise, which React would take for a cleanup function.)
+  useEffect(() => {
+    repBody.current?.scrollTo({ top: 0 });
+  }, [ply]);
   const target = settings.reviewDepth;
   const nLines = settings.reviewLines;
   useEffect(() => {
@@ -314,7 +330,7 @@ export function GameReview({
         engineRef.current?.terminate();
         engineRef.current = new LiveEngine(build);
       }
-      const done = await engineRef.current.analyse(fen, target, want, (e) => {
+      const done = await engineRef.current.analyze(fen, target, want, (e) => {
         if (!live) return;
         last = e;
         setLiveEv({ fen, ev: e });
@@ -440,7 +456,7 @@ export function GameReview({
 
   const boardColumn = (
     <div className="board-col min-w-0 space-y-[var(--gap)] lg:order-last" data-testid="review-board">
-      <Card className="flex flex-col">
+      <Card className="flex flex-col" ref={boardCard} data-testid="review-board-card">
         {playerBar(other(orientation))}
         <div className="flex gap-1.5">
           <EvalBar line={cur?.lines[0]} orientation={orientation} />
@@ -478,7 +494,7 @@ export function GameReview({
             <>
               <span className="flex items-center gap-1.5">
                 <VerdictIcon v={lastClass} size={18} />
-                <b>{plyLabel(focus, sans[focus])}</b> is {lastClass === "book" ? "a book move" : lastClass ? VERDICT_LABEL[lastClass] : "being analysed…"}
+                <b>{plyLabel(focus, sans[focus])}</b> is {lastClass === "book" ? "a book move" : lastClass ? VERDICT_LABEL[lastClass] : "being analyzed…"}
               </span>
               {bestBefore && bestBefore !== ucis[focus] && lastClass && !["book", "forced", "splendid", "perfect"].includes(lastClass) && (
                 <span className="flex items-center gap-1.5">
@@ -504,7 +520,7 @@ export function GameReview({
             ? `Downloading ${ENGINE_BUILDS[build].label} (${ENGINE_BUILDS[build].mb} MB): ${Math.round(download * 100)}%`
             : cur
               ? `${cur.source === "engine" ? ENGINE_BUILDS[build].label : cur.source} · depth ${cur.depth}${target && cur.source === "engine" && cur.depth < target ? ` of ${target}` : ""}`
-              : "analysing…"}
+              : "analyzing…"}
         </div>
       </div>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -587,6 +603,118 @@ export function GameReview({
     <div className="grid gap-[var(--gap)] lg:grid-cols-[minmax(0,1fr)_min(560px,45%)] lg:items-start" style={{ ["--board-max" as string]: "calc(100dvh - 19rem)" }}>
       {boardColumn}
       <div className="@container flex min-w-0 flex-col gap-[var(--gap)]">
+        <Card data-testid="review-repertoire" className="flex flex-col" style={boardH ? { height: boardH } : undefined}>
+          <CardHeader
+            title="Your repertoire"
+            sub={`${s.eco} ${s.opening} · as ${s.color === "w" ? "White" : "Black"} · ${same.length} of your games reached this line`}
+            actions={
+              <Button size="sm" onClick={() => onPractice(s.color, ucis.slice(0, ply))} title="Play on from this position against the bot, with the drill on">
+                <Dumbbell size={14} /> Practice from here
+              </Button>
+            }
+          />
+          {jumps.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5" data-testid="review-jumps">
+              {jumps.map(([label, i]) => (
+                <Button key={label} size="sm" variant={ply === i + 1 ? "primary" : "secondary"} onClick={() => go(i + 1)}>
+                  {label}: {plyLabel(i, sans[i])}
+                </Button>
+              ))}
+            </div>
+          )}
+          {/* Fixed height (the board card's): the content scrolls, so the page does not jump from move to move. */}
+          <div ref={repBody} className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2" data-testid="review-repertoire-body">
+            <div className="mb-3 flex flex-col gap-2" data-testid="review-alerts">
+              {focus < 0 ? (
+                <div className="text-sm text-muted">Step through the game: each move is checked against your repertoire and the book.</div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                    <b>{plyLabel(focus, sans[focus])}</b>
+                    <span className="text-muted">({sideOf(focus) === s.color ? "your move" : "opponent's move"})</span>
+                    <BookChip s={tracked.plies[focus]?.book ?? "after"} />
+                    {sideOf(focus) === s.color && <VerdictChip v={verdicts[focus]} />}
+                  </div>
+                  {focusNotes!.notes.map((n) => (
+                    <NoteBox key={n.kind} n={n} />
+                  ))}
+                </>
+              )}
+            </div>
+            <div className="mb-3 text-sm text-muted">
+              This game:{" "}
+              {s.deviation.by === "none" ? (
+                "never left the named book."
+              ) : s.deviation.by === "exhausted" ? (
+                `the named line ended before ${plyLabel(s.deviation.ply, s.deviation.san ?? "")}.`
+              ) : (
+                <>
+                  <b style={{ color: s.deviation.by === "user" ? "var(--bad)" : "var(--warn)" }}>{s.deviation.by === "user" ? "you" : "your opponent"}</b> left the book with{" "}
+                  <button className="ui-link" onClick={() => go(s.deviation.ply + 1)}>
+                    {plyLabel(s.deviation.ply, s.deviation.san ?? "")}
+                  </button>
+                  .
+                </>
+              )}
+              {open && ` In this line you left the book first ${open.userLeft}×, your opponents ${open.opponentLeft}×, and the line ran out ${open.exhausted}×.`}
+            </div>
+            {at >= 0 && at < ucis.length && (
+              <>
+                <div className="ui-label mb-1">
+                  before {plyLabel(at, sans[at])} ({mine ? "your move" : "opponent's move"}) · position reached in {node ? node.count : 0} of your games
+                </div>
+                {node ? (
+                  <table className="ui-table" data-testid="review-position">
+                    <thead>
+                      <tr>
+                        <th>Move</th>
+                        <th>Book</th>
+                        <th className="text-right">Played</th>
+                        <th className="text-right">%</th>
+                        <th>{mine ? "Verdict" : ""}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {node.edges.slice(0, 8).map((e) => (
+                        <tr key={e.uci} data-hl={e.uci === ucis[at]}>
+                          <td className="font-semibold whitespace-nowrap">
+                            {e.san}
+                            {e.uci === ucis[at] && <span className="ml-2 text-xs font-normal text-muted">this game</span>}
+                          </td>
+                          <td>
+                            <BookChip s={e.book} />
+                          </td>
+                          <td className="num text-right">
+                            {e.count} / {node.count}
+                          </td>
+                          <td className="num text-right">{Math.round((e.count / Math.max(1, node.count)) * 100)}%</td>
+                          <td>{mine ? <VerdictChip v={verdictOf(s.color, node.key, e.uci)} /> : null}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-sm text-muted">Your loaded games never reached this position.</div>
+                )}
+              </>
+            )}
+            {repeated.length > 0 && (
+              <>
+                <div className="ui-label mt-4 mb-1">mistakes you have repeated in other games</div>
+                <div className="flex flex-col gap-1">
+                  {repeated.map((m) => (
+                    <button key={m.id} className="flex items-center gap-2 rounded-ui p-1 text-left text-sm hover:bg-hover" onClick={() => go(m.ply + 1)}>
+                      <VerdictIcon v={verdict(m)} />
+                      <b>{plyLabel(m.ply, m.san)}</b>
+                      <span className="text-muted">played {m.count}× in this position</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
+
         <Card>
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-0 flex-1 text-sm">
@@ -605,117 +733,8 @@ export function GameReview({
           </div>
           {progress !== null && (
             <div className="mt-3 flex items-center gap-3 text-xs text-muted">
-              <Progress value={progress * 100} className="flex-1" /> analysing at depth {settings.depth} with {ENGINE_BUILDS[build].label}…
+              <Progress value={progress * 100} className="flex-1" /> analyzing at depth {settings.depth} with {ENGINE_BUILDS[build].label}…
             </div>
-          )}
-        </Card>
-
-        <Card data-testid="review-repertoire">
-          <CardHeader
-            title="Your repertoire"
-            sub={`${s.eco} ${s.opening} · as ${s.color === "w" ? "White" : "Black"} · ${same.length} of your games reached this line`}
-            actions={
-              <Button size="sm" onClick={() => onPractise(s.color, ucis.slice(0, ply))} title="Play on from this position against the bot, with the drill on">
-                <Dumbbell size={14} /> Practise from here
-              </Button>
-            }
-          />
-          {jumps.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-1.5" data-testid="review-jumps">
-              {jumps.map(([label, i]) => (
-                <Button key={label} size="sm" variant={ply === i + 1 ? "primary" : "secondary"} onClick={() => go(i + 1)}>
-                  {label}: {plyLabel(i, sans[i])}
-                </Button>
-              ))}
-            </div>
-          )}
-          <div className="mb-3 flex flex-col gap-2" data-testid="review-alerts">
-            {focus < 0 ? (
-              <div className="text-sm text-muted">Step through the game: each move is checked against your repertoire and the book.</div>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                  <b>{plyLabel(focus, sans[focus])}</b>
-                  <span className="text-muted">({sideOf(focus) === s.color ? "your move" : "opponent's move"})</span>
-                  <BookChip s={tracked.plies[focus]?.book ?? "after"} />
-                  {sideOf(focus) === s.color && <VerdictChip v={verdicts[focus]} />}
-                </div>
-                {focusNotes!.notes.map((n) => (
-                  <NoteBox key={n.kind} n={n} />
-                ))}
-              </>
-            )}
-          </div>
-          <div className="mb-3 text-sm text-muted">
-            This game:{" "}
-            {s.deviation.by === "none" ? (
-              "never left the named book."
-            ) : s.deviation.by === "exhausted" ? (
-              `the named line ended before ${plyLabel(s.deviation.ply, s.deviation.san ?? "")}.`
-            ) : (
-              <>
-                <b style={{ color: s.deviation.by === "user" ? "var(--bad)" : "var(--warn)" }}>{s.deviation.by === "user" ? "you" : "your opponent"}</b> left the book with{" "}
-                <button className="ui-link" onClick={() => go(s.deviation.ply + 1)}>
-                  {plyLabel(s.deviation.ply, s.deviation.san ?? "")}
-                </button>
-                .
-              </>
-            )}
-            {open && ` In this line you left the book first ${open.userLeft}×, your opponents ${open.opponentLeft}×, and the line ran out ${open.exhausted}×.`}
-          </div>
-          {at >= 0 && at < ucis.length && (
-            <>
-              <div className="ui-label mb-1">
-                before {plyLabel(at, sans[at])} ({mine ? "your move" : "opponent's move"}) · position reached in {node ? node.count : 0} of your games
-              </div>
-              {node ? (
-                <table className="ui-table" data-testid="review-position">
-                  <thead>
-                    <tr>
-                      <th>Move</th>
-                      <th>Book</th>
-                      <th className="text-right">Played</th>
-                      <th className="text-right">%</th>
-                      <th>{mine ? "Verdict" : ""}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {node.edges.slice(0, 8).map((e) => (
-                      <tr key={e.uci} data-hl={e.uci === ucis[at]}>
-                        <td className="font-semibold whitespace-nowrap">
-                          {e.san}
-                          {e.uci === ucis[at] && <span className="ml-2 text-xs font-normal text-muted">this game</span>}
-                        </td>
-                        <td>
-                          <BookChip s={e.book} />
-                        </td>
-                        <td className="num text-right">
-                          {e.count} / {node.count}
-                        </td>
-                        <td className="num text-right">{Math.round((e.count / Math.max(1, node.count)) * 100)}%</td>
-                        <td>{mine ? <VerdictChip v={verdictOf(s.color, node.key, e.uci)} /> : null}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="text-sm text-muted">Your loaded games never reached this position.</div>
-              )}
-            </>
-          )}
-          {repeated.length > 0 && (
-            <>
-              <div className="ui-label mt-4 mb-1">mistakes you have repeated in other games</div>
-              <div className="flex flex-col gap-1">
-                {repeated.map((m) => (
-                  <button key={m.id} className="flex items-center gap-2 rounded-ui p-1 text-left text-sm hover:bg-hover" onClick={() => go(m.ply + 1)}>
-                    <VerdictIcon v={verdict(m)} />
-                    <b>{plyLabel(m.ply, m.san)}</b>
-                    <span className="text-muted">played {m.count}× in this position</span>
-                  </button>
-                ))}
-              </div>
-            </>
           )}
         </Card>
 
@@ -742,7 +761,7 @@ export function GameReview({
             }
           />
           {mistakes.length === 0 ? (
-            <div className="text-sm text-muted">{progress !== null ? "Analysing…" : "None: a clean game."}</div>
+            <div className="text-sm text-muted">{progress !== null ? "Analyzing…" : "None: a clean game."}</div>
           ) : (
             <table className="ui-table">
               <tbody>
@@ -784,7 +803,7 @@ export function GameReview({
   );
 }
 
-/** One repertoire alert, in the bot page's colours; "better move available" gets the bot page's callout. */
+/** One repertoire alert, in the bot page's colors; "better move available" gets the bot page's callout. */
 function NoteBox({ n }: { n: MoveNote }) {
   if (n.kind === "better")
     return (
