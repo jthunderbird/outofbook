@@ -18,6 +18,8 @@ export interface LichessPrefs {
   moveEvent: 0 | 1 | 2; // 0 click, 1 drag, 2 both
   confirmResign: 0 | 1;
   ratings: 0 | 1 | 2; // 0 hide, 1 show, 2 hide during games
+  pieceSet: string; // cburnett, merida, alpha...
+  theme: string; // the 2D board: brown, blue, wood...; OutOfBook's board setting decides whether it is used
 }
 
 /** Lichess's own defaults, used until the user's prefs are loaded. */
@@ -35,6 +37,8 @@ export const LICHESS_DEFAULTS: LichessPrefs = {
   moveEvent: 2,
   confirmResign: 1,
   ratings: 1,
+  pieceSet: "cburnett",
+  theme: "brown",
 };
 
 export const ANIMATION_MS = [0, 120, 250, 500];

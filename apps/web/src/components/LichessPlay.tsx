@@ -5,7 +5,8 @@ import { acceptChallenge, challengeAi, challengeUser, declineChallenge, seek, st
 import type { RawGame } from "@outofbook/core/types";
 import { canVibrate } from "../lib/gameFeel";
 import { cachedPrefs, loadPrefs, type LichessPrefs } from "../lib/lichessPrefs";
-import { lichessSettings, LiveGame, loadLive, saveLive, type LiveSettings } from "./LiveGame";
+import { applyLook, lichessSettings, LiveGame, loadLive, saveLive, type LiveSettings } from "./LiveGame";
+import { BOARDS, PIECE_SETS } from "../lib/boardLook";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Progress, Seg, Select, Switch } from "./ui";
 import { LichessIcon } from "./LichessIcon";
 
@@ -85,6 +86,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
     if (token && canPrefs) loadPrefs(token).then((p) => p && setPrefs(p));
   }, [token, canPrefs]);
   const canPlay = !!token && !!scopes?.includes("board:play");
+  useEffect(() => applyLook(live, prefs), [live, prefs]);
   const setL = (p: Partial<LiveSettings>) => {
     const n = { ...live, ...p };
     setLive(n);
@@ -381,6 +383,9 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
             </Field>
           </div>
           <div className="mt-4 flex flex-col gap-3">
+            <Field label="Board" hint="Every board in the app. Lichess's default brown board shows as OutOfBook blue.">
+              <Select value={live.board} onChange={(e) => setL({ board: e.target.value })} options={BOARD_OPTIONS} data-testid="board-choice" />
+            </Field>
             <Switch
               checked={live.oppClockWarn}
               onChange={(v) => setL({ oppClockWarn: v })}
@@ -412,6 +417,15 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
     </div>
   );
 }
+
+const BOARD_OPTIONS: [string, string][] = [
+  ["lichess", "Same as my Lichess board"],
+  ["outofbook", "OutOfBook blue"],
+  ...Object.keys(BOARDS)
+    .filter((b) => b !== "brown")
+    .map((b): [string, string] => [b, b[0].toUpperCase() + b.slice(1).replace("-", " ")]),
+  ["brown", "Brown (Lichess default)"],
+];
 
 const SOUND_SETS: [string, string][] = [
   ["standard", "Standard"],
@@ -485,6 +499,11 @@ function LichessSettings({ live, prefs, canPrefs, onChange }: { live: LiveSettin
           ["3", "Always"],
         ])}
         {sel("soundSet", "Sound", SOUND_SETS)}
+        {sel(
+          "pieceSet",
+          "Piece set",
+          PIECE_SETS.map((x) => [x, x[0].toUpperCase() + x.slice(1)]),
+        )}
         {sel("clockTenths", "Clock tenths of seconds", [
           ["0", "Never"],
           ["1", "Below 10 seconds"],

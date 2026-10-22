@@ -31,6 +31,8 @@ import { Alert, Button, Card, Dialog, Input, Seg, Tip } from "./components/ui";
 import { MODES, useDesign } from "./design/design";
 import { Shell, type NavItem } from "./shell/Shells";
 import { CommandPalette } from "./shell/CommandPalette";
+import { applyLook, loadLive } from "./components/LiveGame";
+import { cachedPrefs } from "./lib/lichessPrefs";
 
 type View = "overview" | "repertoire" | "mistakes" | "outofbook" | "whocares" | "openings" | "games" | "play" | "lichess" | "review";
 const ANALYZE: View[] = ["overview", "repertoire", "mistakes", "outofbook", "whocares", "openings", "games"];
@@ -78,6 +80,8 @@ export default function App() {
   accountRef.current = account;
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   // The save note is news, not a state: it goes away by itself.
+  // Every board's look (piece set, board) from the saved settings and Lichess prefs.
+  useEffect(() => applyLook(loadLive(), cachedPrefs()), []);
   useEffect(() => {
     if (!saveMsg) return;
     const t = setTimeout(() => setSaveMsg(null), 8000);

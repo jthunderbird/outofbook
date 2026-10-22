@@ -459,10 +459,13 @@ body {
   overflow: hidden;
 }
 /* Squares drawn from the palette: a 2x2 conic tile repeated 4x4. */
+/* A Lichess board, when chosen, is an image over our squares (shown until it loads); lib/boardLook sets it. */
 cg-board {
   background-color: var(--board-light);
-  background-image: conic-gradient(var(--board-dark) 0 25%, var(--board-light) 0 50%, var(--board-dark) 0 75%, var(--board-light) 0);
-  background-size: 25% 25%;
+  background-image: var(--board-image, none), conic-gradient(var(--board-dark) 0 25%, var(--board-light) 0 50%, var(--board-dark) 0 75%, var(--board-light) 0);
+  background-size:
+    100% 100%,
+    25% 25%;
 }
 /* Highlights: a clear green for the selected piece and where it can go, a
    soft yellow for the last move, a muted violet for premoves (darker for
@@ -519,13 +522,13 @@ cg-board square.premove-4 {
 .cg-wrap.orientation-white coords.ranks coord:nth-child(even),
 .cg-wrap.orientation-black coords.files coord:nth-child(even),
 .cg-wrap.orientation-black coords.ranks coord:nth-child(odd) {
-  color: var(--board-light);
+  color: var(--board-light-coord, var(--board-light));
 }
 .cg-wrap.orientation-white coords.files coord:nth-child(even),
 .cg-wrap.orientation-white coords.ranks coord:nth-child(odd),
 .cg-wrap.orientation-black coords.files coord:nth-child(odd),
 .cg-wrap.orientation-black coords.ranks coord:nth-child(even) {
-  color: var(--board-dark);
+  color: var(--board-dark-coord, var(--board-dark));
 }
 .cg-wrap coords.ranks {
   left: auto;

@@ -166,3 +166,47 @@ test("Lichess settings: imported ones are shown and locked; set here, they are e
   // Our own settings are a separate panel.
   await expect(page.getByTestId("oob-settings").getByRole("switch", { name: /Multiple premoves/ })).toBeEnabled();
 });
+
+/** The board image every board gets ("" for OutOfBook's own), and the piece-set rules. */
+const look = (page: Page) =>
+  page.evaluate(() => ({
+    board: getComputedStyle(document.documentElement).getPropertyValue("--board-image") || "ours",
+    pieces: document.getElementById("piece-set")?.textContent ?? "",
+  }));
+
+test("board look: Lichess's default brown shows as OutOfBook blue; another imported board and piece set show; our board choice wins", async ({ page }) => {
+  let theme = "brown";
+  await page.addInitScript(() => localStorage.setItem("lichessToken", "fake-token"));
+  await page.route("https://lichess.org/**", async (r) => {
+    const p = new URL(r.request().url()).pathname;
+    if (p === "/api/token/test") return r.fulfill({ json: { "fake-token": { scopes: "board:play preference:read", userId: "tester" } } });
+    if (p === "/api/account") return r.fulfill({ json: { id: "tester", username: "tester" } });
+    if (p === "/api/account/preferences") return r.fulfill({ json: { prefs: { theme, pieceSet: "merida" } } });
+    if (p === "/api/stream/event") return r.fulfill({ contentType: "application/x-ndjson", body: "\n" });
+    return r.fulfill({ json: {} });
+  });
+  await page.goto("/");
+  await nav(page, "lichess");
+  await expect.poll(async () => (await look(page)).pieces).toContain("/piece/merida/wK.svg");
+  expect((await look(page)).board).toBe("ours");
+  theme = "wood4";
+  await page.reload();
+  await nav(page, "lichess");
+  await expect.poll(async () => (await look(page)).board).toContain("/images/board/wood4.jpg");
+  // Our own board setting takes precedence over the imported one.
+  await page.getByTestId("board-choice").selectOption("green");
+  await expect.poll(async () => (await look(page)).board).toContain("/images/board/green.png");
+  await page.getByTestId("board-choice").selectOption("outofbook");
+  await expect.poll(async () => (await look(page)).board).toBe("ours");
+  // The look holds on other boards and after a reload.
+  await page.getByTestId("board-choice").selectOption("blue3");
+  await page.reload();
+  await nav(page, "play");
+  await expect.poll(async () => (await look(page)).board).toContain("/images/board/blue3.jpg");
+  expect(
+    await page
+      .locator("cg-board")
+      .first()
+      .evaluate((e) => getComputedStyle(e).backgroundImage),
+  ).toContain("blue3.jpg");
+});

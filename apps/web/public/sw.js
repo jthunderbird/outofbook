@@ -3,7 +3,8 @@
 // fetched fresh when online (the cached copy is the fallback); Vite's hashed
 // bundles never change and are served from the cache; other files (engines,
 // Maia, icons) are served from the cache and refreshed in the background.
-// The API and other sites are never cached.
+// The API and other sites are never cached, except Lichess's piece sets,
+// boards and sounds, kept once used so the chosen look works offline.
 const CACHE = "outofbook-v3";
 
 self.addEventListener("install", (e) => {
@@ -43,9 +44,15 @@ const keep = (req, res) => {
   return res;
 };
 
+const LICHESS_LOOK = /^\/assets\/(piece|images\/board|sound)\//;
+
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   const url = new URL(req.url);
+  if (req.method === "GET" && url.origin === "https://lichess1.org" && LICHESS_LOOK.test(url.pathname)) {
+    e.respondWith(caches.match(req).then((hit) => hit ?? fetch(req).then((res) => keep(req, res))));
+    return;
+  }
   if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname === "/sw.js") return;
   if (req.mode === "navigate") {
     // Fresh when online; the cached app when not. Query strings (the login's ?code=) do not matter.

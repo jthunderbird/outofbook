@@ -9,6 +9,7 @@ import { ArrowLeftRight, ChevronLeft, ChevronRight, Flag, Handshake, X } from "l
 import { uciParams } from "@outofbook/core/chess";
 import { buzz, playMoveSound, playSound, preloadSounds } from "../lib/gameFeel";
 import { ANIMATION_MS, LICHESS_DEFAULTS, type LichessPrefs } from "../lib/lichessPrefs";
+import { applyBoardLook, resolveBoard, type BoardChoice } from "../lib/boardLook";
 import { abort, claimDraw, claimVictory, exportGame, offerDraw, resign, sendMove, streamGame, type GameFull, type GameState, type OpponentGone } from "../lib/lichessBoard";
 import type { RawGame, Side } from "@outofbook/core/types";
 import { Board, type BoardFeel, type PremoveQueue } from "./Board";
@@ -23,6 +24,7 @@ export interface LiveSettings {
   multiPremove: boolean; // queue several premoves, as on chess.com (needs Lichess premoves on)
   vibrate: boolean;
   columnLeft: boolean; // wide screens: clocks and buttons left of the board (switched in game)
+  board: BoardChoice; // every board's look; ours, so it wins over the imported Lichess board
   // Lichess's settings: imported from the account, or set here; one or the other.
   useLichessPrefs: boolean;
   lichess: LichessPrefs; // used when not importing
@@ -34,12 +36,19 @@ export const LIVE_DEFAULTS: LiveSettings = {
   multiPremove: false,
   vibrate: true,
   columnLeft: false,
+  board: "lichess",
   useLichessPrefs: true,
   lichess: LICHESS_DEFAULTS,
 };
 
 /** The Lichess settings in force: the account's when imported (Lichess's defaults until they load), else ours. */
 export const lichessSettings = (settings: LiveSettings, prefs: LichessPrefs | null): LichessPrefs => (settings.useLichessPrefs ? (prefs ?? LICHESS_DEFAULTS) : settings.lichess);
+
+/** Draws every board in the chosen board and the piece set in force. */
+export function applyLook(settings: LiveSettings, prefs: LichessPrefs | null) {
+  const p = lichessSettings(settings, prefs);
+  applyBoardLook(resolveBoard(settings.board, p.theme), p.pieceSet);
+}
 
 /** What a game screen should do, from our settings and the Lichess settings in force. */
 export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null) {
