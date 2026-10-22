@@ -44,6 +44,7 @@ export const putEval = async (key: string, e: PosEval) => (await db()).put("eval
 export const clearEvals = async () => (await db()).clear("evals");
 export const kvGet = async <T>(k: string) => (await (await db()).get("kv", k)) as T | undefined;
 export const kvSet = async (k: string, v: unknown) => (await db()).put("kv", v, k);
+export const kvDel = async (k: string) => (await db()).delete("kv", k);
 
 let cloudPausedUntil = 0;
 export async function cloudEval(fen: string, multiPv = 2): Promise<PosEval | undefined | "busy"> {

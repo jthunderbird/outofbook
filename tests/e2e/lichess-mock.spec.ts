@@ -16,7 +16,12 @@ const FULL = (id: string, status = "started") => ({
 
 async function fakeLichess(page: Page) {
   const calls = { events: 0, game: 0 };
-  await page.addInitScript(() => localStorage.setItem("lichessToken", "fake-token"));
+  // Logged in once, on the first load only, so logging out sticks.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("seeded")) return;
+    sessionStorage.setItem("seeded", "1");
+    localStorage.setItem("lichessToken", "fake-token");
+  });
   await page.route("https://lichess.org/**", async (r) => {
     const url = new URL(r.request().url());
     const p = url.pathname;
@@ -75,4 +80,45 @@ test("a stream that goes silent (a phone asleep) is dropped after 20 s and reope
   await page.goto("/");
   await nav(page, "lichess");
   await expect.poll(() => events, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+});
+
+test("logging out stops the analysis and removes the games from this device", async ({ page }) => {
+  await fakeLichess(page);
+  await page.goto("/");
+  await page.evaluate(() => {
+    // A returning user's games, as the app keeps them.
+    const games = [
+      { id: "li:x1", site: "lichess", url: "", white: "tester", black: "someone", userColor: "w", result: "1-0", date: Date.now(), speed: "rapid", rated: true, sans: ["e4", "e5", "Nf3", "Nc6"] },
+    ];
+    return new Promise<void>((done) => {
+      const q = indexedDB.open("outofbook", 1);
+      q.onupgradeneeded = () => {
+        q.result.createObjectStore("evals");
+        q.result.createObjectStore("kv");
+      };
+      q.onsuccess = () => {
+        const tx = q.result.transaction("kv", "readwrite");
+        tx.objectStore("kv").put(games, "lastGames");
+        tx.oncomplete = () => (q.result.close(), done());
+      };
+    });
+  });
+  await page.reload();
+  await expect(page.getByTestId("account-btn").first()).toBeVisible();
+  await expect(page.getByTestId("build-metrics").first()).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("account-btn").first().click();
+  await expect(page.getByRole("button", { name: /Log in with Lichess/ }).first()).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Username" }).first()).toBeVisible();
+  await expect(page.getByTestId("build-metrics")).toHaveCount(0);
+  const left = await page.evaluate(
+    () =>
+      new Promise<number>((done) => {
+        const q = indexedDB.open("outofbook", 1);
+        q.onsuccess = () => {
+          const c = q.result.transaction("kv").objectStore("kv").count();
+          c.onsuccess = () => done(c.result);
+        };
+      }),
+  );
+  expect(left).toBe(0);
 });

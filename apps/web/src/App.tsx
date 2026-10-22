@@ -11,7 +11,7 @@ import { askRepertoire } from "./lib/claude";
 import { IN_APP } from "./lib/platform";
 import { posKey, START_FEN, uciToSan } from "@outofbook/core/chess";
 import { defaultPoolSize } from "./lib/engine";
-import { kvGet, kvSet } from "./lib/evalCache";
+import { kvDel, kvGet, kvSet } from "./lib/evalCache";
 import { findPath } from "@outofbook/core/repertoire";
 import { loadSettings, saveSettings, type Settings } from "./lib/settings";
 import { BAD_VERDICTS, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
@@ -362,6 +362,16 @@ export default function App() {
     <span data-testid="build-metrics">{model.metrics.games} games</span>
   ) : null;
 
+  // Logging out leaves nothing of the account on this device (a shared phone):
+  // the analysis stops and the games and repertoire go. The evals stay; they
+  // are positions, not anyone's games.
+  const signOut = async () => {
+    analysis.current?.stop();
+    await logout();
+    await Promise.all([kvDel("lastGames"), kvDel("model")]).catch(() => {});
+    location.replace("/");
+  };
+
   const actions = (
     <>
       <Button size="sm" variant="secondary" onClick={() => setImportOpen(true)}>
@@ -369,7 +379,7 @@ export default function App() {
       </Button>
       {token ? (
         <Tip content="Log out of Lichess">
-          <Button size="sm" variant="ghost" onClick={() => logout().then(() => (setToken(null), setUsername("")))} data-testid="account-btn">
+          <Button size="sm" variant="ghost" onClick={signOut} data-testid="account-btn">
             <LogOut size={14} /> {username || "Lichess"}
           </Button>
         </Tip>
