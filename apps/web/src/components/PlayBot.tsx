@@ -10,6 +10,7 @@ import { evalNow } from "../lib/evalCache";
 import { buzz, playMoveSound, preloadSounds } from "../lib/gameFeel";
 import { cachedPrefs } from "../lib/lichessPrefs";
 import { trackLine } from "@outofbook/core/lineTracker";
+import { betterMoveAvailable, compareText, pct, povPawns, povText } from "@outofbook/core/moveNotes";
 import { findPath } from "@outofbook/core/repertoire";
 import { BAD_VERDICTS, type Line, type PosEval, type RawGame, type RepertoireModel, type RepNode, type Side, type Verdict } from "@outofbook/core/types";
 import { BookChip, VERDICT_COLOR, VerdictChip } from "./bits";
@@ -174,15 +175,14 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   // Your repertoire move (played at least twice here) was fine, but the engine
   // has a clearly better one: called out in its own box.
   const mineAfter = mineJudged?.evalAfter?.lines[0];
-  const gap = mineJudged?.bestLine && mineAfter ? povPawns(mineJudged.bestLine, myColor) - povPawns(mineAfter, myColor) : 0;
   const betterAvailable =
-    !!mineEdge && mineEdge.count >= 2 && !!mineJudged?.verdict && !BAD_VERDICTS.includes(mineJudged.verdict) && !!mineJudged.bestLine && (mineJudged.verdict === "okay" || gap >= 0.15);
+    !!lastMine && betterMoveAvailable({ timesPlayed: mineEdge?.count ?? 0, verdict: mineJudged?.verdict, best: mineJudged?.bestLine, after: mineAfter, playedUci: lastMine.uci, me: myColor });
   const myNote = !lastMine
     ? null
     : [
         !mineEdge && (mineNode ? "New move: you never played it here." : "Your games never reached this position."),
         offUsual && !mineJudged?.usualAfter && `Your usual move is ${usual!.san} (${usual!.count}×).`,
-        mineJudged && !betterAvailable && compareText(mineJudged, myColor, lastMine.san),
+        mineJudged && !betterAvailable && compareWith(mineJudged, myColor, lastMine.san),
         mineJudged?.best && mineJudged.verdict !== "best" && !betterAvailable && !(mineJudged.usualAfter === undefined && mineJudged.bestLine) && `Engine best: ${mineJudged.best}.`,
       ]
         .filter(Boolean)
@@ -618,7 +618,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
             )}
             {!offLine && offUsual && (
               <div>
-                You usually play {usual!.san} here ({usual!.count}×); you played {lastMine.san}.{mineJudged?.usualAfter ? ` ${compareText(mineJudged, myColor, lastMine.san)}` : ""}
+                You usually play {usual!.san} here ({usual!.count}×); you played {lastMine.san}.{mineJudged?.usualAfter ? ` ${compareWith(mineJudged, myColor, lastMine.san)}` : ""}
               </div>
             )}
           </Alert>
@@ -765,28 +765,12 @@ function MoveList({ ucis, judged, myColor }: { ucis: string[]; judged: Record<nu
   );
 }
 
-const pct = (n: number, of: number) => Math.round((n / Math.max(1, of)) * 100);
-
-/** An eval from your side, in pawns (mate as a large number), and as text. */
-const povPawns = (l: Line, me: Side) => (me === "w" ? 1 : -1) * (l.mate !== undefined ? Math.sign(l.mate) * (1000 - Math.abs(l.mate)) : (l.cp ?? 0) / 100);
-const povText = (l: Line, me: Side) => {
-  const s = me === "w" ? 1 : -1;
-  if (l.mate !== undefined) return `${l.mate * s > 0 ? "" : "-"}#${Math.abs(l.mate)}`;
-  const v = ((l.cp ?? 0) * s) / 100;
-  return `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
-};
-
 /** "Your eval is 0.4 worse than your usual Nf3 (+0.20 vs +0.60)." Against your usual move, else the engine's best. */
-function compareText(j: Judged, me: Side, playedSan: string) {
+function compareWith(j: Judged, me: Side, playedSan: string) {
   const mine = j.evalAfter?.lines[0];
   const ref = j.usualAfter ?? j.bestLine;
   if (!mine || !ref) return null;
-  const what = j.usualAfter ? `your usual ${j.usualSan}` : `the engine's best ${j.best}`;
-  const vs = `(${playedSan} ${povText(mine, me)} vs ${povText(ref, me)})`;
-  if (mine.mate !== undefined || ref.mate !== undefined) return `Compared with ${what}: ${vs}.`;
-  const d = povPawns(mine, me) - povPawns(ref, me);
-  if (Math.abs(d) < 0.05) return `Your eval is the same as ${what} ${vs}.`;
-  return `Your eval is ${Math.abs(d).toFixed(2)} ${d < 0 ? "worse" : "better"} than ${what} ${vs}.`;
+  return compareText(mine, ref, me, playedSan, j.usualAfter ? `your usual ${j.usualSan}` : `the engine's best ${j.best}`);
 }
 
 /** Moves worth showing besides the engine's top 5: your most played here, then book moves (by how many named lines follow). */

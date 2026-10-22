@@ -1,24 +1,28 @@
-// Single-game review, laid out like Chesskit's analysis page (GPL-3.0) inside
-// our shell: board docked right with the controls and move verdict under it;
-// accuracy, verdict counts, eval graph, moves, engine lines, the mistakes and
-// the repertoire at the current position on the left.
+// Single-game review, after Chesskit's analysis page (GPL-3.0) inside our shell.
+// Left: the repertoire at the current move (the bot page's alerts) on top, then
+// the eval graph and the live engine lines side by side, then the mistakes.
+// Right: the board with its controls, the accuracy and move-class summary, and
+// the move list.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ExternalLink, Repeat, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Dumbbell, ExternalLink, Lightbulb, Repeat, X } from "lucide-react";
 import { gameAccuracy } from "@outofbook/core/accuracy";
+import { bookChildren } from "@outofbook/core/book";
 import { classify } from "@outofbook/core/classify";
 import { fmtEval, lineWinPct, plyLabel, posKey, pvToSan, uciParams, uciToSan } from "@outofbook/core/chess";
-import { EnginePool, defaultPoolSize } from "../lib/engine";
-import { getEval, putEval } from "../lib/evalCache";
+import { moveNotes, usualMove, type MoveNote, type MoveNotes } from "@outofbook/core/moveNotes";
+import { ENGINE_BUILDS, EnginePool, LiveEngine, defaultPoolSize, preloadBuild, type EngineBuild } from "../lib/engine";
+import { cloudEval, getEval, putEval } from "../lib/evalCache";
+import { hasAuth, shareEval } from "../lib/server";
 import { trackLine } from "@outofbook/core/lineTracker";
 import { buildRepertoire } from "@outofbook/core/repertoire";
 import type { Settings } from "../lib/settings";
-import { BAD_VERDICTS, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
+import { BAD_VERDICTS, type Line, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
 import { AskClaude } from "./AskClaude";
 import { BookChip, BOOK_COLOR, SideIcon, VERDICT_COLOR, VERDICT_LABEL, VerdictChip, VerdictIcon } from "./bits";
-import { Board, EvalBar, uciArrow } from "./Board";
+import { Board, EvalBar, uciArrow, type Arrow } from "./Board";
 import type { VerdictOf } from "./RepertoireView";
-import { Button, Card, CardHeader, Progress, Seg, Tip, cx } from "./ui";
+import { Alert, Badge, Button, Card, CardHeader, Progress, Seg, Select, Tip, cx } from "./ui";
 import { LichessIcon } from "./LichessIcon";
 
 type MoveClass = Verdict | "book";
@@ -35,9 +39,24 @@ const RECAP_LABEL: Record<MoveClass, string> = {
   mistake: "Mistake",
   blunder: "Blunder",
 };
+const DEPTHS: [string, string][] = [
+  ["12", "depth 12"],
+  ["16", "depth 16"],
+  ["18", "depth 18"],
+  ["20", "depth 20"],
+  ["24", "depth 24"],
+  ["0", "depth ∞"],
+];
 const other = (c: Side): Side => (c === "w" ? "b" : "w");
+const sideOf = (i: number): Side => (i % 2 === 0 ? "w" : "b");
 const isBad = (c?: MoveClass) => !!c && BAD_VERDICTS.includes(c as Verdict);
 const classColor = (c: MoveClass) => (c === "book" ? BOOK_COLOR : VERDICT_COLOR[c]);
+const afterMove = (fen: string, uci: string) => {
+  const c = new Chess(fen);
+  c.move(uciParams(uci));
+  return c.fen();
+};
+const NOTE_TONE = { bad: "bad", warn: "warn", accent: "info", info: "info" } as const;
 
 export function GameReview({
   game,
@@ -46,6 +65,8 @@ export function GameReview({
   verdict,
   verdictOf,
   settings,
+  onSettings,
+  onPractise,
   onClose,
 }: {
   game: RawGame;
@@ -54,9 +75,14 @@ export function GameReview({
   verdict: (m: MoveStat) => Verdict | undefined;
   verdictOf: VerdictOf;
   settings: Settings;
+  /** Saves engine choices made on this page (they become the defaults). */
+  onSettings: (s: Partial<Settings>) => void;
+  /** Opens Play vs bot from this position, as the user's colour. */
+  onPractise: (color: Side, ucis: string[]) => void;
   onClose: () => void;
 }) {
   // Games outside the loaded set (e.g. bot games) get a summary of their own.
+  const inModel = !!model.games[game.id];
   const s = useMemo(() => model.games[game.id] ?? buildRepertoire([game], { pliesAfterBook: 10, treeMaxPly: 30 }).games[game.id], [model, game]);
   const { fens, ucis, sans } = useMemo(() => {
     const c = new Chess();
@@ -76,31 +102,82 @@ export function GameReview({
     return { fens, ucis, sans };
   }, [game]);
   const tracked = useMemo(() => trackLine(ucis), [ucis]);
+  const graph = model.graphs[s.color];
+  // This game is counted in its own positions when it is part of the loaded set (the tree stops at treeMaxPly).
+  const thisGame = (i: number): 0 | 1 => (inModel && i < settings.treeMaxPly ? 1 : 0);
+  // Your usual move where you played another: its position is analysed too, to compare.
+  const usualFens = useMemo(
+    () =>
+      ucis.map((u, i) => {
+        if (sideOf(i) !== s.color) return undefined;
+        const um = usualMove(graph[posKey(fens[i])], u, inModel && i < settings.treeMaxPly ? 1 : 0);
+        return um ? afterMove(fens[i], um.uci) : undefined;
+      }),
+    [ucis, fens, graph, s.color, inModel, settings.treeMaxPly],
+  );
+
   const [ply, setPly] = useState(0);
   const [flip, setFlip] = useState(false);
   const [local, setLocal] = useState<Record<string, PosEval>>({});
   const [progress, setProgress] = useState<number | null>(null);
+  const [download, setDownload] = useState<number | null>(null);
   const [mistakesOf, setMistakesOf] = useState<"me" | "both">("me");
   const go = (p: number) => setPly(Math.max(0, Math.min(ucis.length, p)));
+  const build = settings.engineBuild;
+  // Desktop puts the summary and moves under the board; a phone puts them last.
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  useEffect(() => {
+    const q = window.matchMedia("(min-width: 1024px)");
+    const on = () => setWide(q.matches);
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "ArrowRight") setPly((p) => Math.min(ucis.length, p + 1));
-      if (e.key === "ArrowLeft") setPly((p) => Math.max(0, p - 1));
-      if (e.key === "Home") setPly(0);
-      if (e.key === "End") setPly(ucis.length);
+      else if (e.key === "ArrowLeft") setPly((p) => Math.max(0, p - 1));
+      else if (e.key === "Home") setPly(0);
+      else if (e.key === "End") setPly(ucis.length);
+      else return;
+      e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [ucis.length]);
 
-  // Analyse every position on open: repertoire evals, then the eval cache, then the engine.
+  // The full build is 113 MB: downloaded once (with progress), then every worker loads it from the browser cache.
+  const [buildReady, setBuildReady] = useState<EngineBuild | null>(build === "lite" ? "lite" : null);
   useEffect(() => {
     let live = true;
-    const pool = new EnginePool(settings.poolSize || defaultPoolSize());
-    const todo = fens.filter((f) => !evalOf(posKey(f))?.lines.length);
-    if (!todo.length) return () => pool.terminate();
+    if (build === "lite") {
+      setBuildReady("lite");
+      return;
+    }
+    setBuildReady(null);
+    setDownload(0);
+    preloadBuild(build, (f) => live && setDownload(f))
+      .catch(() => {})
+      .finally(() => {
+        if (!live) return;
+        setDownload(null);
+        setBuildReady(build);
+      });
+    return () => {
+      live = false;
+    };
+  }, [build]);
+
+  // Game pass: every position (and your usual moves' positions), for the graph, verdicts and accuracy.
+  // Sources: repertoire evals, the eval cache, then the engine pool with the chosen build.
+  useEffect(() => {
+    if (buildReady !== build) return;
+    let live = true;
+    let pool: EnginePool | null = null;
+    const all = [...new Set([...fens, ...usualFens.filter((f): f is string => !!f)])];
+    const todo = all.filter((f) => !evalOf(posKey(f))?.lines.length && new Chess(f).moves().length);
+    if (!todo.length) return;
     let done = 0;
     setProgress(0);
     Promise.all(
@@ -108,8 +185,8 @@ export function GameReview({
         const k = posKey(fen);
         let e = await getEval(k, settings.depth);
         if (!e && live) {
-          e = await pool.analyse(fen, settings.depth, 2);
-          await putEval(k, e);
+          e = await (pool ??= new EnginePool(settings.poolSize || defaultPoolSize(), build)).analyse(fen, settings.depth, 2);
+          if (e.lines.length) await putEval(k, e);
         }
         if (!live || !e) return;
         setLocal((l) => ({ ...l, [k]: e! }));
@@ -120,12 +197,13 @@ export function GameReview({
       .finally(() => live && setProgress(null));
     return () => {
       live = false;
-      pool.terminate();
+      pool?.terminate();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fens, settings.depth, settings.poolSize]);
+  }, [fens, usualFens, settings.depth, settings.poolSize, build, buildReady]);
 
-  const ev = (i: number) => local[posKey(fens[i])] ?? evalOf(posKey(fens[i]));
+  const evKey = (k: string) => local[k] ?? evalOf(k);
+  const ev = (i: number) => evKey(posKey(fens[i]));
   const verdicts = useMemo(
     () =>
       ucis.map((u, i): Verdict | undefined => {
@@ -165,35 +243,137 @@ export function GameReview({
   const accuracy = gameAccuracy(wins);
   const counts: Record<Side, Partial<Record<MoveClass, number>>> = { w: {}, b: {} };
   classes.forEach((k, i) => {
-    const side = i % 2 === 0 ? "w" : "b";
-    if (k) counts[side][k] = (counts[side][k] ?? 0) + 1;
+    if (k) counts[sideOf(i)][k] = (counts[sideOf(i)][k] ?? 0) + 1;
+  });
+
+  // What every move means for your repertoire (the bot page's alerts).
+  const notes: MoveNotes[] = ucis.map((u, i) => {
+    const leftBook = tracked.exit?.kind === "left" && tracked.exit.ply === i;
+    const before = ev(i);
+    const best = before?.lines[0]?.pv[0];
+    return moveNotes({
+      me: s.color,
+      mover: sideOf(i),
+      san: sans[i],
+      uci: u,
+      book: tracked.plies[i]?.book ?? "after",
+      leftBook,
+      bookSans: leftBook ? bookChildren(fens[i]).map((b) => b.san) : [],
+      node: graph[posKey(fens[i])],
+      thisGame: thisGame(i),
+      verdict: verdicts[i],
+      before,
+      after: ev(i + 1),
+      usualAfter: usualFens[i] ? evKey(posKey(usualFens[i]!)) : undefined,
+      bestSan: best ? uciToSan(fens[i], best) : undefined,
+    });
   });
 
   const orientation: Side = flip ? other(s.color) : s.color;
-  const cur = ev(ply);
   const focus = ply - 1; // the move just played (-1 at the start)
   const lastClass = focus >= 0 ? classes[focus] : undefined;
+  const focusNotes = focus >= 0 ? notes[focus] : undefined;
   const bestBefore = focus >= 0 ? ev(focus)?.lines[0]?.pv[0] : undefined;
-  const arrows = [
-    ...(cur?.lines[0]?.pv[0] ? [uciArrow(cur.lines[0].pv[0], "green")] : []),
-    ...(focus >= 0 && bestBefore && bestBefore !== ucis[focus] && isBad(lastClass) ? [uciArrow(bestBefore, "blue")] : []),
-  ];
+
+  // Live engine on the current position: the cache or Lichess cloud when deep enough, else the chosen build, deepening.
+  const [liveEv, setLiveEv] = useState<{ fen: string; ev: PosEval } | null>(null);
+  const engineRef = useRef<LiveEngine | null>(null);
+  const target = settings.reviewDepth;
+  const nLines = settings.reviewLines;
+  useEffect(() => {
+    if (buildReady !== build) return;
+    const fen = fens[ply];
+    const legal = new Chess(fen).moves().length;
+    if (!legal) return setLiveEv(null);
+    const want = Math.min(nLines, legal);
+    const key = posKey(fen);
+    let live = true;
+    let last: PosEval | null = null;
+    const enough = (e?: PosEval | null) => !!e && target > 0 && e.depth >= target && e.lines.length >= want;
+    // Kept when deeper than what is stored (or as deep with more lines); shared with the server cache.
+    const save = (e: PosEval, prev?: PosEval) => {
+      if (e.depth < settings.depth || (prev && (prev.depth > e.depth || (prev.depth === e.depth && prev.lines.length >= e.lines.length)))) return;
+      void putEval(key, e);
+      shareEval(key, e, hasAuth());
+    };
+    (async () => {
+      const cached = await getEval(key, 0);
+      if (!live) return;
+      setLiveEv(cached && cached.lines.length >= want ? { fen, ev: cached } : null);
+      if (enough(cached)) return;
+      if (settings.useCloud) {
+        const c = await cloudEval(fen, want).catch(() => undefined);
+        if (!live) return;
+        if (c && c !== "busy" && enough(c)) {
+          setLiveEv({ fen, ev: c });
+          save(c, cached);
+          return;
+        }
+      }
+      if (engineRef.current?.build !== build) {
+        engineRef.current?.terminate();
+        engineRef.current = new LiveEngine(build);
+      }
+      const done = await engineRef.current.analyse(fen, target, want, (e) => {
+        if (!live) return;
+        last = e;
+        setLiveEv({ fen, ev: e });
+      });
+      if (done) save(done, cached);
+    })().catch(() => {});
+    return () => {
+      live = false;
+      engineRef.current?.stop();
+      // An endless (∞) search is saved when the user moves on.
+      if (last && target === 0) void getEval(key, 0).then((prev) => save(last!, prev));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ply, fens, build, buildReady, target, nLines]);
+  useEffect(() => () => engineRef.current?.terminate(), []);
+
+  const cur = liveEv?.fen === fens[ply] ? liveEv.ev : ev(ply);
+  // The move the game played from here, highlighted among the engine lines (or added below them).
+  const playedUci = ply < ucis.length ? ucis[ply] : undefined;
+  const engineRows: { line: Line; played: boolean }[] = (cur?.lines ?? []).slice(0, nLines).map((l) => ({ line: l, played: l.pv[0] === playedUci }));
+  if (playedUci && cur?.lines.length && !engineRows.some((r) => r.played)) {
+    const after = ev(ply + 1)?.lines[0];
+    if (after) engineRows.push({ line: { ...after, pv: [playedUci, ...after.pv] }, played: true });
+  }
+
+  // Arrows: on a flagged move of yours, what you played (red), your usual or the book's move (green) and the engine's (blue).
+  const arrows: Arrow[] = [];
+  const leftBookHere = !!focusNotes?.notes.some((n) => n.kind === "left-book");
+  if (focusNotes && (focusNotes.bad || focusNotes.offUsual || focusNotes.better || leftBookHere)) {
+    arrows.push(uciArrow(ucis[focus], "red"));
+    const want = focusNotes.usual?.uci ?? (leftBookHere ? [...bookChildren(fens[focus])].sort((a, b) => b.namedBelow - a.namedBelow)[0]?.uci : undefined);
+    if (want) arrows.push(uciArrow(want, "green"));
+    if (bestBefore && bestBefore !== ucis[focus] && bestBefore !== want) arrows.push(uciArrow(bestBefore, "blue"));
+  } else if (cur?.lines[0]?.pv[0]) arrows.push(uciArrow(cur.lines[0].pv[0], "green"));
+
   const nextOfClass = (side: Side, k: MoveClass) => {
-    const idx = classes.map((c, i) => (c === k && (i % 2 === 0 ? "w" : "b") === side ? i : -1)).filter((i) => i >= 0);
+    const idx = classes.map((c, i) => (c === k && sideOf(i) === side ? i : -1)).filter((i) => i >= 0);
     const next = idx.find((i) => i + 1 > ply) ?? idx[0];
     if (next !== undefined) go(next + 1);
   };
 
   // Repertoire at the current move: what you (or your opponents) played in the position before it.
   const at = ply < ucis.length ? ply : ply - 1;
-  const graph = model.graphs[s.color];
   const node = at >= 0 ? graph[posKey(fens[at])] : undefined;
-  const mine = (at % 2 === 0 ? "w" : "b") === s.color;
+  const mine = sideOf(at) === s.color;
   const same = Object.values(model.games).filter((g) => g.color === s.color && g.opening === s.opening);
   const open = model.openings.find((o) => o.color === s.color && o.name === s.opening);
   const repeated = model.moves.filter((m) => m.color === s.color && m.gameIds.includes(game.id) && BAD_VERDICTS.includes(verdict(m)!) && m.count > 1);
-  const mistakes = ucis.map((_, i) => i).filter((i) => BAD_VERDICTS.includes(verdicts[i]!) && (mistakesOf === "both" || (i % 2 === 0 ? "w" : "b") === s.color));
+  const mistakes = ucis.map((_, i) => i).filter((i) => BAD_VERDICTS.includes(verdicts[i]!) && (mistakesOf === "both" || sideOf(i) === s.color));
   const name = (c: Side) => (c === "w" ? game.white : game.black);
+  const firstMine = (f: (n: MoveNotes) => boolean) => notes.findIndex((n, i) => sideOf(i) === s.color && f(n));
+  const jumps = (
+    [
+      ["Book exit", s.deviation.by === "user" || s.deviation.by === "opponent" ? s.deviation.ply : -1],
+      ["Off your usual", firstMine((n) => n.offUsual)],
+      ["Better move", firstMine((n) => n.better)],
+      ["Your first mistake", firstMine((n) => n.bad)],
+    ] as [string, number][]
+  ).filter(([, i]) => i >= 0);
 
   const dest = focus >= 0 ? uciParams(ucis[focus]).to : undefined;
   const destPos = dest ? (orientation === "w" ? { x: dest.charCodeAt(0) - 97, y: 8 - +dest[1] } : { x: 104 - dest.charCodeAt(0), y: +dest[1] - 1 }) : undefined;
@@ -217,8 +397,49 @@ export function GameReview({
     </div>
   );
 
+  const summary = (
+    <Card data-testid="accuracy">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-4 gap-y-1 text-sm">
+        <div className="truncate text-right font-semibold">{game.white}</div>
+        <div />
+        <div className="truncate font-semibold">{game.black}</div>
+        <div className="text-right">
+          <span className="num inline-block min-w-16 rounded-ui px-2 py-1 text-center font-bold" style={{ background: "#f2f2f2", color: "#111" }}>
+            {accuracy ? accuracy.w.toFixed(1) : "…"}
+          </span>
+        </div>
+        <div className="ui-label text-center">accuracy</div>
+        <div>
+          <span className="num inline-block min-w-16 rounded-ui px-2 py-1 text-center font-bold" style={{ background: "#2a2a2a", color: "#eee", outline: "1px solid var(--border)" }}>
+            {accuracy ? accuracy.b.toFixed(1) : "…"}
+          </span>
+        </div>
+        {RECAP.filter((k) => counts.w[k] || counts.b[k] || isBad(k)).map((k) => (
+          <Fragment key={k}>
+            <button className="num text-right font-semibold enabled:hover:underline disabled:opacity-40" style={{ color: classColor(k) }} disabled={!counts.w[k]} onClick={() => nextOfClass("w", k)}>
+              {counts.w[k] ?? 0}
+            </button>
+            <div className="flex items-center gap-2 text-[0.82rem]">
+              <VerdictIcon v={k} size={16} /> {RECAP_LABEL[k]}
+            </div>
+            <button className="num text-left font-semibold enabled:hover:underline disabled:opacity-40" style={{ color: classColor(k) }} disabled={!counts.b[k]} onClick={() => nextOfClass("b", k)}>
+              {counts.b[k] ?? 0}
+            </button>
+          </Fragment>
+        ))}
+      </div>
+      <div className="mt-2 text-center text-xs text-muted">Click a count to jump to the next such move.</div>
+    </Card>
+  );
+  const moveList = (
+    <Card>
+      <CardHeader title="Moves" sub="Dashed: left the book. Amber dot: not your usual move. Bulb: a better move was available." />
+      <MovesTable sans={sans} ply={ply} classes={classes} notes={notes} me={s.color} exitPly={s.deviation.ply} onPick={go} />
+    </Card>
+  );
+
   const boardColumn = (
-    <div className="board-col min-w-0 lg:sticky lg:top-0 lg:order-last lg:self-start" data-testid="review-board">
+    <div className="board-col min-w-0 space-y-[var(--gap)] lg:order-last" data-testid="review-board">
       <Card className="flex flex-col">
         {playerBar(other(orientation))}
         <div className="flex gap-1.5">
@@ -269,13 +490,103 @@ export function GameReview({
           )}
         </div>
       </Card>
+      {wide && summary}
+      {wide && moveList}
     </div>
   );
 
+  const engineCard = (
+    <Card className="min-w-0" data-testid="review-engine">
+      <div className="mb-2 flex items-baseline gap-2">
+        <div className="ui-h2">Engine</div>
+        <div className="min-w-0 flex-1 truncate text-right text-xs text-muted" data-testid="engine-status">
+          {download !== null
+            ? `Downloading ${ENGINE_BUILDS[build].label} (${ENGINE_BUILDS[build].mb} MB): ${Math.round(download * 100)}%`
+            : cur
+              ? `${cur.source === "engine" ? ENGINE_BUILDS[build].label : cur.source} · depth ${cur.depth}${target && cur.source === "engine" && cur.depth < target ? ` of ${target}` : ""}`
+              : "analysing…"}
+        </div>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <Seg
+          value={build}
+          onChange={(engineBuild) => onSettings({ engineBuild })}
+          options={[
+            ["lite", "Lite"],
+            ["full", "Full"],
+          ]}
+        />
+        <Select aria-label="Engine depth" value={String(target)} onChange={(e) => onSettings({ reviewDepth: +e.target.value })} options={DEPTHS} />
+        <Select
+          aria-label="Engine lines"
+          value={String(nLines)}
+          onChange={(e) => onSettings({ reviewLines: +e.target.value })}
+          options={[1, 2, 3, 4, 5].map((n) => [String(n), `${n} line${n > 1 ? "s" : ""}`])}
+        />
+      </div>
+      {download !== null && <Progress value={download * 100} className="mb-2" />}
+      <div className="flex flex-col gap-1 text-[0.84rem]" data-testid="engine-lines">
+        {engineRows.length ? (
+          engineRows.map(({ line: l, played }, i) => (
+            <div
+              key={i}
+              className={cx("flex items-start gap-2 rounded-ui px-1 py-0.5", played && "outline-1")}
+              style={
+                played ? { background: "color-mix(in oklab, var(--accent) 12%, transparent)", outlineStyle: "solid", outlineColor: "color-mix(in oklab, var(--accent) 45%, transparent)" } : undefined
+              }
+              data-testid="engine-line"
+              data-played={played || undefined}
+            >
+              <span
+                className="num min-w-14 rounded-ui px-1.5 py-0.5 text-center text-xs font-bold"
+                style={{ background: lineWinPct(l) >= 50 ? "#f2f2f2" : "#2a2a2a", color: lineWinPct(l) >= 50 ? "#111" : "#eee", outline: "1px solid var(--border)" }}
+              >
+                {fmtEval(l)}
+              </span>
+              <span className="min-w-0 flex-1 leading-6">
+                {played && (
+                  <Badge tone="accent" className="mr-1.5">
+                    played
+                  </Badge>
+                )}
+                {pvToSan(fens[ply], l.pv, 10).join(" ")}
+              </span>
+            </div>
+          ))
+        ) : (
+          <span className="text-muted">{new Chess(fens[ply]).moves().length ? "…" : "Game over."}</span>
+        )}
+      </div>
+      {focus >= 0 && (
+        <div className="mt-3" key={ply}>
+          <AskClaude
+            disabled={!ev(focus) || !ev(ply)}
+            input={() => {
+              const b = ev(focus)!;
+              const a = ev(ply)!;
+              return {
+                fen: fens[focus],
+                moveSan: sans[focus],
+                mover: sideOf(focus),
+                verdict: verdicts[focus],
+                evalBefore: fmtEval(b.lines[0]),
+                evalAfter: fmtEval(a.lines[0]),
+                bestSan: uciToSan(fens[focus], b.lines[0].pv[0]),
+                bestLineSan: pvToSan(fens[focus], b.lines[0].pv),
+                afterLineSan: pvToSan(fens[ply], a.lines[0].pv),
+                opening: s.opening,
+              };
+            }}
+          />
+        </div>
+      )}
+    </Card>
+  );
+
   return (
-    <div className="grid gap-[var(--gap)] lg:grid-cols-[minmax(0,1fr)_min(560px,45%)]" style={{ ["--board-max" as string]: "calc(100dvh - 19rem)" }}>
+    <div className="grid gap-[var(--gap)] lg:grid-cols-[minmax(0,1fr)_min(560px,45%)] lg:items-start" style={{ ["--board-max" as string]: "calc(100dvh - 19rem)" }}>
       {boardColumn}
-      <div className="flex min-w-0 flex-col gap-[var(--gap)]">
+      <div className="@container flex min-w-0 flex-col gap-[var(--gap)]">
         <Card>
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-0 flex-1 text-sm">
@@ -294,182 +605,63 @@ export function GameReview({
           </div>
           {progress !== null && (
             <div className="mt-3 flex items-center gap-3 text-xs text-muted">
-              <Progress value={progress * 100} className="flex-1" /> analysing at depth {settings.depth}…
+              <Progress value={progress * 100} className="flex-1" /> analysing at depth {settings.depth} with {ENGINE_BUILDS[build].label}…
             </div>
-          )}
-        </Card>
-
-        <Card data-testid="accuracy">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-4 gap-y-1 text-sm">
-            <div className="truncate text-right font-semibold">{game.white}</div>
-            <div />
-            <div className="truncate font-semibold">{game.black}</div>
-            <div className="text-right">
-              <span className="num inline-block min-w-16 rounded-ui px-2 py-1 text-center font-bold" style={{ background: "#f2f2f2", color: "#111" }}>
-                {accuracy ? accuracy.w.toFixed(1) : "…"}
-              </span>
-            </div>
-            <div className="ui-label text-center">accuracy</div>
-            <div>
-              <span className="num inline-block min-w-16 rounded-ui px-2 py-1 text-center font-bold" style={{ background: "#2a2a2a", color: "#eee", outline: "1px solid var(--border)" }}>
-                {accuracy ? accuracy.b.toFixed(1) : "…"}
-              </span>
-            </div>
-            {RECAP.filter((k) => counts.w[k] || counts.b[k] || isBad(k)).map((k) => (
-              <Fragment key={k}>
-                <button
-                  className="num text-right font-semibold enabled:hover:underline disabled:opacity-40"
-                  style={{ color: classColor(k) }}
-                  disabled={!counts.w[k]}
-                  onClick={() => nextOfClass("w", k)}
-                >
-                  {counts.w[k] ?? 0}
-                </button>
-                <div className="flex items-center gap-2 text-[0.82rem]">
-                  <VerdictIcon v={k} size={16} /> {RECAP_LABEL[k]}
-                </div>
-                <button
-                  className="num text-left font-semibold enabled:hover:underline disabled:opacity-40"
-                  style={{ color: classColor(k) }}
-                  disabled={!counts.b[k]}
-                  onClick={() => nextOfClass("b", k)}
-                >
-                  {counts.b[k] ?? 0}
-                </button>
-              </Fragment>
-            ))}
-          </div>
-          <div className="mt-2 text-center text-xs text-muted">Click a count to jump to the next such move.</div>
-        </Card>
-
-        <Card pad={false} className="overflow-hidden">
-          <EvalGraph wins={wins} ply={ply} classes={classes} exitPly={s.deviation.ply} onPick={go} />
-        </Card>
-
-        <div className="grid gap-[var(--gap)] xl:grid-cols-2">
-          <Card>
-            <CardHeader title="Moves" sub="Dashed underline: where the game left the named book." />
-            <MovesTable sans={sans} ply={ply} classes={classes} exitPly={s.deviation.ply} onPick={go} />
-          </Card>
-          <Card>
-            <CardHeader title="Engine" sub={cur ? `depth ${cur.depth} · ${cur.source}` : "analysing…"} />
-            <div className="flex flex-col gap-1.5 text-[0.84rem]" data-testid="engine-lines">
-              {cur?.lines.length ? (
-                cur.lines.map((l, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <span
-                      className="num min-w-14 rounded-ui px-1.5 py-0.5 text-center text-xs font-bold"
-                      style={{ background: lineWinPct(l) >= 50 ? "#f2f2f2" : "#2a2a2a", color: lineWinPct(l) >= 50 ? "#111" : "#eee", outline: "1px solid var(--border)" }}
-                    >
-                      {fmtEval(l)}
-                    </span>
-                    <span className="leading-6">{pvToSan(fens[ply], l.pv, 10).join(" ")}</span>
-                  </div>
-                ))
-              ) : (
-                <span className="text-muted">…</span>
-              )}
-            </div>
-            {focus >= 0 && (
-              <div className="mt-3" key={ply}>
-                <AskClaude
-                  disabled={!ev(focus) || !ev(ply)}
-                  input={() => {
-                    const b = ev(focus)!;
-                    const a = ev(ply)!;
-                    return {
-                      fen: fens[focus],
-                      moveSan: sans[focus],
-                      mover: focus % 2 === 0 ? "w" : "b",
-                      verdict: verdicts[focus],
-                      evalBefore: fmtEval(b.lines[0]),
-                      evalAfter: fmtEval(a.lines[0]),
-                      bestSan: uciToSan(fens[focus], b.lines[0].pv[0]),
-                      bestLineSan: pvToSan(fens[focus], b.lines[0].pv),
-                      afterLineSan: pvToSan(fens[ply], a.lines[0].pv),
-                      opening: s.opening,
-                    };
-                  }}
-                />
-              </div>
-            )}
-          </Card>
-        </div>
-
-        <Card data-testid="review-mistakes">
-          <CardHeader
-            title="Mistakes"
-            sub="Inaccuracies, mistakes and blunders, with the engine's move and the win% given up. Click to jump."
-            actions={
-              <Seg
-                value={mistakesOf}
-                onChange={setMistakesOf}
-                options={[
-                  ["me", "Yours"],
-                  ["both", "Both sides"],
-                ]}
-              />
-            }
-          />
-          {mistakes.length === 0 ? (
-            <div className="text-sm text-muted">{progress !== null ? "Analysing…" : "None: a clean game."}</div>
-          ) : (
-            <table className="ui-table">
-              <tbody>
-                {mistakes.map((i) => {
-                  const best = ev(i)?.lines[0]?.pv[0];
-                  const lost = wins[i] !== undefined && wins[i + 1] !== undefined ? Math.abs(wins[i]! - wins[i + 1]!) : undefined;
-                  const rep = model.moves.find((m) => m.color === s.color && m.fromKey === posKey(fens[i]) && m.uci === ucis[i]);
-                  return (
-                    <tr key={i} className="cursor-pointer" data-hl={ply === i + 1} onClick={() => go(i + 1)}>
-                      <td className="w-6">
-                        <SideIcon c={i % 2 === 0 ? "w" : "b"} />
-                      </td>
-                      <td className="font-semibold whitespace-nowrap">{plyLabel(i, sans[i])}</td>
-                      <td>
-                        <VerdictChip v={verdicts[i]} />
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {best && (
-                          <>
-                            best <b>{uciToSan(fens[i], best)}</b>
-                          </>
-                        )}
-                      </td>
-                      <td className="num text-right">{lost !== undefined ? `−${lost.toFixed(0)}%` : ""}</td>
-                      <td className="text-xs text-muted">{rep && rep.count > 1 ? `played ${rep.count}× in your games` : tracked.plies[i]?.book === "in" ? "book move" : ""}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           )}
         </Card>
 
         <Card data-testid="review-repertoire">
-          <CardHeader title="Your repertoire here" sub={`${s.eco} ${s.opening} · as ${s.color === "w" ? "White" : "Black"} · ${same.length} of your games reached this line`} />
-          <div className="mb-3 flex flex-col gap-1 text-sm">
-            <div>
-              This game:{" "}
-              {s.deviation.by === "none" ? (
-                "never left the named book."
-              ) : s.deviation.by === "exhausted" ? (
-                `the named line ended before ${plyLabel(s.deviation.ply, s.deviation.san ?? "")}.`
-              ) : (
-                <>
-                  <b style={{ color: s.deviation.by === "user" ? "var(--bad)" : "var(--warn)" }}>{s.deviation.by === "user" ? "you" : "your opponent"}</b> left the book with{" "}
-                  <button className="ui-link" onClick={() => go(s.deviation.ply + 1)}>
-                    {plyLabel(s.deviation.ply, s.deviation.san ?? "")}
-                  </button>
-                  .
-                </>
-              )}
+          <CardHeader
+            title="Your repertoire"
+            sub={`${s.eco} ${s.opening} · as ${s.color === "w" ? "White" : "Black"} · ${same.length} of your games reached this line`}
+            actions={
+              <Button size="sm" onClick={() => onPractise(s.color, ucis.slice(0, ply))} title="Play on from this position against the bot, with the drill on">
+                <Dumbbell size={14} /> Practise from here
+              </Button>
+            }
+          />
+          {jumps.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5" data-testid="review-jumps">
+              {jumps.map(([label, i]) => (
+                <Button key={label} size="sm" variant={ply === i + 1 ? "primary" : "secondary"} onClick={() => go(i + 1)}>
+                  {label}: {plyLabel(i, sans[i])}
+                </Button>
+              ))}
             </div>
-            {open && (
-              <div className="text-muted">
-                In this line you left the book first {open.userLeft}×, your opponents {open.opponentLeft}×, and the line ran out {open.exhausted}×.
-              </div>
+          )}
+          <div className="mb-3 flex flex-col gap-2" data-testid="review-alerts">
+            {focus < 0 ? (
+              <div className="text-sm text-muted">Step through the game: each move is checked against your repertoire and the book.</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                  <b>{plyLabel(focus, sans[focus])}</b>
+                  <span className="text-muted">({sideOf(focus) === s.color ? "your move" : "opponent's move"})</span>
+                  <BookChip s={tracked.plies[focus]?.book ?? "after"} />
+                  {sideOf(focus) === s.color && <VerdictChip v={verdicts[focus]} />}
+                </div>
+                {focusNotes!.notes.map((n) => (
+                  <NoteBox key={n.kind} n={n} />
+                ))}
+              </>
             )}
+          </div>
+          <div className="mb-3 text-sm text-muted">
+            This game:{" "}
+            {s.deviation.by === "none" ? (
+              "never left the named book."
+            ) : s.deviation.by === "exhausted" ? (
+              `the named line ended before ${plyLabel(s.deviation.ply, s.deviation.san ?? "")}.`
+            ) : (
+              <>
+                <b style={{ color: s.deviation.by === "user" ? "var(--bad)" : "var(--warn)" }}>{s.deviation.by === "user" ? "you" : "your opponent"}</b> left the book with{" "}
+                <button className="ui-link" onClick={() => go(s.deviation.ply + 1)}>
+                  {plyLabel(s.deviation.ply, s.deviation.san ?? "")}
+                </button>
+                .
+              </>
+            )}
+            {open && ` In this line you left the book first ${open.userLeft}×, your opponents ${open.opponentLeft}×, and the line ran out ${open.exhausted}×.`}
           </div>
           {at >= 0 && at < ucis.length && (
             <>
@@ -509,7 +701,6 @@ export function GameReview({
               ) : (
                 <div className="text-sm text-muted">Your loaded games never reached this position.</div>
               )}
-              {node && !node.edges.some((e) => e.uci === ucis[at]) && <div className="mt-1 text-sm text-muted">{sans[at]} is new here: not played in your other games.</div>}
             </>
           )}
           {repeated.length > 0 && (
@@ -527,13 +718,112 @@ export function GameReview({
             </>
           )}
         </Card>
+
+        <div className="grid gap-[var(--gap)] @2xl:grid-cols-2" data-testid="graph-engine">
+          <Card pad={false} className="min-h-40 overflow-hidden">
+            <EvalGraph wins={wins} ply={ply} classes={classes} exitPly={s.deviation.ply} onPick={go} />
+          </Card>
+          {engineCard}
+        </div>
+
+        <Card data-testid="review-mistakes">
+          <CardHeader
+            title="Mistakes"
+            sub="Inaccuracies, mistakes and blunders, with the engine's move and the win% given up. Click to jump."
+            actions={
+              <Seg
+                value={mistakesOf}
+                onChange={setMistakesOf}
+                options={[
+                  ["me", "Yours"],
+                  ["both", "Both sides"],
+                ]}
+              />
+            }
+          />
+          {mistakes.length === 0 ? (
+            <div className="text-sm text-muted">{progress !== null ? "Analysing…" : "None: a clean game."}</div>
+          ) : (
+            <table className="ui-table">
+              <tbody>
+                {mistakes.map((i) => {
+                  const best = ev(i)?.lines[0]?.pv[0];
+                  const lost = wins[i] !== undefined && wins[i + 1] !== undefined ? Math.abs(wins[i]! - wins[i + 1]!) : undefined;
+                  const rep = model.moves.find((m) => m.color === s.color && m.fromKey === posKey(fens[i]) && m.uci === ucis[i]);
+                  return (
+                    <tr key={i} className="cursor-pointer" data-hl={ply === i + 1} onClick={() => go(i + 1)}>
+                      <td className="w-6">
+                        <SideIcon c={sideOf(i)} />
+                      </td>
+                      <td className="font-semibold whitespace-nowrap">{plyLabel(i, sans[i])}</td>
+                      <td>
+                        <VerdictChip v={verdicts[i]} />
+                      </td>
+                      <td className="whitespace-nowrap">
+                        {best && (
+                          <>
+                            best <b>{uciToSan(fens[i], best)}</b>
+                          </>
+                        )}
+                      </td>
+                      <td className="num text-right">{lost !== undefined ? `−${lost.toFixed(0)}%` : ""}</td>
+                      <td className="text-xs text-muted">{rep && rep.count > 1 ? `played ${rep.count}× in your games` : tracked.plies[i]?.book === "in" ? "book move" : ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        {/* On a phone the summary and moves come after everything else. */}
+        {!wide && summary}
+        {!wide && moveList}
       </div>
     </div>
   );
 }
 
-/** Two-column move list with verdict icons; the current move stays in view. */
-function MovesTable({ sans, ply, classes, exitPly, onPick }: { sans: string[]; ply: number; classes: (MoveClass | undefined)[]; exitPly: number; onPick: (p: number) => void }) {
+/** One repertoire alert, in the bot page's colours; "better move available" gets the bot page's callout. */
+function NoteBox({ n }: { n: MoveNote }) {
+  if (n.kind === "better")
+    return (
+      <div className="rounded-ui border-l-4 p-3 text-sm" style={{ borderColor: "var(--accent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)" }} data-testid="better-move">
+        <div className="flex items-center gap-2 font-semibold">
+          <Lightbulb size={16} style={{ color: "var(--accent)" }} /> {n.title}
+        </div>
+        <div className="mt-1">{n.text}</div>
+      </div>
+    );
+  return (
+    <div data-testid="review-note" data-kind={n.kind}>
+      <Alert tone={NOTE_TONE[n.tone]}>
+        <div className="text-sm">
+          <b>{n.title}.</b> {n.text}
+        </div>
+      </Alert>
+    </div>
+  );
+}
+
+/** Two-column move list with verdict icons and repertoire marks; the current move stays in view. */
+function MovesTable({
+  sans,
+  ply,
+  classes,
+  notes,
+  me,
+  exitPly,
+  onPick,
+}: {
+  sans: string[];
+  ply: number;
+  classes: (MoveClass | undefined)[];
+  notes: MoveNotes[];
+  me: Side;
+  exitPly: number;
+  onPick: (p: number) => void;
+}) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current?.querySelector<HTMLElement>(`[data-ply="${ply}"]`);
@@ -550,10 +840,14 @@ function MovesTable({ sans, ply, classes, exitPly, onPick }: { sans: string[]; p
       >
         <VerdictIcon v={classes[i]} size={15} />
         {sans[i]}
+        {sideOf(i) === me && notes[i]?.offUsual && (
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--warn)" }} title="Not your usual move" data-testid="mark-off-usual" />
+        )}
+        {notes[i]?.better && <Lightbulb size={12} className="shrink-0" style={{ color: "var(--accent)" }} aria-label="Better move available" />}
       </button>
     ) : null;
   return (
-    <div ref={box} className="relative max-h-[22rem] overflow-auto text-[0.86rem]" data-testid="review-moves">
+    <div ref={box} className="relative max-h-[18rem] overflow-auto text-[0.86rem]" data-testid="review-moves">
       <table className="w-full">
         <tbody>
           {Array.from({ length: Math.ceil(sans.length / 2) }, (_, r) => (
@@ -569,7 +863,7 @@ function MovesTable({ sans, ply, classes, exitPly, onPick }: { sans: string[]; p
   );
 }
 
-/** White's win% over the game (as in Chesskit's graph tab): click to jump; dots mark mistakes. */
+/** White's win% over the game (as in Chesskit's graph tab): click to jump; dots mark mistakes. Fills its card. */
 function EvalGraph({ wins, ply, classes, exitPly, onPick }: { wins: (number | undefined)[]; ply: number; classes: (MoveClass | undefined)[]; exitPly: number; onPick: (p: number) => void }) {
   const n = Math.max(1, wins.length - 1);
   const W = 1000;
@@ -580,7 +874,7 @@ function EvalGraph({ wins, ply, classes, exitPly, onPick }: { wins: (number | un
   const pct = (i: number) => `${(i / n) * 100}%`;
   return (
     <div
-      className="relative h-36 w-full cursor-pointer"
+      className="relative h-full min-h-40 w-full cursor-pointer"
       onClick={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
         onPick(Math.round(((e.clientX - r.left) / r.width) * n));

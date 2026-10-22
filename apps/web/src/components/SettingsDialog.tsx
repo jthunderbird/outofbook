@@ -35,7 +35,23 @@ export function SettingsDialog({ open, value, onClose }: { open: boolean; value:
         </section>
         <section className="flex flex-col gap-3">
           <div className="ui-h2">Analysis</div>
+          <Field label="Engine" hint="Used for all analysis. Full is stronger and slower; it downloads 113 MB once.">
+            <Seg
+              value={s.engineBuild}
+              onChange={(engineBuild) => setS({ ...s, engineBuild })}
+              options={[
+                ["lite", "Stockfish 18 lite (7 MB)"],
+                ["full", "Stockfish 18 (113 MB)"],
+              ]}
+            />
+          </Field>
           <div className="grid grid-cols-2 gap-3">
+            <Field label="Review: live engine depth (0 = until stopped)">
+              <Input type="number" value={s.reviewDepth} onChange={(e) => setS({ ...s, reviewDepth: num(e.target.value, 0, 40) })} />
+            </Field>
+            <Field label="Review: engine lines">
+              <Input type="number" value={s.reviewLines} onChange={(e) => setS({ ...s, reviewLines: num(e.target.value, 1, 5) })} />
+            </Field>
             <Field label="Engine depth">
               <Input type="number" value={s.depth} onChange={(e) => setS({ ...s, depth: num(e.target.value, 6, 30) })} />
             </Field>

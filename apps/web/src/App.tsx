@@ -170,7 +170,7 @@ export default function App() {
     const tick = setInterval(() => dirty && (setVersion((v) => v + 1), (dirty = false)), 500);
     const run = runAnalysis(
       m.moves,
-      { depth: s.depth, poolSize: s.poolSize || defaultPoolSize(), useCloud: s.useCloud, cloudMaxPly: s.cloudMaxPly, share: !!accountRef.current },
+      { depth: s.depth, poolSize: s.poolSize || defaultPoolSize(), build: s.engineBuild, useCloud: s.useCloud, cloudMaxPly: s.cloudMaxPly, share: !!accountRef.current },
       (key, e) => {
         evals.current.set(key, e);
         for (const mv of byKey.get(key) ?? []) {
@@ -486,7 +486,24 @@ export default function App() {
   else if (model && tab === "games") view = <GamesView games={games} model={model} colors={colors} onOpen={openGame} />;
   else if (tab === "play") view = <PlayBot model={model} start={botStart} depth={Math.min(settings.depth, 14)} onReview={reviewExtra} />;
   else if (tab === "review" && reviewGame)
-    view = <GameReview key={reviewGame.id} game={reviewGame} model={model ?? emptyModel} evalOf={evalOf} verdict={verdict} verdictOf={verdictOf} settings={settings} onClose={() => history.back()} />;
+    view = (
+      <GameReview
+        key={reviewGame.id}
+        game={reviewGame}
+        model={model ?? emptyModel}
+        evalOf={evalOf}
+        verdict={verdict}
+        verdictOf={verdictOf}
+        settings={settings}
+        onSettings={(p) => {
+          const s = { ...settings, ...p };
+          setSettings(s);
+          saveSettings(s);
+        }}
+        onPractise={(color, ucis) => (setBotStart({ color, ucis }), setTab("play"))}
+        onClose={() => history.back()}
+      />
+    );
 
   const answerCard = answer && (
     <Card className="mb-3" data-testid="answer">

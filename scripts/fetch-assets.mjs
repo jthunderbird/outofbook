@@ -1,5 +1,5 @@
 // Downloads the engine and model files the web app serves from apps/web/public/
-// (kept out of git: about 63 MB). Every file is pinned to an exact upstream
+// (kept out of git: about 176 MB). Every file is pinned to an exact upstream
 // version and checked against its SHA-256; files already present with the
 // right hash are skipped. Run: npm run assets
 //
@@ -28,6 +28,19 @@ const ASSETS = [
     npm: "stockfish@18.0.7",
     file: "bin/stockfish-18-lite-single.wasm",
     sha256: "a8fbc05ec6920b56d7485826dcb02c5ffd2826bcbf751cf973046f237a9096f1",
+  },
+  // The full build (113 MB): offered as "Stockfish 18" next to lite, as Chesskit does.
+  {
+    to: "engines/stockfish-18/stockfish-18-single.js",
+    npm: "stockfish@18.0.7",
+    file: "bin/stockfish-18-single.js",
+    sha256: "0c745dded6825d54a925095aa2698b38d95895b02e4c3560e9dc4e2af36163af",
+  },
+  {
+    to: "engines/stockfish-18/stockfish-18-single.wasm",
+    npm: "stockfish@18.0.7",
+    file: "bin/stockfish-18-single.wasm",
+    sha256: "f611ac05ddb248fe975a4f180ac9fec7f7fb650f8f17f5fe4230fcc0fe6419c7",
   },
   { to: "ort/ort.wasm.min.js", npm: "onnxruntime-web@1.23.0", file: "dist/ort.wasm.min.js", sha256: "aec37bf5b223afd8ac358e6647369c724cc08727c258760bb88e4f6ce69ab68f" },
   { to: "ort/ort-wasm-simd-threaded.mjs", npm: "onnxruntime-web@1.23.0", file: "dist/ort-wasm-simd-threaded.mjs", sha256: "c0bc2244e2c95fbf39a5eccb595bca31defb9eefdffa6f9ce0325a1c47524461" },

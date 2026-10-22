@@ -5,12 +5,13 @@
 import { Chess } from "chess.js";
 import { cloudEval, getEvals, putEval, putEvals } from "./evalCache";
 import { serverEvals, shareEval } from "./server";
-import { EnginePool } from "./engine";
+import { EnginePool, type EngineBuild } from "./engine";
 import type { MoveStat, PosEval } from "@outofbook/core/types";
 
 export interface AnalysisOptions {
   depth: number;
   poolSize: number;
+  build: EngineBuild;
   useCloud: boolean;
   cloudMaxPly: number;
   share: boolean; // logged in: read and write the shared server cache
@@ -139,7 +140,7 @@ export function runAnalysis(moves: MoveStat[], opts: AnalysisOptions, onEval: (k
           await new Promise((r) => setTimeout(r, 100));
           continue;
         }
-        const e = await (pool ??= new EnginePool(opts.poolSize)).analyse(item.fen, opts.depth, 2);
+        const e = await (pool ??= new EnginePool(opts.poolSize, opts.build)).analyse(item.fen, opts.depth, 2);
         p.engine++;
         await finish(item.key, e);
       }

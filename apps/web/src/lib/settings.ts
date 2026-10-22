@@ -1,8 +1,12 @@
 import type { Verdict } from "@outofbook/core/types";
+import type { EngineBuild } from "./engine";
 
 export interface Settings {
   depth: number;
   poolSize: number;
+  engineBuild: EngineBuild; // lite or full Stockfish 18, for all analysis
+  reviewDepth: number; // the review page's live engine; 0 = until stopped
+  reviewLines: number;
   useCloud: boolean;
   cloudMaxPly: number;
   pliesAfterBook: number;
@@ -16,6 +20,9 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   depth: 14,
   poolSize: 0, // 0 = auto
+  engineBuild: "lite",
+  reviewDepth: 18,
+  reviewLines: 5,
   useCloud: true,
   cloudMaxPly: 14,
   pliesAfterBook: 10,
@@ -27,12 +34,13 @@ export const DEFAULTS: Settings = {
 };
 
 // Bump when a default changes so saved settings pick it up.
-const VERSION = 2;
+const VERSION = 3;
 
 export const loadSettings = (): Settings => {
   try {
     const saved = JSON.parse(localStorage.getItem("settings") ?? "{}");
-    if (saved.version !== VERSION) return DEFAULTS;
+    // Version 2 had no engine fields: keep its values, the new fields take their defaults.
+    if (saved.version !== VERSION && saved.version !== 2) return DEFAULTS;
     return { ...DEFAULTS, ...saved };
   } catch {
     return DEFAULTS;
