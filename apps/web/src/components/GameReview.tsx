@@ -122,14 +122,18 @@ export function GameReview({
   const [mistakesOf, setMistakesOf] = useState<"me" | "both">("me");
   const go = (p: number) => setPly(Math.max(0, Math.min(ucis.length, p)));
   const build = settings.engineBuild;
-  // Desktop puts the summary and moves under the board; a phone puts them last.
-  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
-  useEffect(() => {
-    const q = window.matchMedia("(min-width: 1024px)");
-    const on = () => setWide(q.matches);
-    q.addEventListener("change", on);
-    return () => q.removeEventListener("change", on);
-  }, []);
+  // Layout from the space the page has, not the device. "desk": the full page
+  // (repertoire beside the board, the rest below). Otherwise the board and one
+  // panel with tabs fill the screen, side by side when the space is wide for
+  // its height, else stacked; the page itself then does not scroll.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ mode: "desk" | "side" | "stack"; cardW: number; panel: number }>(() => ({
+    mode: window.matchMedia("(min-width: 1100px)").matches ? "desk" : "stack",
+    cardW: 0,
+    panel: 0,
+  }));
+  const wide = fit.mode === "desk";
+  const [tab, setTab] = useState<"rep" | "engine" | "moves">("rep");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -292,6 +296,46 @@ export function GameReview({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  useEffect(() => {
+    // A review opens at its top, whatever the page before was scrolled to.
+    rootRef.current?.closest("main")?.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0 });
+  }, []);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const main = root.closest("main");
+    const measure = () => {
+      const top = root.getBoundingClientRect().top + (main?.scrollTop ?? 0) + window.scrollY;
+      const pad = main ? parseFloat(getComputedStyle(main).paddingBottom) : 16;
+      const avail = window.innerHeight - top - pad;
+      const w = root.clientWidth;
+      const card = boardCard.current;
+      const wrap = card?.querySelector<HTMLElement>(".board-wrap");
+      // What the board card needs around the board itself (player bars, controls, eval bar).
+      const ex = card && wrap ? { x: card.offsetWidth - wrap.offsetWidth, y: card.offsetHeight - wrap.offsetHeight } : { x: 60, y: 170 };
+      const gap = 16;
+      let next: typeof fit;
+      if (w >= 1100 && avail >= 700) next = { mode: "desk", cardW: 0, panel: 0 };
+      else if (w >= 600 && w > 0.8 * avail) {
+        const board = Math.max(240, Math.min(avail - ex.y, w - 320 - gap - ex.x));
+        next = { mode: "side", cardW: Math.floor(board + ex.x), panel: Math.max(320, Math.floor(avail)) };
+      } else {
+        const board = Math.max(220, Math.min(w - ex.x, avail - ex.y - gap - Math.max(260, 0.4 * avail)));
+        next = { mode: "stack", cardW: Math.floor(board + ex.x), panel: Math.max(260, Math.floor(avail - board - ex.y - gap)) };
+      }
+      setFit((f) => (f.mode === next.mode && f.cardW === next.cardW && f.panel === next.panel ? f : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+    // The layout's root element changes with the mode.
+  }, [fit.mode]);
   // Each move starts at its alerts.
   // (Braces: this Chromium's scrollTo returns a Promise, which React would take for a cleanup function.)
   useEffect(() => {
@@ -611,182 +655,233 @@ export function GameReview({
     </Card>
   );
 
-  return (
-    <div className="grid gap-[var(--gap)] lg:grid-cols-[minmax(0,1fr)_min(560px,45%)] lg:items-start" style={{ ["--board-max" as string]: "calc(100dvh - 19rem)" }}>
-      {boardColumn}
-      <div className="@container flex min-w-0 flex-col gap-[var(--gap)]">
-        <Card data-testid="review-repertoire" className="flex flex-col" style={boardH ? { height: boardH } : undefined}>
-          <CardHeader
-            title="Your repertoire"
-            sub={`${s.eco} ${s.opening} · as ${s.color === "w" ? "White" : "Black"} · ${same.length} of your games reached this line`}
-            actions={
-              <Button size="sm" onClick={() => onPractice(s.color, ucis.slice(0, ply))} title="Play on from this position against the bot, with the drill on">
-                <Dumbbell size={14} /> Practice from here
-              </Button>
-            }
-          />
-          {jumps.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-1.5" data-testid="review-jumps">
-              {jumps.map(([label, i]) => (
-                <Button key={label} size="sm" variant={ply === i + 1 ? "primary" : "secondary"} onClick={() => go(i + 1)}>
-                  {label}: {plyLabel(i, sans[i])}
-                </Button>
+  const repCard = (
+    <Card data-testid="review-repertoire" className="flex flex-col" style={wide ? (boardH ? { height: boardH } : undefined) : { flex: "1 1 0", minHeight: 280 }}>
+      <CardHeader
+        title="Your repertoire"
+        sub={`${s.eco} ${s.opening} · as ${s.color === "w" ? "White" : "Black"} · ${same.length} of your games reached this line`}
+        actions={
+          <Button size="sm" onClick={() => onPractice(s.color, ucis.slice(0, ply))} title="Play on from this position against the bot, with the drill on">
+            <Dumbbell size={14} /> Practice from here
+          </Button>
+        }
+      />
+      {jumps.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5" data-testid="review-jumps">
+          {jumps.map(([label, i]) => (
+            <Button key={label} size="sm" variant={ply === i + 1 ? "primary" : "secondary"} onClick={() => go(i + 1)}>
+              {label}: {plyLabel(i, sans[i])}
+            </Button>
+          ))}
+        </div>
+      )}
+      {/* Fixed height (the board's): the content scrolls, so the page does not jump from move to move. */}
+      <div ref={repBody} className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2" data-testid="review-repertoire-body">
+        <div className="mb-3 flex flex-col gap-2" data-testid="review-alerts">
+          {focus < 0 ? (
+            <div className="text-sm text-muted">Step through the game: each move is checked against your repertoire and the book.</div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                <b>{plyLabel(focus, sans[focus])}</b>
+                <span className="text-muted">({sideOf(focus) === s.color ? "your move" : "opponent's move"})</span>
+                <BookChip s={tracked.plies[focus]?.book ?? "after"} />
+                {sideOf(focus) === s.color && <VerdictChip v={verdicts[focus]} />}
+              </div>
+              {focusNotes!.notes.map((n) => (
+                <NoteBox key={n.kind} n={n} />
+              ))}
+            </>
+          )}
+        </div>
+        <div className="mb-3 text-sm text-muted">
+          This game:{" "}
+          {s.deviation.by === "none" ? (
+            "never left the named book."
+          ) : s.deviation.by === "exhausted" ? (
+            `the named line ended before ${plyLabel(s.deviation.ply, s.deviation.san ?? "")}.`
+          ) : (
+            <>
+              <b style={{ color: s.deviation.by === "user" ? "var(--bad)" : "var(--warn)" }}>{s.deviation.by === "user" ? "you" : "your opponent"}</b> left the book with{" "}
+              <button className="ui-link" onClick={() => go(s.deviation.ply + 1)}>
+                {plyLabel(s.deviation.ply, s.deviation.san ?? "")}
+              </button>
+              .
+            </>
+          )}
+          {open && ` In this line you left the book first ${open.userLeft}×, your opponents ${open.opponentLeft}×, and the line ran out ${open.exhausted}×.`}
+        </div>
+        {at >= 0 && at < ucis.length && (
+          <>
+            <div className="ui-label mb-1">
+              before {plyLabel(at, sans[at])} ({mine ? "your move" : "opponent's move"}) · position reached in {node ? node.count : 0} of your games
+            </div>
+            {node ? (
+              <table className="ui-table" data-testid="review-position">
+                <thead>
+                  <tr>
+                    <th>Move</th>
+                    <th>Book</th>
+                    <th className="text-right">Played</th>
+                    <th className="text-right">%</th>
+                    <th>{mine ? "Verdict" : ""}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {node.edges.slice(0, 8).map((e) => (
+                    <tr key={e.uci} data-hl={e.uci === ucis[at]}>
+                      <td className="font-semibold whitespace-nowrap">
+                        {e.san}
+                        {e.uci === ucis[at] && <span className="ml-2 text-xs font-normal text-muted">this game</span>}
+                      </td>
+                      <td>
+                        <BookChip s={e.book} />
+                      </td>
+                      <td className="num text-right">
+                        {e.count} / {node.count}
+                      </td>
+                      <td className="num text-right">{Math.round((e.count / Math.max(1, node.count)) * 100)}%</td>
+                      <td>{mine ? <VerdictChip v={verdictOf(s.color, node.key, e.uci)} /> : null}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="text-sm text-muted">Your loaded games never reached this position.</div>
+            )}
+          </>
+        )}
+        {repeated.length > 0 && (
+          <>
+            <div className="ui-label mt-4 mb-1">mistakes you have repeated in other games</div>
+            <div className="flex flex-col gap-1">
+              {repeated.map((m) => (
+                <button key={m.id} className="flex items-center gap-2 rounded-ui p-1 text-left text-sm hover:bg-hover" onClick={() => go(m.ply + 1)}>
+                  <VerdictIcon v={verdict(m)} />
+                  <b>{plyLabel(m.ply, m.san)}</b>
+                  <span className="text-muted">played {m.count}× in this position</span>
+                </button>
               ))}
             </div>
-          )}
-          {/* Fixed height (the board's): the content scrolls, so the page does not jump from move to move. */}
-          <div ref={repBody} className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2" data-testid="review-repertoire-body">
-            <div className="mb-3 flex flex-col gap-2" data-testid="review-alerts">
-              {focus < 0 ? (
-                <div className="text-sm text-muted">Step through the game: each move is checked against your repertoire and the book.</div>
-              ) : (
-                <>
-                  <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                    <b>{plyLabel(focus, sans[focus])}</b>
-                    <span className="text-muted">({sideOf(focus) === s.color ? "your move" : "opponent's move"})</span>
-                    <BookChip s={tracked.plies[focus]?.book ?? "after"} />
-                    {sideOf(focus) === s.color && <VerdictChip v={verdicts[focus]} />}
-                  </div>
-                  {focusNotes!.notes.map((n) => (
-                    <NoteBox key={n.kind} n={n} />
-                  ))}
-                </>
-              )}
-            </div>
-            <div className="mb-3 text-sm text-muted">
-              This game:{" "}
-              {s.deviation.by === "none" ? (
-                "never left the named book."
-              ) : s.deviation.by === "exhausted" ? (
-                `the named line ended before ${plyLabel(s.deviation.ply, s.deviation.san ?? "")}.`
-              ) : (
-                <>
-                  <b style={{ color: s.deviation.by === "user" ? "var(--bad)" : "var(--warn)" }}>{s.deviation.by === "user" ? "you" : "your opponent"}</b> left the book with{" "}
-                  <button className="ui-link" onClick={() => go(s.deviation.ply + 1)}>
-                    {plyLabel(s.deviation.ply, s.deviation.san ?? "")}
-                  </button>
-                  .
-                </>
-              )}
-              {open && ` In this line you left the book first ${open.userLeft}×, your opponents ${open.opponentLeft}×, and the line ran out ${open.exhausted}×.`}
-            </div>
-            {at >= 0 && at < ucis.length && (
-              <>
-                <div className="ui-label mb-1">
-                  before {plyLabel(at, sans[at])} ({mine ? "your move" : "opponent's move"}) · position reached in {node ? node.count : 0} of your games
-                </div>
-                {node ? (
-                  <table className="ui-table" data-testid="review-position">
-                    <thead>
-                      <tr>
-                        <th>Move</th>
-                        <th>Book</th>
-                        <th className="text-right">Played</th>
-                        <th className="text-right">%</th>
-                        <th>{mine ? "Verdict" : ""}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {node.edges.slice(0, 8).map((e) => (
-                        <tr key={e.uci} data-hl={e.uci === ucis[at]}>
-                          <td className="font-semibold whitespace-nowrap">
-                            {e.san}
-                            {e.uci === ucis[at] && <span className="ml-2 text-xs font-normal text-muted">this game</span>}
-                          </td>
-                          <td>
-                            <BookChip s={e.book} />
-                          </td>
-                          <td className="num text-right">
-                            {e.count} / {node.count}
-                          </td>
-                          <td className="num text-right">{Math.round((e.count / Math.max(1, node.count)) * 100)}%</td>
-                          <td>{mine ? <VerdictChip v={verdictOf(s.color, node.key, e.uci)} /> : null}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="text-sm text-muted">Your loaded games never reached this position.</div>
-                )}
-              </>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+  const graphCard = (
+    <Card pad={false} className={cx("overflow-hidden", wide ? "min-h-40" : "h-24 shrink-0")}>
+      <EvalGraph wins={wins} ply={ply} classes={classes} exitPly={s.deviation.ply} onPick={go} />
+    </Card>
+  );
+  const graphEngine = (
+    <div className="grid gap-[var(--gap)] @2xl:grid-cols-2" data-testid="graph-engine">
+      {graphCard}
+      {engineCard}
+    </div>
+  );
+  const mistakesCard = (
+    <Card data-testid="review-mistakes">
+      <CardHeader
+        title="Mistakes"
+        sub="Inaccuracies, mistakes and blunders, with the engine's move and the win% given up. Click to jump."
+        actions={
+          <Seg
+            value={mistakesOf}
+            onChange={setMistakesOf}
+            options={[
+              ["me", "Yours"],
+              ["both", "Both sides"],
+            ]}
+          />
+        }
+      />
+      {mistakes.length === 0 ? (
+        <div className="text-sm text-muted">{progress !== null ? "Analyzing…" : "None: a clean game."}</div>
+      ) : (
+        <table className="ui-table">
+          <tbody>
+            {mistakes.map((i) => {
+              const best = ev(i)?.lines[0]?.pv[0];
+              const lost = wins[i] !== undefined && wins[i + 1] !== undefined ? Math.abs(wins[i]! - wins[i + 1]!) : undefined;
+              const rep = model.moves.find((m) => m.color === s.color && m.fromKey === posKey(fens[i]) && m.uci === ucis[i]);
+              return (
+                <tr key={i} className="cursor-pointer" data-hl={ply === i + 1} onClick={() => go(i + 1)}>
+                  <td className="w-6">
+                    <SideIcon c={sideOf(i)} />
+                  </td>
+                  <td className="font-semibold whitespace-nowrap">{plyLabel(i, sans[i])}</td>
+                  <td>
+                    <VerdictChip v={verdicts[i]} />
+                  </td>
+                  <td className="whitespace-nowrap">
+                    {best && (
+                      <>
+                        best <b>{uciToSan(fens[i], best)}</b>
+                      </>
+                    )}
+                  </td>
+                  <td className="num text-right">{lost !== undefined ? `−${lost.toFixed(0)}%` : ""}</td>
+                  <td className="text-xs text-muted">{rep && rep.count > 1 ? `played ${rep.count}× in your games` : tracked.plies[i]?.book === "in" ? "book move" : ""}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+
+  if (!wide)
+    return (
+      <div
+        ref={rootRef}
+        className={cx("grid gap-[var(--gap)]", fit.mode === "side" ? "items-start" : "justify-items-center")}
+        style={fit.mode === "side" ? { gridTemplateColumns: `${fit.cardW}px minmax(0, 1fr)` } : undefined}
+        data-layout={fit.mode}
+      >
+        <div className="w-full" style={{ maxWidth: fit.cardW || undefined }}>
+          {boardColumn}
+        </div>
+        <div className="flex w-full min-w-0 flex-col gap-2" style={{ height: fit.panel || undefined }} data-testid="review-panel">
+          <Seg
+            value={tab}
+            onChange={setTab}
+            options={[
+              ["rep", "Repertoire"],
+              ["engine", "Engine"],
+              ["moves", "Moves"],
+            ]}
+          />
+          <div className="@container -mr-1 flex min-h-0 flex-1 flex-col gap-[var(--gap)] overflow-y-auto pr-1">
+            {tab === "rep" && repCard}
+            {tab === "engine" && (
+              // The lines first; the graph under them, short.
+              <div className="flex flex-col gap-[var(--gap)]" data-testid="graph-engine">
+                {engineCard}
+                {graphCard}
+              </div>
             )}
-            {repeated.length > 0 && (
+            {tab === "moves" && (
               <>
-                <div className="ui-label mt-4 mb-1">mistakes you have repeated in other games</div>
-                <div className="flex flex-col gap-1">
-                  {repeated.map((m) => (
-                    <button key={m.id} className="flex items-center gap-2 rounded-ui p-1 text-left text-sm hover:bg-hover" onClick={() => go(m.ply + 1)}>
-                      <VerdictIcon v={verdict(m)} />
-                      <b>{plyLabel(m.ply, m.san)}</b>
-                      <span className="text-muted">played {m.count}× in this position</span>
-                    </button>
-                  ))}
-                </div>
+                {summary}
+                {mistakesCard}
+                {moveList}
               </>
             )}
           </div>
-        </Card>
-
-        <div className="grid gap-[var(--gap)] @2xl:grid-cols-2" data-testid="graph-engine">
-          <Card pad={false} className="min-h-40 overflow-hidden">
-            <EvalGraph wins={wins} ply={ply} classes={classes} exitPly={s.deviation.ply} onPick={go} />
-          </Card>
-          {engineCard}
         </div>
+      </div>
+    );
 
-        <Card data-testid="review-mistakes">
-          <CardHeader
-            title="Mistakes"
-            sub="Inaccuracies, mistakes and blunders, with the engine's move and the win% given up. Click to jump."
-            actions={
-              <Seg
-                value={mistakesOf}
-                onChange={setMistakesOf}
-                options={[
-                  ["me", "Yours"],
-                  ["both", "Both sides"],
-                ]}
-              />
-            }
-          />
-          {mistakes.length === 0 ? (
-            <div className="text-sm text-muted">{progress !== null ? "Analyzing…" : "None: a clean game."}</div>
-          ) : (
-            <table className="ui-table">
-              <tbody>
-                {mistakes.map((i) => {
-                  const best = ev(i)?.lines[0]?.pv[0];
-                  const lost = wins[i] !== undefined && wins[i + 1] !== undefined ? Math.abs(wins[i]! - wins[i + 1]!) : undefined;
-                  const rep = model.moves.find((m) => m.color === s.color && m.fromKey === posKey(fens[i]) && m.uci === ucis[i]);
-                  return (
-                    <tr key={i} className="cursor-pointer" data-hl={ply === i + 1} onClick={() => go(i + 1)}>
-                      <td className="w-6">
-                        <SideIcon c={sideOf(i)} />
-                      </td>
-                      <td className="font-semibold whitespace-nowrap">{plyLabel(i, sans[i])}</td>
-                      <td>
-                        <VerdictChip v={verdicts[i]} />
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {best && (
-                          <>
-                            best <b>{uciToSan(fens[i], best)}</b>
-                          </>
-                        )}
-                      </td>
-                      <td className="num text-right">{lost !== undefined ? `−${lost.toFixed(0)}%` : ""}</td>
-                      <td className="text-xs text-muted">{rep && rep.count > 1 ? `played ${rep.count}× in your games` : tracked.plies[i]?.book === "in" ? "book move" : ""}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </Card>
+  return (
+    <div ref={rootRef} className="grid gap-[var(--gap)] lg:grid-cols-[minmax(0,1fr)_min(560px,45%)] lg:items-start" style={{ ["--board-max" as string]: "calc(100dvh - 19rem)" }} data-layout="desk">
+      {boardColumn}
+      <div className="@container flex min-w-0 flex-col gap-[var(--gap)]">
+        {repCard}
 
-        {/* On a phone the summary and moves come after everything else. */}
-        {!wide && summary}
-        {!wide && moveList}
+        {graphEngine}
+
+        {mistakesCard}
       </div>
     </div>
   );

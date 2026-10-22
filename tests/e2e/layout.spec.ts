@@ -55,3 +55,19 @@ test("review: progress over the board, no header box, closed from the nav item",
   await expect(page.locator("table tbody tr").first()).toBeVisible();
   await page.context().close();
 });
+
+for (const [name, w, h] of SIZES.slice(0, 3))
+  test(`review, ${name}: board and tabbed panel fill the screen, the repertoire and the engine lines in view`, async ({ browser }) => {
+    const page = await open(browser, w, h);
+    await nav(page, "games");
+    await page.locator("table tbody tr").nth(3).click();
+    await expect(page.getByTestId("review-repertoire")).toBeVisible();
+    await page.getByRole("button", { name: "Next move" }).click();
+    await expect(page.locator("[data-layout]")).toHaveAttribute("data-layout", w > 0.8 * h ? "side" : "stack");
+    await expect(page.locator(".board-wrap:visible").first()).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId("review-repertoire").getByText("Your repertoire")).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(1);
+    await page.getByRole("radio", { name: "Engine" }).click();
+    await expect(page.getByTestId("review-engine").locator("[data-testid=engine-line]").first()).toBeInViewport();
+    await page.context().close();
+  });

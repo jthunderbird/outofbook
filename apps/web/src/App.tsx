@@ -587,7 +587,7 @@ export default function App() {
           pickers={pickers}
           toolbar={toolbar}
           status={statusText}
-          hideHead={tab === "play"}
+          hideHead={tab === "play" || tab === "review"}
           focus={tab === "play" || tab === "review"}
           main={main}
           board={boardPanel}
