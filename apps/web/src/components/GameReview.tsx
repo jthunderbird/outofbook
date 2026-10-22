@@ -18,7 +18,7 @@ import { trackLine } from "@outofbook/core/lineTracker";
 import { buildRepertoire } from "@outofbook/core/repertoire";
 import { IS_CAPACITOR } from "../lib/platform";
 import type { Settings } from "../lib/settings";
-import { BAD_VERDICTS, type Line, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
+import { BAD_VERDICTS, type BookStatus, type Line, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
 import { AskClaude } from "./AskClaude";
 import { BookChip, BOOK_COLOR, SideIcon, VERDICT_COLOR, VERDICT_LABEL, VerdictChip, VerdictIcon } from "./bits";
 import { Board, EvalBar, uciArrow, type Arrow } from "./Board";
@@ -116,12 +116,38 @@ export function GameReview({
   );
 
   const [ply, setPly] = useState(0);
+  // Free moves, as in Chesskit: a move on the board that differs from the game
+  // starts a side line from there. Purely exploratory: it lives only while this
+  // review is open and is never saved. `line` is what the board shows: the game,
+  // or the game up to the branch plus the side line.
+  const [side, setSide] = useState<{ from: number; moves: string[] } | null>(null);
+  const line = useMemo(() => {
+    if (!side) return { fens, ucis, sans };
+    const c = new Chess(fens[side.from]);
+    const lf = fens.slice(0, side.from + 1);
+    const lu = ucis.slice(0, side.from);
+    const ls = sans.slice(0, side.from);
+    for (const u of side.moves) {
+      ls.push(c.move(uciParams(u)).san);
+      lu.push(u);
+      lf.push(c.fen());
+    }
+    return { fens: lf, ucis: lu, sans: ls };
+  }, [side, fens, ucis, sans]);
+  const inSide = (i: number) => !!side && i >= side.from;
   const [flip, setFlip] = useState(false);
   const [local, setLocal] = useState<Record<string, PosEval>>({});
   const [progress, setProgress] = useState<number | null>(null);
   const [download, setDownload] = useState<number | null>(null);
   const [mistakesOf, setMistakesOf] = useState<"me" | "both">("me");
-  const go = (p: number) => setPly(Math.max(0, Math.min(ucis.length, p)));
+  // A move of the game (leaves any side line); `step` moves along the line shown.
+  const go = (p: number) => {
+    setSide(null);
+    setPly(Math.max(0, Math.min(ucis.length, p)));
+  };
+  const step = (p: number) => setPly(Math.max(0, Math.min(line.ucis.length, p)));
+  const lineLen = useRef(0);
+  lineLen.current = line.ucis.length;
   const build = settings.engineBuild;
   // Layout from the space the page has, not the device. "desk": the full page
   // (repertoire beside the board, the rest below). Otherwise the board and one
@@ -139,16 +165,16 @@ export function GameReview({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "ArrowRight") setPly((p) => Math.min(ucis.length, p + 1));
+      if (e.key === "ArrowRight") setPly((p) => Math.min(lineLen.current, p + 1));
       else if (e.key === "ArrowLeft") setPly((p) => Math.max(0, p - 1));
       else if (e.key === "Home") setPly(0);
-      else if (e.key === "End") setPly(ucis.length);
+      else if (e.key === "End") setPly(lineLen.current);
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ucis.length]);
+  }, []);
 
   // The full build is 113 MB: downloaded once (with progress), then every worker loads it from the browser cache.
   const [buildReady, setBuildReady] = useState<EngineBuild | null>(build === "lite" ? "lite" : null);
@@ -279,9 +305,54 @@ export function GameReview({
 
   const orientation: Side = flip ? other(s.color) : s.color;
   const focus = ply - 1; // the move just played (-1 at the start)
-  const lastClass = focus >= 0 ? classes[focus] : undefined;
-  const focusNotes = focus >= 0 ? notes[focus] : undefined;
-  const bestBefore = focus >= 0 ? ev(focus)?.lines[0]?.pv[0] : undefined;
+  // A side-line move is judged as a game move is, from the evals of the positions around it.
+  const sideMove = (i: number) => {
+    const f = line.fens[i];
+    const u = line.ucis[i];
+    const b = evKey(posKey(f));
+    const a = evKey(posKey(line.fens[i + 1]));
+    const verdict: Verdict | undefined =
+      !a?.lines.length && new Chess(line.fens[i + 1]).isCheckmate()
+        ? "best"
+        : b?.lines.length && a?.lines.length
+          ? classify({
+              fenBefore: f,
+              played: u,
+              before: b,
+              after: a,
+              prevFen: i > 0 ? line.fens[i - 1] : undefined,
+              prevUci: i > 0 ? line.ucis[i - 1] : undefined,
+              legalCount: new Chess(f).moves().length,
+            })
+          : undefined;
+    const bookHere = bookChildren(f);
+    const inBook = bookHere.some((x) => x.uci === u);
+    const leftBook = bookHere.length > 0 && !inBook;
+    const book: BookStatus = inBook ? "in" : leftBook ? "left" : "after";
+    const best = b?.lines[0]?.pv[0];
+    const um = sideOf(i) === s.color ? usualMove(graph[posKey(f)], u, 0) : undefined;
+    const n = moveNotes({
+      me: s.color,
+      mover: sideOf(i),
+      san: line.sans[i],
+      uci: u,
+      book,
+      leftBook,
+      bookSans: leftBook ? bookHere.map((x) => x.san) : [],
+      node: graph[posKey(f)],
+      thisGame: 0,
+      verdict,
+      before: b,
+      after: a,
+      usualAfter: um ? evKey(posKey(afterMove(f, um.uci))) : undefined,
+      bestSan: best ? uciToSan(f, best) : undefined,
+    });
+    return { verdict, book, notes: n, cls: (book === "in" && !isBad(verdict) ? "book" : verdict) as MoveClass | undefined };
+  };
+  const focusSide = focus >= 0 && inSide(focus) ? sideMove(focus) : undefined;
+  const lastClass = focus >= 0 ? (focusSide ? focusSide.cls : classes[focus]) : undefined;
+  const focusNotes = focus >= 0 ? (focusSide ? focusSide.notes : notes[focus]) : undefined;
+  const bestBefore = focus >= 0 ? evKey(posKey(line.fens[focus]))?.lines[0]?.pv[0] : undefined;
 
   // Live engine on the current position: the cache or Lichess cloud when deep enough, else the chosen build, deepening.
   const [liveEv, setLiveEv] = useState<{ fen: string; ev: PosEval } | null>(null);
@@ -344,7 +415,7 @@ export function GameReview({
   }, [ply]);
   useEffect(() => {
     if (buildReady !== build) return;
-    const fen = fens[ply];
+    const fen = line.fens[ply];
     const legal = new Chess(fen).moves().length;
     if (!legal) return setLiveEv(null);
     const want = Math.min(nLines, legal);
@@ -362,13 +433,16 @@ export function GameReview({
       const cached = await getEval(key, 0);
       if (!live) return;
       setLiveEv(cached && cached.lines.length >= want ? { fen, ev: cached } : null);
-      if (enough(cached)) return;
+      // Side-line positions are judged from these, as game positions are from the pass.
+      const keep = (e: PosEval) => live && setLocal((l) => (l[key] === e ? l : { ...l, [key]: e }));
+      if (enough(cached)) return keep(cached!);
       if (settings.useCloud) {
         const c = await cloudEval(fen, want).catch(() => undefined);
         if (!live) return;
         if (c && c !== "busy" && enough(c)) {
           setLiveEv({ fen, ev: c });
           save(c, cached);
+          keep(c);
           return;
         }
       }
@@ -381,7 +455,10 @@ export function GameReview({
         last = e;
         setLiveEv({ fen, ev: e });
       });
-      if (done) save(done, cached);
+      if (done) {
+        save(done, cached);
+        keep(done);
+      }
     })().catch(() => {});
     return () => {
       live = false;
@@ -390,15 +467,15 @@ export function GameReview({
       if (last && target === 0) void getEval(key, 0).then((prev) => save(last!, prev));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ply, fens, build, buildReady, target, nLines]);
+  }, [ply, line.fens, build, buildReady, target, nLines]);
   useEffect(() => () => engineRef.current?.terminate(), []);
 
-  const cur = liveEv?.fen === fens[ply] ? liveEv.ev : ev(ply);
-  // The move the game played from here, highlighted among the engine lines (or added below them).
-  const playedUci = ply < ucis.length ? ucis[ply] : undefined;
+  const cur = liveEv?.fen === line.fens[ply] ? liveEv.ev : evKey(posKey(line.fens[ply]));
+  // The move played from here (in the game or the side line), highlighted among the engine lines (or added below them).
+  const playedUci = ply < line.ucis.length ? line.ucis[ply] : undefined;
   const engineRows: { line: Line; played: boolean }[] = (cur?.lines ?? []).slice(0, nLines).map((l) => ({ line: l, played: l.pv[0] === playedUci }));
   if (playedUci && cur?.lines.length && !engineRows.some((r) => r.played)) {
-    const after = ev(ply + 1)?.lines[0];
+    const after = evKey(posKey(line.fens[ply + 1]))?.lines[0];
     if (after) engineRows.push({ line: { ...after, pv: [playedUci, ...after.pv] }, played: true });
   }
 
@@ -406,10 +483,10 @@ export function GameReview({
   const arrows: Arrow[] = [];
   const leftBookHere = !!focusNotes?.notes.some((n) => n.kind === "left-book");
   if (focusNotes && (focusNotes.bad || focusNotes.offUsual || focusNotes.better || leftBookHere)) {
-    arrows.push(uciArrow(ucis[focus], "red"));
-    const want = focusNotes.usual?.uci ?? (leftBookHere ? [...bookChildren(fens[focus])].sort((a, b) => b.namedBelow - a.namedBelow)[0]?.uci : undefined);
+    arrows.push(uciArrow(line.ucis[focus], "red"));
+    const want = focusNotes.usual?.uci ?? (leftBookHere ? [...bookChildren(line.fens[focus])].sort((a, b) => b.namedBelow - a.namedBelow)[0]?.uci : undefined);
     if (want) arrows.push(uciArrow(want, "green"));
-    if (bestBefore && bestBefore !== ucis[focus] && bestBefore !== want) arrows.push(uciArrow(bestBefore, "blue"));
+    if (bestBefore && bestBefore !== line.ucis[focus] && bestBefore !== want) arrows.push(uciArrow(bestBefore, "blue"));
   } else if (cur?.lines[0]?.pv[0]) arrows.push(uciArrow(cur.lines[0].pv[0], "green"));
 
   const nextOfClass = (side: Side, k: MoveClass) => {
@@ -419,8 +496,8 @@ export function GameReview({
   };
 
   // Repertoire at the current move: what you (or your opponents) played in the position before it.
-  const at = ply < ucis.length ? ply : ply - 1;
-  const node = at >= 0 ? graph[posKey(fens[at])] : undefined;
+  const at = ply < line.ucis.length ? ply : ply - 1;
+  const node = at >= 0 ? graph[posKey(line.fens[at])] : undefined;
   const mine = sideOf(at) === s.color;
   const same = Object.values(model.games).filter((g) => g.color === s.color && g.opening === s.opening);
   const open = model.openings.find((o) => o.color === s.color && o.name === s.opening);
@@ -437,7 +514,31 @@ export function GameReview({
     ] as [string, number][]
   ).filter(([, i]) => i >= 0);
 
-  const dest = focus >= 0 ? uciParams(ucis[focus]).to : undefined;
+  const dest = focus >= 0 ? uciParams(line.ucis[focus]).to : undefined;
+
+  // A move made on the board: along the game or the side line when it is the
+  // next move there; otherwise it starts (or rewrites) the side line from here.
+  const onBoardMove = (u: string) => {
+    const p = ply;
+    if (side && p >= side.from) {
+      const k = p - side.from;
+      if (side.moves[k] === u) return setPly(p + 1);
+      if (k === 0 && ucis[p] === u) {
+        setSide(null);
+        return setPly(p + 1);
+      }
+      setSide({ from: side.from, moves: [...side.moves.slice(0, k), u] });
+    } else {
+      if (ucis[p] === u) return setPly(p + 1);
+      setSide({ from: p, moves: [u] });
+    }
+    setPly(p + 1);
+  };
+  const backToGame = () => {
+    if (!side) return;
+    setPly(side.from);
+    setSide(null);
+  };
   const destPos = dest ? (orientation === "w" ? { x: dest.charCodeAt(0) - 97, y: 8 - +dest[1] } : { x: 104 - dest.charCodeAt(0), y: +dest[1] - 1 }) : undefined;
 
   const playerBar = (c: Side) => (
@@ -496,7 +597,7 @@ export function GameReview({
   const moveList = (
     <Card>
       <CardHeader title="Moves" sub="Dashed: left the book. Amber dot: not your usual move. Bulb: a better move was available." />
-      <MovesTable sans={sans} ply={ply} classes={classes} notes={notes} me={s.color} exitPly={s.deviation.ply} onPick={go} />
+      <MovesTable sans={sans} ply={side ? side.from : ply} classes={classes} notes={notes} me={s.color} exitPly={s.deviation.ply} onPick={go} />
     </Card>
   );
 
@@ -507,7 +608,7 @@ export function GameReview({
         <div className="flex gap-1.5">
           <EvalBar line={cur?.lines[0]} orientation={orientation} />
           <div className="relative min-w-0 flex-1">
-            <Board fen={fens[ply]} orientation={orientation} arrows={arrows} lastMove={focus >= 0 ? ucis[focus] : undefined} hideEval />
+            <Board fen={line.fens[ply]} orientation={orientation} arrows={arrows} lastMove={focus >= 0 ? line.ucis[focus] : undefined} hideEval movable="both" onMove={onBoardMove} />
             {progress !== null && (
               // On the board while the game is analyzed; the board stays usable under it.
               <div className="pointer-events-none absolute inset-x-2 top-2 z-20 flex flex-col gap-1.5 rounded-ui bg-black/75 px-3 py-2 text-xs text-white" data-testid="review-progress">
@@ -526,16 +627,16 @@ export function GameReview({
         </div>
         {playerBar(orientation)}
         <div className="mt-1 grid grid-cols-5 gap-1.5" data-testid="review-controls">
-          <Button className="h-11!" onClick={() => go(0)} aria-label="First move">
+          <Button className="h-11!" onClick={() => step(0)} aria-label="First move">
             <ChevronsLeft size={22} />
           </Button>
-          <Button className="h-11!" onClick={() => go(ply - 1)} aria-label="Previous move">
+          <Button className="h-11!" onClick={() => step(ply - 1)} aria-label="Previous move">
             <ChevronLeft size={22} />
           </Button>
-          <Button className="h-11!" onClick={() => go(ply + 1)} aria-label="Next move">
+          <Button className="h-11!" onClick={() => step(ply + 1)} aria-label="Next move">
             <ChevronRight size={22} />
           </Button>
-          <Button className="h-11!" onClick={() => go(ucis.length)} aria-label="Last move">
+          <Button className="h-11!" onClick={() => step(line.ucis.length)} aria-label="Last move">
             <ChevronsRight size={22} />
           </Button>
           <Button className="h-11!" onClick={() => setFlip((f) => !f)} aria-label="Flip board">
@@ -549,17 +650,37 @@ export function GameReview({
             <>
               <span className="flex items-center gap-1.5">
                 <VerdictIcon v={lastClass} size={18} />
-                <b>{plyLabel(focus, sans[focus])}</b> is {lastClass === "book" ? "a book move" : lastClass ? VERDICT_LABEL[lastClass] : "being analyzed…"}
+                <b>{plyLabel(focus, line.sans[focus])}</b> is {lastClass === "book" ? "a book move" : lastClass ? VERDICT_LABEL[lastClass] : "being analyzed…"}
               </span>
-              {bestBefore && bestBefore !== ucis[focus] && lastClass && !["book", "forced", "splendid", "perfect"].includes(lastClass) && (
+              {bestBefore && bestBefore !== line.ucis[focus] && lastClass && !["book", "forced", "splendid", "perfect"].includes(lastClass) && (
                 <span className="flex items-center gap-1.5">
                   <VerdictIcon v="best" size={18} />
-                  <b>{uciToSan(fens[focus], bestBefore)}</b> was best
+                  <b>{uciToSan(line.fens[focus], bestBefore)}</b> was best
                 </span>
               )}
             </>
           )}
         </div>
+        {side && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm" data-testid="side-line">
+            <span className="ui-label">side line</span>
+            {side.moves.map((u, k) => {
+              const i = side.from + k;
+              return (
+                <button
+                  key={i}
+                  className={cx("rounded-ui px-1.5 py-0.5", ply === i + 1 ? "bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] font-semibold" : "hover:bg-hover")}
+                  onClick={() => step(i + 1)}
+                >
+                  {plyLabel(i, line.sans[i])}
+                </button>
+              );
+            })}
+            <Button size="sm" variant="secondary" className="ml-auto" onClick={backToGame} data-testid="back-to-game">
+              Back to the game
+            </Button>
+          </div>
+        )}
       </Card>
       {wide && summary}
       {wide && moveList}
@@ -622,15 +743,15 @@ export function GameReview({
                     played
                   </Badge>
                 )}
-                {pvToSan(fens[ply], l.pv, 10).join(" ")}
+                {pvToSan(line.fens[ply], l.pv, 10).join(" ")}
               </span>
             </div>
           ))
         ) : (
-          <span className="text-muted">{new Chess(fens[ply]).moves().length ? "…" : "Game over."}</span>
+          <span className="text-muted">{new Chess(line.fens[ply]).moves().length ? "…" : "Game over."}</span>
         )}
       </div>
-      {focus >= 0 && (
+      {focus >= 0 && !inSide(focus) && (
         <div className="mt-3" key={ply}>
           <AskClaude
             disabled={!ev(focus) || !ev(ply)}
@@ -662,7 +783,7 @@ export function GameReview({
         title="Your repertoire"
         sub={`${s.eco} ${s.opening} · as ${s.color === "w" ? "White" : "Black"} · ${same.length} of your games reached this line`}
         actions={
-          <Button size="sm" onClick={() => onPractice(s.color, ucis.slice(0, ply))} title="Play on from this position against the bot, with the drill on">
+          <Button size="sm" onClick={() => onPractice(s.color, line.ucis.slice(0, ply))} title="Play on from this position against the bot, with the drill on">
             <Dumbbell size={14} /> Practice from here
           </Button>
         }
@@ -684,10 +805,13 @@ export function GameReview({
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                <b>{plyLabel(focus, sans[focus])}</b>
-                <span className="text-muted">({sideOf(focus) === s.color ? "your move" : "opponent's move"})</span>
-                <BookChip s={tracked.plies[focus]?.book ?? "after"} />
-                {sideOf(focus) === s.color && <VerdictChip v={verdicts[focus]} />}
+                <b>{plyLabel(focus, line.sans[focus])}</b>
+                <span className="text-muted">
+                  ({sideOf(focus) === s.color ? "your move" : "opponent's move"}
+                  {focusSide ? ", side line" : ""})
+                </span>
+                <BookChip s={focusSide ? focusSide.book : (tracked.plies[focus]?.book ?? "after")} />
+                {sideOf(focus) === s.color && <VerdictChip v={focusSide ? focusSide.verdict : verdicts[focus]} />}
               </div>
               {focusNotes!.notes.map((n) => (
                 <NoteBox key={n.kind} n={n} />
@@ -712,10 +836,10 @@ export function GameReview({
           )}
           {open && ` In this line you left the book first ${open.userLeft}×, your opponents ${open.opponentLeft}×, and the line ran out ${open.exhausted}×.`}
         </div>
-        {at >= 0 && at < ucis.length && (
+        {at >= 0 && at < line.ucis.length && (
           <>
             <div className="ui-label mb-1">
-              before {plyLabel(at, sans[at])} ({mine ? "your move" : "opponent's move"}) · position reached in {node ? node.count : 0} of your games
+              before {plyLabel(at, line.sans[at])} ({mine ? "your move" : "opponent's move"}) · position reached in {node ? node.count : 0} of your games
             </div>
             {node ? (
               <table className="ui-table" data-testid="review-position">
@@ -730,10 +854,10 @@ export function GameReview({
                 </thead>
                 <tbody>
                   {node.edges.slice(0, 8).map((e) => (
-                    <tr key={e.uci} data-hl={e.uci === ucis[at]}>
+                    <tr key={e.uci} data-hl={e.uci === line.ucis[at]}>
                       <td className="font-semibold whitespace-nowrap">
                         {e.san}
-                        {e.uci === ucis[at] && <span className="ml-2 text-xs font-normal text-muted">this game</span>}
+                        {e.uci === line.ucis[at] && <span className="ml-2 text-xs font-normal text-muted">{inSide(at) ? "your side line" : "this game"}</span>}
                       </td>
                       <td>
                         <BookChip s={e.book} />
@@ -771,7 +895,7 @@ export function GameReview({
   );
   const graphCard = (
     <Card pad={false} className={cx("overflow-hidden", wide ? "min-h-40" : "h-24 shrink-0")}>
-      <EvalGraph wins={wins} ply={ply} classes={classes} exitPly={s.deviation.ply} onPick={go} />
+      <EvalGraph wins={wins} ply={side ? side.from : ply} classes={classes} exitPly={s.deviation.ply} onPick={go} />
     </Card>
   );
   const graphEngine = (

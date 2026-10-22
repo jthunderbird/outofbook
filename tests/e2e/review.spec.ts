@@ -1,6 +1,6 @@
 // The game review page: layout, repertoire alerts, the live engine and its choices.
 import { expect, test, type Page } from "@playwright/test";
-import { analyzed, closeReview, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
+import { analyzed, clickSquare, closeReview, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
 
 test.skip(!hasGames, "needs packages/core/test/fixtures/local/games300.json");
 
@@ -145,4 +145,40 @@ test("phone: the board first, then the repertoire @phone", async ({ page }, info
   const board = await box(page, "review-board");
   const rep = await box(page, "review-repertoire");
   expect(rep.y).toBeGreaterThan(board.y);
+});
+
+test("free moves: a move off the game starts a side line that the engine and repertoire follow; back to the game drops it", async ({ page }) => {
+  const errors = pageErrors(page);
+  await openGame(page);
+  const flip = await page
+    .locator("[data-testid=review-board] .cg-wrap")
+    .first()
+    .evaluate((e) => e.classList.contains("orientation-black"));
+  const first = (await page.locator("[data-testid=review-moves] [data-ply='1']").first().textContent()) ?? "";
+  const [from, to, san] = first.includes("e4") ? ["d2", "d4", "d4"] : ["e2", "e4", "e4"];
+  await clickSquare(page, from, flip);
+  await clickSquare(page, to, flip);
+  const sideLine = page.getByTestId("side-line");
+  await expect(sideLine).toContainText(`1. ${san}`);
+  await expect(page.getByTestId("review-alerts")).toContainText("side line");
+  // The engine analyzes the new position: its lines start with a Black move.
+  await expect(page.getByTestId("engine-line").first()).toBeVisible({ timeout: 60_000 });
+  // A reply extends the side line; the arrows step along it.
+  await clickSquare(page, "g8", flip);
+  await clickSquare(page, "f6", flip);
+  await expect(sideLine).toContainText("1… Nf6");
+  await page.getByRole("button", { name: "Previous move" }).click();
+  await expect(page.getByTestId("review-alerts")).toContainText(`1. ${san}`);
+  // Back to the game: the side line is gone, the board is where it branched.
+  await page.getByTestId("back-to-game").click();
+  await expect(sideLine).toHaveCount(0);
+  await expect(page.getByTestId("review-alerts")).toContainText("Step through the game");
+  // Playing the game's own move just follows the game.
+  if (first.includes("e4")) {
+    await clickSquare(page, "e2", flip);
+    await clickSquare(page, "e4", flip);
+    await expect(page.getByTestId("review-alerts")).toContainText("1. e4");
+    await expect(sideLine).toHaveCount(0);
+  }
+  expect(errors).toEqual([]);
 });
