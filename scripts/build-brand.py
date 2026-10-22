@@ -2,8 +2,9 @@
 # background colour, soft edges by colour-to-alpha), makes light-theme variants (white
 # letters to the dark ink) and the favicon set.
 #   python3 scripts/build-brand.py assets/brand/source <out dir>
-# then copy outofbook-*.png to assets/brand/, web-*.png to apps/web/public/brand/
-# and the favicon and icon files to apps/web/public/. Needs Pillow.
+# then copy outofbook-*.png and play-*.png to assets/brand/, web-*.png to
+# apps/web/public/brand/, and the favicon and icon files to apps/web/public/.
+# apps/android-capacitor/make-icons.py makes the Android launcher icons. Needs Pillow.
 import sys
 from PIL import Image, ImageFilter
 src, out = sys.argv[1], sys.argv[2]
@@ -66,6 +67,35 @@ def square(im, n, pad=0.04):
     c.paste(canvas.resize((inner, inner), Image.LANCZOS), ((n - inner) // 2, (n - inner) // 2))
     return c
 
+def gradient(w, h):
+    """The app-icon background: deep blue at the top left to deep purple at the bottom right
+    (the logo's own blue and purple, darkened), with a soft glow behind the centre."""
+    a, b = (14, 20, 44), (44, 22, 74)
+    cx, cy, rad = w / 2, h / 2, (w * w + h * h) ** 0.5 / 2
+    px = []
+    for y in range(h):
+        for x in range(w):
+            t = (x / w + y / h) / 2
+            g = max(0.0, 1 - (((x - cx) ** 2 + (y - cy) ** 2) ** 0.5) / rad) ** 2 * 0.22
+            px.append(tuple(int(min(255, a[i] * (1 - t) + b[i] * t + 255 * g * (0.35, 0.4, 0.6)[i])) for i in range(3)) + (255,))
+    im = Image.new("RGBA", (w, h))
+    im.putdata(px)
+    return im
+
+def tile(im, n, frac, w=None):
+    """`im` centred on the gradient, `frac` of the shorter side wide/tall."""
+    w = w or n
+    bg = gradient(w, n)
+    s = frac * min(w, n) / max(im.size) if w == n else frac * n / im.size[1]
+    lo = im.resize((round(im.size[0] * s), round(im.size[1] * s)), Image.LANCZOS)
+    at = ((w - lo.size[0]) // 2, (n - lo.size[1]) // 2)
+    # The logo's dark outline, as in the original artwork: its shape grown by a few pixels, in the ink colour.
+    k = max(3, round(min(w, n) / 90)) | 1
+    edge = lo.split()[3].filter(ImageFilter.MaxFilter(k))
+    bg.paste(Image.new("RGBA", lo.size, INK + (255,)), at, edge)
+    bg.paste(lo, at, lo)
+    return bg
+
 icon = cut(f"{src}/outofbook-logo.jpg")
 hor = cut(f"{src}/outofbook-horizontal.jpg")
 named = cut(f"{src}/outofbook-with-name.jpg")
@@ -80,9 +110,15 @@ fit(light(hor), 108).save(f"{out}/web-horizontal-light.png", optimize=True)
 fit(named, 480).save(f"{out}/web-with-name.png", optimize=True)
 fit(light(named), 480).save(f"{out}/web-with-name-light.png", optimize=True)
 fit(icon, 64).save(f"{out}/web-icon.png", optimize=True)
+# Browser tab: the bare logo. App icons: the logo on the gradient.
 square(icon, 32, 0).save(f"{out}/favicon-32.png", optimize=True)
-square(icon, 180, 0.06).save(f"{out}/apple-touch-icon.png", optimize=True)
-square(icon, 192).save(f"{out}/icon-192.png", optimize=True)
-square(icon, 512).save(f"{out}/icon-512.png", optimize=True)
 square(icon, 256, 0).save(f"{out}/favicon.ico", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+store = tile(icon, 512, 0.74)
+store.convert("RGB").save(f"{out}/play-store-icon-512.png", optimize=True)  # Play listing icon (Google rounds the corners)
+store.save(f"{out}/icon-512.png", optimize=True)
+store.resize((192, 192), Image.LANCZOS).save(f"{out}/icon-192.png", optimize=True)
+store.resize((180, 180), Image.LANCZOS).convert("RGB").save(f"{out}/apple-touch-icon.png", optimize=True)
+tile(icon, 512, 0.58).save(f"{out}/icon-maskable-512.png", optimize=True)  # inside the 80% safe zone
+gradient(432, 432).save(f"{out}/android-icon-background.png", optimize=True)  # adaptive-icon background
+tile(hor, 500, 0.46, 1024).convert("RGB").save(f"{out}/play-feature-graphic-1024x500.png", optimize=True)
 print("done", icon.size, hor.size, named.size)

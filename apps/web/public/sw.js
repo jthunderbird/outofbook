@@ -4,7 +4,7 @@
 // bundles never change and are served from the cache; other files (engines,
 // Maia, icons) are served from the cache and refreshed in the background.
 // The API and other sites are never cached.
-const CACHE = "outofbook-v2";
+const CACHE = "outofbook-v3";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.add("/")));
