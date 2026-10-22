@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Chess } from "chess.js";
 import { AlertTriangle, Bot, DoorOpen, Download, FileSearch, Gem, GitBranch, LayoutDashboard, ListOrdered, LogOut, Minus, Plus, Settings as Gear, SignpostBig, Sparkles } from "lucide-react";
 import { LichessIcon } from "./components/LichessIcon";
-import { account as lichessAccount, completeLogin, login, logout } from "./lib/auth";
+import { account as lichessAccount, completeLogin, login, logout, onAppLogin } from "./lib/auth";
 import { hasAuth, loadSavedGames, me, saveGames, type Me } from "./lib/server";
 import { localModel, modelHash, saveLocalModel, saveServerModel, serverModel } from "./lib/modelStore";
 import { runAnalysis, type AnalysisProgress } from "./lib/analysis";
@@ -95,13 +95,19 @@ export default function App() {
 
   // Login redirect, account, and the last import (kept in IndexedDB for quick PoC reloads).
   useEffect(() => {
+    const finish = async (t: string | null) => {
+      setToken(t);
+      if (t) setUsername((await lichessAccount(t))?.username ?? "");
+      setAccount(await me());
+    };
     completeLogin()
-      .then(async (t) => {
-        setToken(t);
-        if (t) setUsername((await lichessAccount(t))?.username ?? "");
-        setAccount(await me());
-      })
+      .then(finish)
       .catch((e) => alert(String(e)));
+    onAppLogin((url) =>
+      completeLogin(url)
+        .then(finish)
+        .catch((e) => alert(String(e))),
+    );
     // Games: this browser's copy, else (new device, cleared browser) the account's saved games.
     // performance marks: startup timing for the hybrid PoC measurements.
     performance.mark("oob-start");

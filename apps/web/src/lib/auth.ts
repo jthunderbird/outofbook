@@ -5,7 +5,16 @@ const CLIENT_ID = "outofbook-poc";
 // Board API: play games from our own board; preferences: play with the user's own Lichess board settings.
 const SCOPES = "board:play preference:read";
 
-const redirectUri = () => `${location.origin}/`;
+import { IS_CAPACITOR } from "./platform";
+
+// The bundled Android app logs in through the phone's browser (the password is never typed inside
+// the app) and comes back through an app link, <package name>://oauth: Lichess accepts
+// reverse-domain schemes. A redirect from lichess.org to the app's own https://localhost does not
+// reach the bundled app in the WebView, so that cannot be used.
+const APP_REDIRECT = `${import.meta.env.VITE_APP_ID}://oauth`;
+const redirectUri = () => (IS_CAPACITOR ? APP_REDIRECT : `${location.origin}/`);
+// The app may be closed while the browser is open, so it keeps the PKCE secret in localStorage.
+const pending = () => (IS_CAPACITOR ? localStorage : sessionStorage);
 const b64url = (buf: ArrayBuffer | Uint8Array) =>
   btoa(String.fromCharCode(...new Uint8Array(buf as ArrayBuffer)))
     .replace(/\+/g, "-")
@@ -16,7 +25,7 @@ export async function login() {
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   const state = b64url(crypto.getRandomValues(new Uint8Array(12)));
-  sessionStorage.setItem("oauth", JSON.stringify({ verifier, state }));
+  pending().setItem("oauth", JSON.stringify({ verifier, state }));
   const q = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_ID,
@@ -29,13 +38,14 @@ export async function login() {
   location.href = `${LICHESS}/oauth?${q}`;
 }
 
-/** Call on page load: finishes a login redirect if there is one. */
-export async function completeLogin(): Promise<string | null> {
-  const q = new URLSearchParams(location.search);
+/** Call on page load (or with the app link the Android app was opened by): finishes a login redirect if there is one. */
+export async function completeLogin(url = location.href): Promise<string | null> {
+  const q = new URL(url).searchParams;
   const code = q.get("code");
   if (!code) return getToken();
-  const saved = JSON.parse(sessionStorage.getItem("oauth") ?? "{}");
-  history.replaceState(null, "", "/");
+  const saved = JSON.parse(pending().getItem("oauth") ?? "{}");
+  pending().removeItem("oauth");
+  if (!IS_CAPACITOR) history.replaceState(null, "", "/");
   if (q.get("state") !== saved.state) throw new Error("OAuth state mismatch");
   const res = await fetch(`${LICHESS}/api/token`, {
     method: "POST",
@@ -52,6 +62,15 @@ export async function completeLogin(): Promise<string | null> {
   const token = (await res.json()).access_token as string;
   localStorage.setItem("lichessToken", token);
   return token;
+}
+
+/** The bundled Android app: calls `done` with the app link Lichess sends the user back with. */
+export function onAppLogin(done: (url: string) => void) {
+  if (!IS_CAPACITOR) return;
+  import("@capacitor/app").then(({ App }) => {
+    App.addListener("appUrlOpen", (e) => e.url.startsWith(APP_REDIRECT) && done(e.url));
+    App.getLaunchUrl().then((l) => l?.url.startsWith(APP_REDIRECT) && done(l.url));
+  });
 }
 
 export const getToken = () => {

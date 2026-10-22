@@ -3,8 +3,7 @@
   "appName": "OutOfBook",
   "webDir": "www",
   "server": {
-    "androidScheme": "https",
-    "allowNavigation": ["lichess.org"]
+    "androidScheme": "https"
   },
   "android": {
     "backgroundColor": "#0D1117"
