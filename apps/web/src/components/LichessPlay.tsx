@@ -58,6 +58,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
   const [incoming, setIncoming] = useState<Incoming[]>([]);
   const [gameId, setGameId] = useState<string | null>(null);
   const [demo, setDemo] = useState(false);
+  const [startingAi, setStartingAi] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<LichessPrefs | null>(cachedPrefs);
 
@@ -99,7 +100,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
         }
       },
       ac.signal,
-    ).catch((x) => !ac.signal.aborted && setErr(String(x)));
+    ).catch((x) => !ac.signal.aborted && setErr(`Lost the connection to Lichess (${String(x)}). Log in again if this persists.`));
     return () => ac.abort();
   }, [canPlay, token, username]);
 
@@ -322,12 +323,20 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
               <Button
                 variant="primary"
                 className="w-full"
+                disabled={startingAi}
                 onClick={() => {
                   const [m, i] = aiTc.split("+").map(Number);
-                  challengeAi(token, level, m, i, aiColor).catch((e) => setErr(String(e)));
+                  setErr(null);
+                  setStartingAi(true);
+                  // The answer names the game: open it now rather than wait for the event stream.
+                  challengeAi(token, level, m, i, aiColor)
+                    .then((id) => setGameId(id))
+                    .catch((e) => setErr(String(e)))
+                    .finally(() => setStartingAi(false));
                 }}
+                data-testid="play-ai"
               >
-                Play
+                {startingAi ? <Loader2 size={15} className="animate-spin" /> : null} {startingAi ? "Starting…" : "Play"}
               </Button>
             </div>
           </div>

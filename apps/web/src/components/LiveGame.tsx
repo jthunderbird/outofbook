@@ -110,7 +110,7 @@ function material(fen: string) {
 
 /** What the live screen needs from Lichess; the demo stands in for it offline. */
 interface Conn {
-  stream: (onFull: (g: GameFull) => void, onState: (s: GameState) => void, onGone: (o: OpponentGone) => void, signal: AbortSignal) => Promise<void>;
+  stream: (onFull: (g: GameFull) => void, onState: (s: GameState) => void, onGone: (o: OpponentGone) => void, signal: AbortSignal, onLink: (up: boolean) => void) => Promise<void>;
   move: (uci: string) => Promise<void>;
   abort: () => Promise<void>;
   resign: () => Promise<void>;
@@ -120,7 +120,7 @@ interface Conn {
 }
 
 const realConn = (token: string, id: string): Conn => ({
-  stream: (f, st, gone, sig) => streamGame(token, id, f, st, gone, sig),
+  stream: (f, st, gone, sig, link) => streamGame(token, id, f, st, gone, sig, link),
   move: (u) => sendMove(token, id, u),
   abort: () => abort(token, id),
   resign: () => resign(token, id),
@@ -290,6 +290,8 @@ export function LiveGame({
       return !v;
     });
   const [hideEnd, setHideEnd] = useState(false);
+  // False while the game stream is down and being reopened.
+  const [linkUp, setLinkUp] = useState(true);
   // Opponent left: when Lichess opens the claim (our clock time), or null.
   const [goneUntil, setGoneUntil] = useState<number | null>(null);
   const myColorRef = useRef<Side>("w");
@@ -334,6 +336,7 @@ export function LiveGame({
         },
         (o) => setGoneUntil(o.gone ? Date.now() + 1000 * (o.claimWinInSeconds ?? 0) : null),
         ac.signal,
+        setLinkUp,
       )
       .catch((x) => !ac.signal.aborted && setErr(String(x)));
     return () => ac.abort();
@@ -713,7 +716,11 @@ export function LiveGame({
         <span className="hidden items-center gap-1.5 font-semibold whitespace-nowrap text-fg sm:flex">
           <img src="/brand/web-icon.png" alt="" className="h-4 w-auto" /> OutOfBook
         </span>
-        {live ? (
+        {live && !linkUp ? (
+          <span className="flex items-center gap-1 font-semibold whitespace-nowrap" style={{ color: "var(--warn)" }} data-testid="reconnecting">
+            <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--warn)" }} /> RECONNECTING
+          </span>
+        ) : live ? (
           <span className="flex items-center gap-1 font-semibold whitespace-nowrap" style={{ color: "var(--bad)" }}>
             <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--bad)" }} /> LIVE
           </span>

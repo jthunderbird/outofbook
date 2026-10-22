@@ -28,42 +28,148 @@ export interface OpponentGone {
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-/** Reads an NDJSON stream line by line until aborted. */
-async function ndjson(res: Response, onLine: (o: Record<string, unknown>) => void, signal?: AbortSignal) {
-  const reader = res.body!.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  while (!signal?.aborted) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let nl;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (line) onLine(JSON.parse(line));
+class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    what: string,
+  ) {
+    super(`${what}: HTTP ${status}`);
+  }
+}
+
+// Lichess sends a keep-alive line every few seconds on its streams, so this
+// long a silence means the connection died (a phone asleep, a network change)
+// without the browser noticing.
+const STALL_MS = 20_000;
+
+/** One NDJSON stream, read line by line until it ends, stalls or is aborted. */
+async function readStream(url: string, token: string, what: string, onLine: (o: Record<string, unknown>) => void, signal: AbortSignal) {
+  const ac = new AbortController();
+  const stop = () => ac.abort();
+  signal.addEventListener("abort", stop);
+  let timer = setTimeout(stop, STALL_MS);
+  const alive = () => {
+    clearTimeout(timer);
+    timer = setTimeout(stop, STALL_MS);
+  };
+  try {
+    const res = await fetch(url, { headers: auth(token), signal: ac.signal });
+    if (!res.ok) throw new HttpError(res.status, what);
+    alive();
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      alive();
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) onLine(JSON.parse(line));
+      }
     }
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", stop);
+  }
+}
+
+/** Waits `ms`, or less if the page comes back to the foreground or the network returns. */
+function pause(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(t);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("online", done);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const onVis = () => document.visibilityState === "visible" && done();
+    const t = setTimeout(done, ms);
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("online", done);
+    signal.addEventListener("abort", done);
+  });
+}
+
+/**
+ * Keeps a Lichess stream open until aborted or `finished()` says it is over:
+ * a dropped or stalled connection is opened again at once when the page comes
+ * back, else after 1 s, 2 s, 4 s… (at most 10 s; a minute after a 429, as
+ * Lichess asks). `onLink` reports whether the stream is up. Only a refused
+ * login or a missing game ends it with an error.
+ */
+async function keepOpen(
+  url: string,
+  token: string,
+  what: string,
+  onLine: (o: Record<string, unknown>) => void,
+  signal: AbortSignal,
+  onLink?: (up: boolean) => void,
+  finished: () => boolean = () => false,
+) {
+  let wait = 1000;
+  while (!signal.aborted) {
+    try {
+      await readStream(
+        url,
+        token,
+        what,
+        (o) => {
+          wait = 1000;
+          onLink?.(true);
+          onLine(o);
+        },
+        signal,
+      );
+    } catch (e) {
+      if (signal.aborted) return;
+      if (e instanceof HttpError && [400, 401, 403, 404].includes(e.status)) throw e;
+      if (e instanceof HttpError && e.status === 429) wait = 60_000;
+    }
+    if (signal.aborted || finished()) return;
+    onLink?.(false);
+    await pause(wait, signal);
+    wait = Math.min(wait * 2, 10_000);
   }
 }
 
 /** Incoming events (gameStart, gameFinish, challenge…). */
-export async function streamEvents(token: string, onEvent: (e: Record<string, unknown>) => void, signal: AbortSignal) {
-  const res = await fetch(`${API}/stream/event`, { headers: auth(token), signal });
-  if (!res.ok) throw new Error(`Event stream: HTTP ${res.status}`);
-  await ndjson(res, onEvent, signal);
+export function streamEvents(token: string, onEvent: (e: Record<string, unknown>) => void, signal: AbortSignal, onLink?: (up: boolean) => void) {
+  return keepOpen(`${API}/stream/event`, token, "Event stream", onEvent, signal, onLink);
 }
 
-export async function streamGame(token: string, id: string, onFull: (g: GameFull) => void, onState: (s: GameState) => void, onGone: (o: OpponentGone) => void, signal: AbortSignal) {
-  const res = await fetch(`${API}/board/game/stream/${id}`, { headers: auth(token), signal });
-  if (!res.ok) throw new Error(`Game stream: HTTP ${res.status}`);
-  await ndjson(
-    res,
+/** The game's moves and clocks. Each reconnect starts with a fresh gameFull, so nothing is missed. */
+export function streamGame(
+  token: string,
+  id: string,
+  onFull: (g: GameFull) => void,
+  onState: (s: GameState) => void,
+  onGone: (o: OpponentGone) => void,
+  signal: AbortSignal,
+  onLink?: (up: boolean) => void,
+) {
+  let status = "started";
+  return keepOpen(
+    `${API}/board/game/stream/${id}`,
+    token,
+    "Game stream",
     (o) => {
-      if (o.type === "gameFull") onFull(o as unknown as GameFull);
-      else if (o.type === "gameState") onState(o as unknown as GameState);
-      else if (o.type === "opponentGone") onGone(o as unknown as OpponentGone);
+      if (o.type === "gameFull") {
+        onFull(o as unknown as GameFull);
+        status = (o as unknown as GameFull).state.status;
+      } else if (o.type === "gameState") {
+        onState(o as unknown as GameState);
+        status = (o as unknown as GameState).status;
+      } else if (o.type === "opponentGone") onGone(o as unknown as OpponentGone);
     },
     signal,
+    onLink,
+    // Lichess closes the stream once the game is over.
+    () => !["created", "started"].includes(status),
   );
 }
 
@@ -110,7 +216,20 @@ export async function challengeUser(
   });
   if (!res.ok) throw new Error(`Challenge: HTTP ${res.status} ${await res.text()}`);
   let result = "sent";
-  await ndjson(res, (o2) => (result = String((o2 as { done?: string }).done ?? result)), signal);
+  const reader = res.body!.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (!signal.aborted) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) result = String((JSON.parse(line) as { done?: string }).done ?? result);
+    }
+  }
   return result; // "accepted", "declined", "canceled", …
 }
 
@@ -126,7 +245,16 @@ const post = async (token: string, path: string) => {
   const res = await fetch(`${API}/board/game/${path}`, { method: "POST", headers: auth(token) });
   if (!res.ok) throw new Error(`${path}: HTTP ${res.status} ${await res.text()}`);
 };
-export const sendMove = (token: string, id: string, uci: string) => post(token, `${id}/move/${uci}`);
+/** A move; sent once more if the network dropped the first try (Lichess refuses a duplicate harmlessly). */
+export const sendMove = (token: string, id: string, uci: string) =>
+  post(token, `${id}/move/${uci}`).catch(async (e) => {
+    if (!(e instanceof TypeError)) throw e;
+    await new Promise((r) => setTimeout(r, 800));
+    // A 400 now most likely means the first try did arrive; the stream shows the move.
+    return post(token, `${id}/move/${uci}`).catch((e2) => {
+      if (!/HTTP 400/.test(String(e2))) throw e2;
+    });
+  });
 export const resign = (token: string, id: string) => post(token, `${id}/resign`);
 export const abort = (token: string, id: string) => post(token, `${id}/abort`);
 export const offerDraw = (token: string, id: string) => post(token, `${id}/draw/yes`);
