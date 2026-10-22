@@ -55,8 +55,10 @@ export function ImportPanel({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className={cx("grid items-end gap-2.5", compact ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-[130px_1fr_110px_150px_110px_auto]")}>
+    <div className="@container flex flex-col gap-3">
+      {/* Wraps by the panel's own width, not the screen's: with a nav pane open on a
+          tablet or an unfolded phone the panel is far narrower than the window. */}
+      <div className={cx("grid items-end gap-2.5", compact ? "grid-cols-2" : "grid-cols-2 @lg:grid-cols-3 @4xl:grid-cols-[130px_minmax(160px,1fr)_110px_150px_110px_auto]")}>
         <Field label="Site">
           <Select
             value={f.site}
@@ -67,7 +69,7 @@ export function ImportPanel({
             ]}
           />
         </Field>
-        <Field label="Username">
+        <Field label="Username" className={compact ? "" : "@max-lg:order-first @max-lg:col-span-2 @lg:col-span-2 @4xl:col-span-1"}>
           <Input aria-label="Username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value.trim() })} placeholder="your username" />
         </Field>
         <Field label="Last N games">
@@ -87,7 +89,7 @@ export function ImportPanel({
             ]}
           />
         </Field>
-        <Button variant="primary" onClick={run} disabled={busy || !f.username} className={compact ? "col-span-2" : ""}>
+        <Button variant="primary" onClick={run} disabled={busy || !f.username} className={compact ? "col-span-2" : "col-span-2 @lg:col-span-3 @4xl:col-span-1"}>
           <Download size={15} /> Load games
         </Button>
       </div>
