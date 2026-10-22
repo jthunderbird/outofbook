@@ -19,5 +19,8 @@ export default defineConfig({
     headers: isolationHeaders,
     proxy: { "/api": process.env.API_URL ?? "http://localhost:8080" },
   },
+  // Old Android WebViews run the bundled app (a OnePlus 8 Pro on Android 11 had Chrome 90; stock
+  // Android 11 ships 83): newer syntax is compiled down for them.
+  build: { target: ["chrome80", "edge88", "firefox78", "safari14"] },
   worker: { format: "es" },
 });

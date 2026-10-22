@@ -3,10 +3,12 @@
   "appName": "OutOfBook",
   "webDir": "www",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "errorPath": "webview-too-old.html"
   },
   "android": {
-    "backgroundColor": "#0D1117"
+    "backgroundColor": "#0D1117",
+    "minWebViewVersion": 100
   },
   "plugins": {
     "SystemBars": {
