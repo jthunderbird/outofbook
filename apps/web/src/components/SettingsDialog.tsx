@@ -122,7 +122,7 @@ function AccountSection() {
     <section className="flex flex-col gap-3" data-testid="account-section">
       <div className="ui-h2">Account and privacy</div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-        <a className="ui-link" href="https://chess.conft.io/privacy.html" target="_blank" rel="noreferrer">
+        <a className="ui-link" href="https://outofbook.net/privacy.html" target="_blank" rel="noreferrer">
           Privacy policy
         </a>
         <a className="ui-link" href="https://github.com/jthunderbird/outofbook" target="_blank" rel="noreferrer">

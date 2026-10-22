@@ -11,7 +11,7 @@ const out = join(here, "www");
 execFileSync("npx", ["vite", "build", "--outDir", out, "--emptyOutDir"], {
   cwd: join(here, "../web"),
   stdio: "inherit",
-  env: { ...process.env, VITE_TARGET: "capacitor", VITE_API_BASE: process.env.VITE_API_BASE ?? "https://chess.conft.io" },
+  env: { ...process.env, VITE_TARGET: "capacitor", VITE_API_BASE: process.env.VITE_API_BASE ?? "https://outofbook.net" },
 });
 for (const f of ["engines/stockfish-18/stockfish-18-single.js", "engines/stockfish-18/stockfish-18-single.wasm", "sw.js", ".well-known", "privacy.html", "delete-account.html"])
   rmSync(join(out, f), { recursive: true, force: true });
