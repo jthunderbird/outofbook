@@ -38,6 +38,9 @@ interface Incoming {
   tc: string;
 }
 
+// The offline demo of the game screen is for tests: open the app with ?demo.
+const SHOW_DEMO = new URLSearchParams(location.search).has("demo");
+
 export function LichessPlay({ token, username, onLiveChange, onReview }: { token: string | null; username: string; onLiveChange: (live: boolean) => void; onReview: (g: RawGame) => void }) {
   const [scopes, setScopes] = useState<string | null>(null);
   const [live, setLive] = useState<LiveSettings>(loadLive);
@@ -103,7 +106,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
   const demoGame = demo && (
     <LiveGame demo token="" gameId="demo" username={username} settings={live} prefs={prefs} onLiveChange={() => {}} onExit={() => setDemo(false)} onReview={(g) => (setDemo(false), onReview(g))} />
   );
-  const demoButton = (
+  const demoButton = SHOW_DEMO && (
     <Button onClick={() => setDemo(true)} data-testid="live-demo">
       <MonitorPlay size={15} /> Preview the live game screen (offline demo)
     </Button>
@@ -377,7 +380,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
             />
             <Switch checked={live.autoFullscreen} onChange={(v) => setL({ autoFullscreen: v })} label="Go full screen when a game starts" />
           </div>
-          <div className="mt-4">{demoButton}</div>
+          {demoButton && <div className="mt-4">{demoButton}</div>}
           <div className="mt-3 flex items-center gap-2 text-xs text-muted">
             Logged in as <Badge tone="accent">{username || "?"}</Badge>
           </div>

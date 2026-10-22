@@ -41,7 +41,6 @@ export async function putEvals(entries: [string, PosEval][]) {
   await tx.done;
 }
 export const putEval = async (key: string, e: PosEval) => (await db()).put("evals", e, key);
-export const countEvals = async () => (await db()).count("evals");
 export const clearEvals = async () => (await db()).clear("evals");
 export const kvGet = async <T>(k: string) => (await (await db()).get("kv", k)) as T | undefined;
 export const kvSet = async (k: string, v: unknown) => (await db()).put("kv", v, k);

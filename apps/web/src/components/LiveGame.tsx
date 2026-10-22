@@ -138,19 +138,21 @@ function demoConn(username: string): Conn {
   let at = Date.now();
   let onS: ((s: GameState) => void) | undefined;
   const list = () => st.moves.split(" ").filter(Boolean);
-  const push = (p: Partial<GameState>) => {
+  const push = (p: Partial<GameState>, echoMs = 0) => {
     st = { ...st, ...p };
     at = Date.now();
-    onS?.(st);
+    const snap = st;
+    if (echoMs) setTimeout(() => onS?.(snap), echoMs);
+    else onS?.(snap);
   };
-  const play = (uci: string) => {
+  const play = (uci: string, echoMs = 0) => {
     const ms = list();
     const side = ms.length % 2 === 0 ? "wtime" : "btime";
     const spent = ms.length >= 2 ? Date.now() - at : 0;
     const c = new Chess();
     for (const m of [...ms, uci]) c.move(uciParams(m));
     const end: Partial<GameState> = c.isCheckmate() ? { status: "mate", winner: c.turn() === "w" ? "black" : "white" } : c.isDraw() ? { status: "draw" } : {};
-    push({ moves: [...ms, uci].join(" "), [side]: st[side] - spent + (ms.length >= 2 ? inc : 0), ...end });
+    push({ moves: [...ms, uci].join(" "), [side]: st[side] - spent + (ms.length >= 2 ? inc : 0), ...end }, echoMs);
     return c;
   };
   return {
@@ -169,7 +171,8 @@ function demoConn(username: string): Conn {
       return new Promise((r) => signal.addEventListener("abort", () => r()));
     },
     move: async (uci) => {
-      const c = play(uci);
+      // Our move comes back after a network-like delay, as from Lichess.
+      const c = play(uci, 150);
       if (c.isGameOver()) return;
       setTimeout(
         () => {
@@ -268,11 +271,15 @@ export function LiveGame({
 }) {
   const [full, setFull] = useState<GameFull | null>(null);
   const [state, setState] = useState<GameState | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
+  // My move, shown before Lichess echoes it; `base` is the server's move count
+  // when it was sent, so the echo itself retires it (no frame with it twice).
+  const [sent, setSent] = useState<{ uci: string; base: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [viewPly, setViewPly] = useState<number | null>(null);
   const [finished, setFinished] = useState<RawGame | null>(null);
+  // Rating changes once the game is over, as Lichess shows them by the names.
+  const [diffs, setDiffs] = useState<Partial<Record<Side, number>>>({});
   const [isFs, setIsFs] = useState(!!document.fullscreenElement);
   // Read and saved here, not from `settings`: the switch is in the game screen
   // and must hold for the next game too.
@@ -352,7 +359,7 @@ export function LiveGame({
 
   // Moves (with my own move shown immediately, before Lichess echoes it).
   const serverMoves = useMemo(() => (state?.moves ?? "").split(" ").filter(Boolean), [state?.moves]);
-  useEffect(() => setPending(null), [serverMoves.length]);
+  const pending = sent && sent.base === serverMoves.length ? sent.uci : null;
   const moves = useMemo(() => (pending ? [...serverMoves, pending] : serverMoves), [serverMoves, pending]);
   const fens = useMemo(() => {
     const c = new Chess();
@@ -417,10 +424,26 @@ export function LiveGame({
         rated: false,
         sans,
       });
+      if (state.winner) setDiffs(state.winner === "white" ? { w: 7, b: -7 } : { w: -7, b: 7 });
       return;
     }
-    exportGame(gameId)
+    let stop = false;
+    // Lichess fills in a rated game's rating changes a moment after it ends.
+    const load = async (tries: number): Promise<Awaited<ReturnType<typeof exportGame>> | undefined> => {
+      const g = await exportGame(gameId);
+      if (stop) return;
+      const dw = g.players.white.ratingDiff as number | undefined;
+      const db = g.players.black.ratingDiff as number | undefined;
+      if (g.rated && dw === undefined && tries > 1) {
+        await new Promise((r) => setTimeout(r, 1500));
+        return stop ? undefined : load(tries - 1);
+      }
+      setDiffs({ w: dw, b: db });
+      return g;
+    };
+    load(4)
       .then((g) => {
+        if (!g) return;
         const white = g.players.white.user?.name ?? `Lichess AI ${g.players.white.aiLevel ?? ""}`;
         const black = g.players.black.user?.name ?? `Lichess AI ${g.players.black.aiLevel ?? ""}`;
         setFinished({
@@ -438,6 +461,9 @@ export function LiveGame({
         });
       })
       .catch(() => {});
+    return () => {
+      stop = true;
+    };
   }, [gameId, state, live, username, demo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const me = username.toLowerCase();
@@ -468,14 +494,14 @@ export function LiveGame({
     const t = Date.now();
     localMove.current = { at: t, mine: clockMs(myColor, t) + (serverMoves.length >= 2 ? increment : 0) };
     sentAt.current = t;
-    setPending(uci);
+    setSent({ uci, base: serverMoves.length });
     try {
       playMoveSound(g.soundSet, new Chess(fens.out[fens.out.length - 1]).move(uciParams(uci)).san);
     } catch {
       /* illegal: Lichess will refuse it */
     }
     conn.move(uci).catch((e) => {
-      setPending(null);
+      setSent(null);
       sentAt.current = 0;
       setErr(String(e));
     });
@@ -580,6 +606,11 @@ export function LiveGame({
         <div className="flex max-w-full min-w-0 items-baseline gap-2">
           <span className="truncate text-[1.05rem] font-semibold">{name(p)}</span>
           <span className="num text-sm text-muted">{rating(p)}</span>
+          {diffs[side] !== undefined && (
+            <span className="num text-sm font-semibold" style={{ color: diffs[side]! > 0 ? "var(--good)" : diffs[side]! < 0 ? "var(--bad)" : undefined }} data-testid="rating-diff">
+              {diffs[side]! > 0 ? `+${diffs[side]}` : diffs[side] === 0 ? "±0" : diffs[side]}
+            </span>
+          )}
         </div>
         <div className="flex h-6 items-center gap-0.5 text-lg leading-none text-muted" title="Material">
           {extra.map((k, i) => (
@@ -805,6 +836,7 @@ function ClockFace({
       className={cx("ui-card num flex items-center justify-center font-bold tracking-tight", flash > 0 && "clock-flash")}
       data-testid="clock"
       data-level={level}
+      data-active={active}
       style={{
         height,
         fontSize: wide ? `min(26cqw, calc(${height} * 0.72))` : `min(16cqw, calc(${height} * 0.72))`,

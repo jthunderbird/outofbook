@@ -104,12 +104,24 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
   }, [fen]);
 
   const hasOnMove = !!onMove;
+  // King onto its own rook (Lichess's rookCastle pref) arrives as e1h1; the
+  // rest of the app speaks e1g1.
+  const castles = useRef(new Map<string, string>());
   const arrowsKey = arrows.map((a) => a.join()).join("|");
   const config = useMemo<Config>(() => {
     const turn = (chess?.turn() ?? "w") as Side;
     const dests = new Map<Key, Key[]>();
+    castles.current.clear();
     if (chess && movable && (movable === "both" || movable === turn)) {
-      for (const m of chess.moves({ verbose: true })) dests.set(m.from as Key, [...(dests.get(m.from as Key) ?? []), m.to as Key]);
+      for (const m of chess.moves({ verbose: true })) {
+        dests.set(m.from as Key, [...(dests.get(m.from as Key) ?? []), m.to as Key]);
+        const side = m.flags.includes("k") ? "h" : m.flags.includes("q") ? "a" : null;
+        if (side && (feel.rookCastle ?? true)) {
+          const rook = (side + m.from[1]) as Key;
+          dests.get(m.from as Key)!.push(rook);
+          castles.current.set(m.from + rook, m.from + m.to);
+        }
+      }
     }
     const canMove = !!movable && hasOnMove;
     return {
@@ -157,7 +169,7 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
             const queen = autoQueen.current === 3 || (autoQueen.current === 2 && meta?.premove);
             if (promotes && queen) onMoveRef.current?.(from + to + "q");
             else if (promotes) setPromo({ from, to });
-            else onMoveRef.current?.(from + to);
+            else onMoveRef.current?.(castles.current.get(from + to) ?? from + to);
           },
         },
       },

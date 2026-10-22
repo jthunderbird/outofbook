@@ -11,7 +11,7 @@ import { askRepertoire } from "./lib/claude";
 import { IN_APP } from "./lib/platform";
 import { posKey, START_FEN, uciToSan } from "@outofbook/core/chess";
 import { defaultPoolSize } from "./lib/engine";
-import { countEvals, kvGet, kvSet } from "./lib/evalCache";
+import { kvGet, kvSet } from "./lib/evalCache";
 import { findPath } from "@outofbook/core/repertoire";
 import { loadSettings, saveSettings, type Settings } from "./lib/settings";
 import { BAD_VERDICTS, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
@@ -200,7 +200,6 @@ export default function App() {
     run.finished.then(() => {
       clearInterval(tick);
       setVersion((v) => v + 1);
-      countEvals().then((n) => console.log(`eval cache: ${n} positions`));
     });
   };
 
