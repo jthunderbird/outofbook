@@ -460,48 +460,48 @@ cg-board {
   background-image: conic-gradient(var(--board-dark) 0 25%, var(--board-light) 0 50%, var(--board-dark) 0 75%, var(--board-light) 0);
   background-size: 25% 25%;
 }
-/* Highlights in warm colors that stand out on the blue board (Lichess's
-   greens disappear on it): orange for the selected piece and where it can go,
-   yellow for the last move, magenta for premoves. */
+/* Highlights: a clear green for the selected piece and where it can go, a
+   soft yellow for the last move, a muted violet for premoves (darker for
+   each later queued premove). Visible on the blue board without shouting. */
 cg-board square.move-dest {
-  background: radial-gradient(rgba(255, 140, 26, 0.85) 22%, rgba(0, 0, 0, 0) 0);
+  background: radial-gradient(rgba(60, 150, 80, 0.6) 22%, rgba(0, 0, 0, 0) 0);
 }
 cg-board square.oc.move-dest {
-  background: radial-gradient(transparent 0%, transparent 79%, rgba(255, 140, 26, 0.9) 80%);
+  background: radial-gradient(transparent 0%, transparent 79%, rgba(60, 150, 80, 0.65) 80%);
 }
 cg-board square.move-dest:hover {
-  background: rgba(255, 140, 26, 0.45);
+  background: rgba(60, 150, 80, 0.35);
 }
 cg-board square.premove-dest {
-  background: radial-gradient(rgba(220, 70, 220, 0.8) 22%, rgba(0, 0, 0, 0) 0);
+  background: radial-gradient(rgba(125, 90, 165, 0.6) 22%, rgba(0, 0, 0, 0) 0);
 }
 cg-board square.oc.premove-dest {
-  background: radial-gradient(transparent 0%, transparent 79%, rgba(220, 70, 220, 0.85) 80%);
+  background: radial-gradient(transparent 0%, transparent 79%, rgba(125, 90, 165, 0.65) 80%);
 }
 cg-board square.last-move {
-  background-color: rgba(255, 214, 10, 0.45);
+  background-color: rgba(230, 200, 60, 0.38);
 }
 cg-board square.selected {
-  background-color: rgba(255, 140, 26, 0.6);
+  background-color: rgba(60, 150, 80, 0.5);
 }
 cg-board square.check {
   background: radial-gradient(ellipse at center, rgba(255, 0, 0, 1) 0%, rgba(231, 0, 0, 1) 25%, rgba(169, 0, 0, 0) 89%, rgba(158, 0, 0, 0) 100%);
 }
 cg-board square.current-premove {
-  background-color: rgba(220, 70, 220, 0.55);
+  background-color: rgba(125, 90, 165, 0.48);
 }
 /* Queued premoves: the premove color, darker for each later move. */
 cg-board square.premove-1 {
-  background-color: rgba(225, 90, 225, 0.62);
+  background-color: rgba(125, 90, 165, 0.48);
 }
 cg-board square.premove-2 {
-  background-color: rgba(165, 45, 170, 0.78);
+  background-color: rgba(105, 72, 145, 0.56);
 }
 cg-board square.premove-3 {
-  background-color: rgba(115, 25, 125, 0.86);
+  background-color: rgba(85, 56, 125, 0.63);
 }
 cg-board square.premove-4 {
-  background-color: rgba(75, 10, 85, 0.9);
+  background-color: rgba(65, 40, 105, 0.7);
 }
 .cg-wrap coords {
   font-family: var(--font-body);

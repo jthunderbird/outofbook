@@ -46,4 +46,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- navigator.vibrate in the WebView (the buzz on the opponent's move) needs it. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>
