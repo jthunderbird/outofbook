@@ -28,12 +28,11 @@ export interface ShellProps {
   onCommand: () => void;
 }
 
+/** The horizontal logo, 50% taller than the old icon-and-name mark; one image per theme. */
 const Brand = () => (
-  <div className="flex items-center gap-2 font-display text-[1.02rem] font-bold tracking-tight">
-    <span className="grid h-7 w-7 place-items-center rounded-ui text-[15px]" style={{ background: "var(--accent)", color: "var(--accent-fg)" }}>
-      ♞
-    </span>
-    <span>OutOfBook</span>
+  <div className="flex shrink-0 items-center">
+    <img src="/brand/web-horizontal.png" alt="OutOfBook" className="brand-dark h-[42px] w-auto" />
+    <img src="/brand/web-horizontal-light.png" alt="OutOfBook" className="brand-light h-[42px] w-auto" />
   </div>
 );
 
@@ -145,7 +144,7 @@ export function Shell(p: ShellProps) {
   return (
     <div className="flex min-h-dvh flex-col md:h-dvh md:min-h-0 md:overflow-hidden">
       <MobileChrome p={p} />
-      <div className="hidden h-11 shrink-0 items-center gap-3 px-3 md:flex" style={{ background: "color-mix(in oklab, var(--surface-2) 80%, transparent)" }}>
+      <div className="hidden h-13 shrink-0 items-center gap-3 px-3 md:flex" style={{ background: "color-mix(in oklab, var(--surface-2) 80%, transparent)" }}>
         <button className="ui-btn ui-btn-ghost ui-btn-icon ui-btn-sm" onClick={() => setPaneOpen((x) => !x)} aria-label="Toggle navigation">
           <Menu size={16} />
         </button>

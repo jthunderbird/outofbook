@@ -1,6 +1,7 @@
 {
   "name": "@outofbook/core",
   "private": true,
+  "license": "AGPL-3.0-only",
   "version": "0.1.0",
   "type": "module",
   "description": "OutOfBook's chess logic, shared by the web app and the API: import parsing, book naming, repertoire build, move verdicts.",

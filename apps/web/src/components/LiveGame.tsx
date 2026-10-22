@@ -679,7 +679,9 @@ export function LiveGame({
   return createPortal(
     <div className="fixed inset-0 z-[100] flex flex-col overflow-hidden" style={{ background: "var(--page-bg)" }} data-testid="live-game">
       <div className="flex shrink-0 items-center gap-2 px-3 text-xs text-muted" style={{ height: strip }}>
-        <span className="hidden font-semibold whitespace-nowrap text-fg sm:inline">♞ OutOfBook</span>
+        <span className="hidden items-center gap-1.5 font-semibold whitespace-nowrap text-fg sm:flex">
+          <img src="/brand/web-icon.png" alt="" className="h-4 w-auto" /> OutOfBook
+        </span>
         {live ? (
           <span className="flex items-center gap-1 font-semibold whitespace-nowrap" style={{ color: "var(--bad)" }}>
             <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--bad)" }} /> LIVE

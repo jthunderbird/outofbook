@@ -38,7 +38,7 @@ services:
     environment:
       HOME: /tmp
       DATABASE_URL: postgres://outofbook:outofbook@db:5432/outofbook
-      UNLIMITED_USERS: jtaylor42,mherms,wdorr
+      UNLIMITED_USERS: ${UNLIMITED_USERS:-}
       # Test-only header login (X-Dev-User) for e2e tests. Never enable outside a trusted LAN;
       # the API ignores it when NODE_ENV=production.
       DEV_AUTH: ${DEV_AUTH:-0}

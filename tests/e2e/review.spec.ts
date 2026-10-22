@@ -33,14 +33,15 @@ test("layout: repertoire on top left, graph and engine side by side, summary and
   expect(summary.y).toBeGreaterThan(board.y + 300);
   expect(Math.abs(summary.x - board.x)).toBeLessThan(5);
   expect(moves.y).toBeGreaterThan(summary.y);
-  // The repertoire box has the board card's height on every move; the game's header line sits under it.
+  // The repertoire box has the board's height on every move; the game's header line sits under it.
   const card = await box(page, "review-board-card");
+  const boardEl = (await page.getByTestId("review-board-card").locator(".board-wrap").boundingBox())!;
   const heights = new Set<number>();
   for (let i = 0; i < 12; i++) {
     heights.add(Math.round((await box(page, "review-repertoire")).height));
     await page.getByRole("button", { name: "Next move" }).click();
   }
-  expect([...heights]).toEqual([Math.round(card.height)]);
+  expect([...heights]).toEqual([Math.round(boardEl.height)]);
   expect(Math.abs(rep.y - card.y)).toBeLessThan(2);
   expect((await page.getByRole("button", { name: "Close" }).boundingBox())!.y).toBeGreaterThan(rep.y + rep.height);
   await page.screenshot({ path: "test-results/review-layout.png", fullPage: true });

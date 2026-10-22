@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="assets/brand/outofbook-with-name-light.png" />
+    <img src="assets/brand/outofbook-with-name.png" alt="OutOfBook" width="360" />
+  </picture>
+</p>
+
 # OutOfBook
 
 OutOfBook imports your games from Lichess and Chess.com and maps your opening
@@ -77,7 +84,7 @@ The tests cover these areas:
 
 ```sh
 echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
-echo "UNLIMITED_USERS=jtaylor42,mherms,wdorr" >> .env
+echo "UNLIMITED_USERS=alice,bob" >> .env   # Lichess ids with no saved-games limit
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
@@ -86,7 +93,7 @@ Postgres beside it. Set `APP_PORT`, and set `APP_BIND=0.0.0.0` when the
 proxy runs on another machine. Put a TLS reverse proxy (SWAG) in front: the Lichess
 login (WebCrypto) and cross-origin isolation need HTTPS.
 
-## Licences of what is included
+## Licenses of what is included
 
 - chessground, chess.js, Stockfish.js and the Maia 3 model and worker:
   GPL-3.0.
@@ -96,5 +103,11 @@ login (WebCrypto) and cross-origin isolation need HTTPS.
 - Lichess's sounds are streamed from Lichess at play time, not shipped. Its
   standard set is not freely licensed.
 
-OutOfBook's own license is still to be decided. It must be compatible with
-GPL-3.0.
+## License
+
+OutOfBook is free software under the [GNU Affero General Public License
+v3.0](LICENSE) (AGPL-3.0). If you run a modified version as a service, you
+must offer its source code to its users.
+
+The logos are in `assets/brand/` (originals in `assets/brand/source/`;
+`scripts/build-brand.py` makes the transparent and web versions).

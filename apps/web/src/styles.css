@@ -621,3 +621,9 @@ cg-board square.current-premove {
     margin-inline: auto;
   }
 }
+
+/* Logos: the dark-theme image has white letters, the light one dark ink. */
+[data-mode="dark"] .brand-light,
+[data-mode="light"] .brand-dark {
+  display: none;
+}

@@ -278,12 +278,12 @@ export function GameReview({
   // Live engine on the current position: the cache or Lichess cloud when deep enough, else the chosen build, deepening.
   const [liveEv, setLiveEv] = useState<{ fen: string; ev: PosEval } | null>(null);
   const engineRef = useRef<LiveEngine | null>(null);
-  // The repertoire box takes the board card's height.
+  // The repertoire box is as tall as the board itself (not its card).
   const boardCard = useRef<HTMLDivElement>(null);
   const repBody = useRef<HTMLDivElement>(null);
   const [boardH, setBoardH] = useState(0);
   useEffect(() => {
-    const el = boardCard.current;
+    const el = boardCard.current?.querySelector<HTMLElement>(".board-wrap");
     if (!el) return;
     const ro = new ResizeObserver(() => setBoardH(Math.round(el.getBoundingClientRect().height)));
     ro.observe(el);
@@ -622,7 +622,7 @@ export function GameReview({
               ))}
             </div>
           )}
-          {/* Fixed height (the board card's): the content scrolls, so the page does not jump from move to move. */}
+          {/* Fixed height (the board's): the content scrolls, so the page does not jump from move to move. */}
           <div ref={repBody} className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2" data-testid="review-repertoire-body">
             <div className="mb-3 flex flex-col gap-2" data-testid="review-alerts">
               {focus < 0 ? (

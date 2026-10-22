@@ -416,6 +416,10 @@ export default function App() {
 
   const welcome = (
     <Card className="mx-auto max-w-3xl">
+      <div className="mb-4 flex justify-center" data-testid="welcome-logo">
+        <img src="/brand/web-with-name.png" alt="OutOfBook" className="brand-dark h-60 w-auto" />
+        <img src="/brand/web-with-name-light.png" alt="OutOfBook" className="brand-light h-60 w-auto" />
+      </div>
       <div className="ui-h1 mb-2">Find where your openings go wrong.</div>
       <div className="mb-5 text-muted">
         Load your Lichess or Chess.com games. OutOfBook maps your repertoire, finds the moves you keep getting wrong, and where you (or your opponents) leave the book.
