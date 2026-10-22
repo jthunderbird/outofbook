@@ -118,3 +118,24 @@ test("demo: a tap on an empty square cancels the queued premoves", async ({ page
   await clickSquare(page, "a5");
   await expect(page.locator("cg-board square[class*=premove-]")).toHaveCount(0);
 });
+
+for (const [w, h] of [
+  [412, 860],
+  [1600, 1000],
+] as const)
+  test(`demo: with the result put away at ${w}x${h}, its choices fit their buttons; no full-screen button`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, ignoreHTTPSErrors: true });
+    const page = await ctx.newPage();
+    await page.goto("/?demo");
+    await openDemo(page);
+    await expect(page.getByRole("button", { name: /full screen/i })).toHaveCount(0);
+    await page.evaluate(() => (window as unknown as { demoOpponentGone: (s: number) => void }).demoOpponentGone(0));
+    await page.getByRole("button", { name: "Claim victory" }).click();
+    await page.getByRole("button", { name: "Show the board" }).click();
+    const bar = page.getByTestId("end-again");
+    await expect(bar).toBeInViewport({ ratio: 1 });
+    for (const b of await bar.getByRole("button").all()) expect(await b.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    await bar.getByRole("button", { name: "You won by abandonment" }).click();
+    await expect(page.getByTestId("live-result")).toBeVisible();
+    await ctx.close();
+  });

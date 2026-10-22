@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Chess } from "chess.js";
 import type { Api } from "chessground/api";
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Flag, Handshake, Maximize, Minimize, X } from "lucide-react";
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Flag, Handshake, X } from "lucide-react";
 import { uciParams } from "@outofbook/core/chess";
 import { buzz, playMoveSound, playSound, preloadSounds } from "../lib/gameFeel";
 import { ANIMATION_MS, type LichessPrefs } from "../lib/lichessPrefs";
@@ -20,7 +20,6 @@ export interface LiveSettings {
   dangerPct: number; // red
   premove: boolean;
   sound: boolean;
-  autoFullscreen: boolean;
   /** Follow the user's Lichess preferences (premove, auto queen, sounds, clock tenths...) when we have them. */
   useLichessPrefs: boolean;
   vibrate: boolean;
@@ -33,7 +32,6 @@ export const LIVE_DEFAULTS: LiveSettings = {
   dangerPct: 10,
   premove: true,
   sound: true,
-  autoFullscreen: false,
   useLichessPrefs: true,
   vibrate: true,
   soundSet: "standard",
@@ -196,7 +194,7 @@ function demoConn(username: string): Conn {
   };
 }
 
-/** Window size, re-read after full-screen and rotation changes: some phones
+/** Window size, re-read after rotation changes: some phones
  * (Galaxy Fold) fire resize before the new size is final. */
 function useViewport() {
   const read = () => ({ w: window.visualViewport?.width ?? window.innerWidth, h: window.visualViewport?.height ?? window.innerHeight });
@@ -213,12 +211,10 @@ function useViewport() {
     window.addEventListener("resize", on);
     window.visualViewport?.addEventListener("resize", on);
     window.addEventListener("orientationchange", on);
-    document.addEventListener("fullscreenchange", on);
     return () => {
       window.removeEventListener("resize", on);
       window.visualViewport?.removeEventListener("resize", on);
       window.removeEventListener("orientationchange", on);
-      document.removeEventListener("fullscreenchange", on);
       timers.forEach(clearTimeout);
     };
   }, []);
@@ -288,7 +284,6 @@ export function LiveGame({
   const [finished, setFinished] = useState<RawGame | null>(null);
   // Rating changes once the game is over, as Lichess shows them by the names.
   const [diffs, setDiffs] = useState<Partial<Record<Side, number>>>({});
-  const [isFs, setIsFs] = useState(!!document.fullscreenElement);
   // Read and saved here, not from `settings`: the switch is in the game screen
   // and must hold for the next game too.
   const [columnLeft, setColumnLeft] = useState(() => loadLive().columnLeft);
@@ -358,15 +353,6 @@ export function LiveGame({
     const t = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(t);
   }, [live]);
-
-  // Full screen.
-  useEffect(() => {
-    const on = () => setIsFs(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", on);
-    if (settings.autoFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
-    return () => document.removeEventListener("fullscreenchange", on);
-  }, [settings.autoFullscreen]);
-  const toggleFs = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())?.catch(() => {});
 
   // Moves (with my own move shown immediately, before Lichess echoes it).
   const serverMoves = useMemo(() => (state?.moves ?? "").split(" ").filter(Boolean), [state?.moves]);
@@ -612,7 +598,8 @@ export function LiveGame({
     clockPx = clamp(Math.min(h * 0.19, (h - strip - 220) / 2.5), 48, 170);
     arrowPx = clockPx / 2;
   } else {
-    const gaps = 8 * 5 + 10;
+    // The put-away result (a line and two buttons) takes its own row.
+    const gaps = 8 * 5 + 10 + (status && hideEnd ? 78 : 0);
     const target = Math.min(w - 12, 1100);
     const spare = h - strip - target - gaps;
     const wantClock = Math.min(h * 0.13, 112);
@@ -671,9 +658,6 @@ export function LiveGame({
       {canAbort && <ConfirmButton label="Abort" icon={<X size={ACTION_ICON} />} confirm={g.confirm} onConfirm={() => conn.abort().catch((e) => setErr(String(e)))} />}
       {live && !canAbort && <ConfirmButton label="Offer draw" icon={<Handshake size={ACTION_ICON} />} confirm={g.confirm} onConfirm={() => conn.draw().catch((e) => setErr(String(e)))} />}
       {live && !canAbort && <ConfirmButton danger label="Resign" icon={<Flag size={ACTION_ICON} />} confirm={g.confirm} onConfirm={() => conn.resign().catch((e) => setErr(String(e)))} />}
-      <Button variant="secondary" className={ACTION_BTN} onClick={toggleFs} title={isFs ? "Exit full screen" : "Full screen"} aria-label={isFs ? "Exit full screen" : "Full screen"}>
-        {isFs ? <Minimize size={ACTION_ICON} /> : <Maximize size={ACTION_ICON} />}
-      </Button>
       {wide && (
         <Button
           variant="secondary"
@@ -732,10 +716,23 @@ export function LiveGame({
       </div>
     </div>
   );
+  // The result card put away: the result in a line, and its two choices.
   const endAgain = status && hideEnd && (
-    <Button variant="primary" className="w-full" onClick={() => setHideEnd(false)}>
-      {status}: review or exit
-    </Button>
+    <div className="flex flex-col gap-1.5" data-testid="end-again">
+      <button className="text-center text-sm font-semibold hover:underline" onClick={() => setHideEnd(false)} title="Show the result again">
+        {status}
+      </button>
+      <div className="grid grid-cols-2 gap-2">
+        {finished && (
+          <Button variant="primary" className="h-auto! min-h-10 whitespace-normal" onClick={() => onReview(finished)}>
+            Review game
+          </Button>
+        )}
+        <Button className={cx("h-auto! min-h-10 whitespace-normal", !finished && "col-span-2")} onClick={onExit}>
+          Exit
+        </Button>
+      </div>
+    </div>
   );
 
   const boardSize = `${Math.floor(boardPx)}px`;

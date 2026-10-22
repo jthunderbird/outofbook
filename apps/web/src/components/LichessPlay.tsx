@@ -393,7 +393,6 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
               label="Vibrate on the opponent's move"
               hint={canVibrate() ? "On phones, like the Lichess app." : "This browser cannot vibrate (iPhones and desktops can't)."}
             />
-            <Switch checked={live.autoFullscreen} onChange={(v) => setL({ autoFullscreen: v })} label="Go full screen when a game starts" />
           </div>
           {demoButton && <div className="mt-4">{demoButton}</div>}
           <div className="mt-3 flex items-center gap-2 text-xs text-muted">
