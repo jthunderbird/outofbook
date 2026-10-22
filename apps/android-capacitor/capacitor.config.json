@@ -4,9 +4,7 @@
   "webDir": "www",
   "server": {
     "androidScheme": "https",
-    "allowNavigation": [
-      "lichess.org"
-    ]
+    "allowNavigation": ["lichess.org"]
   },
   "android": {
     "backgroundColor": "#0D1117"
