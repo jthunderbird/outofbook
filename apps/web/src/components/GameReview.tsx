@@ -12,7 +12,7 @@ import { classify } from "@outofbook/core/classify";
 import { fmtEval, lineWinPct, plyLabel, posKey, pvToSan, uciParams, uciToSan } from "@outofbook/core/chess";
 import { moveNotes, usualMove, type MoveNote, type MoveNotes } from "@outofbook/core/moveNotes";
 import { ENGINE_BUILDS, EnginePool, LiveEngine, defaultPoolSize, preloadBuild, type EngineBuild } from "../lib/engine";
-import { cloudEval, getEval, putEval } from "../lib/evalCache";
+import { cloudEval, evalNow, getEval, putEval } from "../lib/evalCache";
 import { hasAuth, shareEval } from "../lib/server";
 import { trackLine } from "@outofbook/core/lineTracker";
 import { buildRepertoire } from "@outofbook/core/repertoire";
@@ -169,27 +169,32 @@ export function GameReview({
     };
   }, [build]);
 
-  // Game pass: every position (and your usual moves' positions), for the graph, verdicts and accuracy.
-  // Sources: repertoire evals, the eval cache, then the engine pool with the chosen build.
+  // Game pass, as in Chesskit: every position (and your usual moves' positions) analyzed once, at the
+  // Engine panel's depth and number of lines, so browsing the game only reads the results; the live
+  // engine runs only for depth ∞ or a position the pass has not reached yet.
+  // Sources: the browser cache, the server's shared cache, the Lichess cloud, then the engine pool.
+  const target = settings.reviewDepth;
+  const nLines = settings.reviewLines;
+  const passDepth = target || 18;
   useEffect(() => {
     if (buildReady !== build) return;
     let live = true;
     let pool: EnginePool | null = null;
+    const eng = (f: string, d: number, m: number) => (pool ??= new EnginePool(settings.poolSize || defaultPoolSize(), build)).analyze(f, d, m);
     const all = [...new Set([...fens, ...usualFens.filter((f): f is string => !!f)])];
-    const todo = all.filter((f) => !evalOf(posKey(f))?.lines.length && new Chess(f).moves().length);
+    const want = (f: string) => Math.min(nLines, new Chess(f).moves().length);
+    const enough = (f: string, e?: PosEval) => !!e && e.depth >= passDepth && e.lines.length >= want(f);
+    const todo = all.filter((f) => want(f) > 0 && !enough(f, evalOf(posKey(f))));
     if (!todo.length) return;
     let done = 0;
     setProgress(0);
     Promise.all(
       todo.map(async (fen) => {
-        const k = posKey(fen);
-        let e = await getEval(k, settings.depth);
-        if (!e && live) {
-          e = await (pool ??= new EnginePool(settings.poolSize || defaultPoolSize(), build)).analyze(fen, settings.depth, 2);
-          if (e.lines.length) await putEval(k, e);
-        }
-        if (!live || !e) return;
-        setLocal((l) => ({ ...l, [k]: e! }));
+        // The cloud only for the opening plies, as the background analysis does (Settings: cloud eval up to ply).
+        const early = fens.indexOf(fen) >= 0 ? fens.indexOf(fen) < settings.cloudMaxPly : false;
+        const e = await evalNow(fen, passDepth, nLines, eng, want(fen), settings.useCloud && early);
+        if (!live) return;
+        setLocal((l) => ({ ...l, [posKey(fen)]: e }));
         setProgress(++done / todo.length);
       }),
     )
@@ -200,7 +205,7 @@ export function GameReview({
       pool?.terminate();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fens, usualFens, settings.depth, settings.poolSize, build, buildReady]);
+  }, [fens, usualFens, passDepth, nLines, settings.poolSize, build, buildReady]);
 
   const evKey = (k: string) => local[k] ?? evalOf(k);
   const ev = (i: number) => evKey(posKey(fens[i]));
@@ -294,8 +299,6 @@ export function GameReview({
   useEffect(() => {
     repBody.current?.scrollTo({ top: 0 });
   }, [ply]);
-  const target = settings.reviewDepth;
-  const nLines = settings.reviewLines;
   useEffect(() => {
     if (buildReady !== build) return;
     const fen = fens[ply];
@@ -733,7 +736,7 @@ export function GameReview({
           </div>
           {progress !== null && (
             <div className="mt-3 flex items-center gap-3 text-xs text-muted">
-              <Progress value={progress * 100} className="flex-1" /> analyzing at depth {settings.depth} with {ENGINE_BUILDS[build].label}…
+              <Progress value={progress * 100} className="flex-1" /> analyzing the game at depth {passDepth}, {nLines} lines, with {ENGINE_BUILDS[build].label}…
             </div>
           )}
         </Card>

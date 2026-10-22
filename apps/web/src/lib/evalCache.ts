@@ -71,6 +71,7 @@ export async function evalNow(
   multiPv: number,
   engine: (fen: string, depth: number, multiPv: number) => Promise<PosEval>,
   minLines = Math.min(multiPv, 2),
+  cloud = true, // false: skip the Lichess cloud (it only knows common positions)
 ): Promise<PosEval> {
   const key = fen.split(" ").slice(0, 4).join(" ");
   const cached = await getEval(key, depth);
@@ -81,7 +82,7 @@ export async function evalNow(
     await putEval(key, shared);
     return shared;
   }
-  const c = await cloudEval(fen, multiPv).catch(() => undefined);
+  const c = cloud ? await cloudEval(fen, multiPv).catch(() => undefined) : undefined;
   if (c && c !== "busy" && c.lines.length >= minLines) {
     await putEval(key, c);
     shareEval(key, c, hasAuth());

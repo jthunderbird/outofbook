@@ -66,6 +66,27 @@ test("engine: five lines with the played move highlighted; choices are remembere
   expect(errors).toEqual([]);
 });
 
+test("the game is analyzed once; browsing it then only reads the results", async ({ page }) => {
+  test.setTimeout(400_000);
+  const errors = pageErrors(page);
+  // A game of 40 plies or more.
+  for (let n = 0; n < 20; n++) {
+    await openGame(page, n);
+    if ((await page.locator("[data-testid=review-moves] [data-ply]").count()) >= 40) break;
+    await page.getByRole("button", { name: "Close" }).click();
+  }
+  const t0 = Date.now();
+  await expect(page.getByText(/analyzing the game at depth 18, 5 lines/)).toBeHidden({ timeout: 300_000 });
+  console.log(`game pass: ${((Date.now() - t0) / 1000).toFixed(1)} s for ${await page.locator("[data-testid=review-moves] [data-ply]").count()} plies`);
+  const status = page.getByTestId("engine-status");
+  for (let i = 0; i < 40; i++) {
+    await page.getByRole("button", { name: "Next move" }).click();
+    await expect(status).toHaveText(/^(cache|cloud|server) · depth \d+/);
+    await expect(page.getByTestId("engine-line").first()).toBeVisible();
+  }
+  expect(errors).toEqual([]);
+});
+
 test("the full engine downloads once, then analyzes", async ({ page }) => {
   const errors = pageErrors(page);
   await openGame(page);
