@@ -8,6 +8,18 @@ import type { Select } from "./RepertoireView";
 import { Button, Card, CardHeader, Progress, Stat } from "./ui";
 
 /** Home view: the repertoire at a glance, each card linking to its detail view. */
+// Fewer new positions than this finish quickly; no need to explain the wait.
+const FIRST_TIME_MIN = 200;
+
+/** " (about N minutes left)" from the speed so far, once there is one. */
+function eta(p: AnalysisProgress) {
+  const analyzed = p.cloud + p.engine;
+  const secs = (p.ms - (p.todoAt ?? 0)) / 1000;
+  if (analyzed < 20 || secs < 5) return "";
+  const left = Math.max(0, p.total - p.done) / (analyzed / secs);
+  return left < 90 ? " (about a minute left)" : ` (about ${Math.round(left / 60)} minutes left)`;
+}
+
 export function Overview({
   model,
   colors,
@@ -60,6 +72,12 @@ export function Overview({
           <div className="mt-4 flex items-center gap-3">
             <Progress value={pct} className="flex-1" />
             <span className="num text-xs text-muted">{progress.running ? `analyzing ${progress.done}/${progress.total}` : "analysis done"}</span>
+          </div>
+        )}
+        {progress?.running && (progress.todo ?? 0) >= FIRST_TIME_MIN && (
+          <div className="mt-2 text-sm text-muted" data-testid="first-analysis">
+            <b className="text-fg">Only the first time:</b> {progress.todo} positions in these games are new, so this device is analyzing them{eta(progress)}. The results are saved, so next time this
+            takes seconds.
           </div>
         )}
       </Card>

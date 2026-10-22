@@ -26,6 +26,10 @@ export interface AnalysisProgress {
   engine: number;
   ms: number;
   running: boolean;
+  /** Positions neither cache had, so analyzed here; set once both caches were read. */
+  todo?: number;
+  /** When `todo` was set (ms from the start). */
+  todoAt?: number;
 }
 
 export function planPositions(moves: MoveStat[]) {
@@ -112,6 +116,9 @@ export function runAnalysis(moves: MoveStat[], opts: AnalysisOptions, onEval: (k
       } else if (opts.useCloud && item.ply <= opts.cloudMaxPly) cloudQ.push(item);
       else engineQ.push(item);
     }
+    p.todo = cloudQ.length + engineQ.length;
+    p.todoAt = performance.now() - t0;
+    report(true);
   })();
 
   const cloudLane = prepared.then(async () => {
