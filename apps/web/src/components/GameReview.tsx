@@ -5,7 +5,7 @@
 // the move list.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Dumbbell, ExternalLink, Lightbulb, Repeat, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Dumbbell, Lightbulb, Repeat } from "lucide-react";
 import { gameAccuracy } from "@outofbook/core/accuracy";
 import { bookChildren } from "@outofbook/core/book";
 import { classify } from "@outofbook/core/classify";
@@ -24,7 +24,6 @@ import { BookChip, BOOK_COLOR, SideIcon, VERDICT_COLOR, VERDICT_LABEL, VerdictCh
 import { Board, EvalBar, uciArrow, type Arrow } from "./Board";
 import type { VerdictOf } from "./RepertoireView";
 import { Alert, Badge, Button, Card, CardHeader, Progress, Seg, Select, Tip, cx } from "./ui";
-import { LichessIcon } from "./LichessIcon";
 
 type MoveClass = Verdict | "book";
 const RECAP: MoveClass[] = ["splendid", "perfect", "best", "excellent", "okay", "book", "forced", "inaccuracy", "mistake", "blunder"];
@@ -68,7 +67,6 @@ export function GameReview({
   settings,
   onSettings,
   onPractice,
-  onClose,
 }: {
   game: RawGame;
   model: RepertoireModel;
@@ -80,7 +78,6 @@ export function GameReview({
   onSettings: (s: Partial<Settings>) => void;
   /** Opens Play vs bot from this position, as the user's color. */
   onPractice: (color: Side, ucis: string[]) => void;
-  onClose: () => void;
 }) {
   // Games outside the loaded set (e.g. bot games) get a summary of their own.
   const inModel = !!model.games[game.id];
@@ -466,6 +463,15 @@ export function GameReview({
           <EvalBar line={cur?.lines[0]} orientation={orientation} />
           <div className="relative min-w-0 flex-1">
             <Board fen={fens[ply]} orientation={orientation} arrows={arrows} lastMove={focus >= 0 ? ucis[focus] : undefined} hideEval />
+            {progress !== null && (
+              // On the board while the game is analyzed; the board stays usable under it.
+              <div className="pointer-events-none absolute inset-x-2 top-2 z-20 flex flex-col gap-1.5 rounded-ui bg-black/75 px-3 py-2 text-xs text-white" data-testid="review-progress">
+                <Progress value={progress * 100} />
+                <span>
+                  Analyzing the game at depth {passDepth}, {nLines} lines, with {ENGINE_BUILDS[build].label}… {Math.round(progress * 100)}%
+                </span>
+              </div>
+            )}
             {destPos && lastClass && (
               <div className="pointer-events-none absolute z-10" style={{ left: `${(destPos.x + 1) * 12.5}%`, top: `${destPos.y * 12.5}%`, transform: "translate(-62%, -38%)" }}>
                 <VerdictIcon v={lastClass} size={24} />
@@ -719,29 +725,6 @@ export function GameReview({
               </>
             )}
           </div>
-        </Card>
-
-        <Card>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="min-w-0 flex-1 text-sm">
-              <b>{game.result}</b> · {game.speed}
-              {game.rated ? " · rated" : ""} · {new Date(game.date).toISOString().slice(0, 10)} · {s.eco} {s.opening}
-              {game.url && (
-                <a className="ui-link ml-2 inline-flex items-center gap-1" href={game.url} target="_blank" rel="noreferrer">
-                  {game.site === "lichess" && <LichessIcon size={13} />}
-                  {game.site} <ExternalLink size={12} />
-                </a>
-              )}
-            </div>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X size={15} /> Close
-            </Button>
-          </div>
-          {progress !== null && (
-            <div className="mt-3 flex items-center gap-3 text-xs text-muted">
-              <Progress value={progress * 100} className="flex-1" /> analyzing the game at depth {passDepth}, {nLines} lines, with {ENGINE_BUILDS[build].label}…
-            </div>
-          )}
         </Card>
 
         <div className="grid gap-[var(--gap)] @2xl:grid-cols-2" data-testid="graph-engine">

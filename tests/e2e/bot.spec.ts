@@ -54,7 +54,17 @@ test("castling by putting the king on its own rook, as on Lichess", async ({ pag
   ]) {
     const before = (await botMove.count()) ? await botMove.textContent() : null;
     await move(page, from, to);
-    await expect.poll(async () => ((await botMove.count()) ? await botMove.textContent() : null), { timeout: 60_000 }).not.toBe(before);
+    // The bot's replies vary; a move it punishes pauses the game: play on.
+    const playOn = page.getByTestId("pause-prompt").getByRole("button", { name: /Play on/ });
+    await expect
+      .poll(
+        async () => {
+          if (await playOn.isVisible()) await playOn.click();
+          return (await botMove.count()) ? await botMove.textContent() : null;
+        },
+        { timeout: 60_000 },
+      )
+      .not.toBe(before);
   }
   await move(page, "e1", "h1");
   await expect(page.getByTestId("my-move")).toContainText("O-O");

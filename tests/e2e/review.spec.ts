@@ -1,6 +1,6 @@
 // The game review page: layout, repertoire alerts, the live engine and its choices.
 import { expect, test, type Page } from "@playwright/test";
-import { analyzed, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
+import { analyzed, closeReview, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
 
 test.skip(!hasGames, "needs packages/core/test/fixtures/local/games300.json");
 
@@ -33,7 +33,7 @@ test("layout: repertoire on top left, graph and engine side by side, summary and
   expect(summary.y).toBeGreaterThan(board.y + 300);
   expect(Math.abs(summary.x - board.x)).toBeLessThan(5);
   expect(moves.y).toBeGreaterThan(summary.y);
-  // The repertoire box has the board's height on every move; the game's header line sits under it.
+  // The repertoire box has the board's height on every move.
   const card = await box(page, "review-board-card");
   const boardEl = (await page.getByTestId("review-board-card").locator(".board-wrap").boundingBox())!;
   const heights = new Set<number>();
@@ -43,7 +43,6 @@ test("layout: repertoire on top left, graph and engine side by side, summary and
   }
   expect([...heights]).toEqual([Math.round(boardEl.height)]);
   expect(Math.abs(rep.y - card.y)).toBeLessThan(2);
-  expect((await page.getByRole("button", { name: "Close" }).boundingBox())!.y).toBeGreaterThan(rep.y + rep.height);
   await page.screenshot({ path: "test-results/review-layout.png", fullPage: true });
   expect(errors).toEqual([]);
 });
@@ -73,10 +72,10 @@ test("the game is analyzed once; browsing it then only reads the results", async
   for (let n = 0; n < 20; n++) {
     await openGame(page, n);
     if ((await page.locator("[data-testid=review-moves] [data-ply]").count()) >= 40) break;
-    await page.getByRole("button", { name: "Close" }).click();
+    await closeReview(page);
   }
   const t0 = Date.now();
-  await expect(page.getByText(/analyzing the game at depth 18, 5 lines/)).toBeHidden({ timeout: 300_000 });
+  await expect(page.getByText(/Analyzing the game at depth 18, 5 lines/)).toBeHidden({ timeout: 300_000 });
   console.log(`game pass: ${((Date.now() - t0) / 1000).toFixed(1)} s for ${await page.locator("[data-testid=review-moves] [data-ply]").count()} plies`);
   const status = page.getByTestId("engine-status");
   for (let i = 0; i < 40; i++) {
@@ -113,7 +112,7 @@ test("repertoire alerts follow the current move, with jump buttons and move-list
         .count()
     )
       break;
-    await page.getByRole("button", { name: "Close" }).click();
+    await closeReview(page);
   }
   await page
     .getByTestId("review-jumps")

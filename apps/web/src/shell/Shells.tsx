@@ -1,6 +1,6 @@
 // The app shell: Fluent-style command bar (title bar, command row, nav pane)
 // with the board docked right. Earlier layouts are archived in poc/archive/.
-import { useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { Menu, Search, X } from "lucide-react";
 
 export interface NavItem {
@@ -10,6 +10,8 @@ export interface NavItem {
   icon: ComponentType<{ size?: number; className?: string }>;
   disabled?: boolean;
   group: "Analyze" | "Play" | "Game";
+  /** Shows an X on the item (the reviewed game) that calls this. */
+  onClose?: () => void;
 }
 
 export interface ShellProps {
@@ -23,6 +25,7 @@ export interface ShellProps {
   toolbar?: ReactNode; // side filter + min games
   status?: ReactNode; // analysis progress
   hideHead?: boolean; // no title or status line (bot play: the board gets the height)
+  focus?: boolean; // a page played on a board (bot, review): the nav starts closed
   main: ReactNode;
   board: ReactNode | null;
   onCommand: () => void;
@@ -53,10 +56,26 @@ function NavList({ p }: { p: ShellProps }) {
         <div key={g} className="flex flex-col gap-0.5">
           <div className="ui-label px-2 pt-3 pb-1">{g}</div>
           {items.map((n) => (
-            <button key={n.id} className="ui-nav" data-active={p.active === n.id} aria-disabled={n.disabled} onClick={() => p.onNav(n.id)} data-testid={`nav-${n.id}`}>
-              <n.icon size={16} className="shrink-0" />
-              <span className="truncate">{n.label}</span>
-            </button>
+            <div key={n.id} className="flex items-center gap-0.5">
+              <button className="ui-nav min-w-0 flex-1" data-active={p.active === n.id} aria-disabled={n.disabled} onClick={() => p.onNav(n.id)} data-testid={`nav-${n.id}`}>
+                <n.icon size={16} className="shrink-0" />
+                <span className="truncate">{n.label}</span>
+              </button>
+              {n.onClose && (
+                <button
+                  className="ui-btn ui-btn-ghost ui-btn-icon ui-btn-sm shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    n.onClose!();
+                  }}
+                  aria-label={`Close ${n.label}`}
+                  title="Close"
+                  data-testid={`close-${n.id}`}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       ))}
@@ -139,8 +158,25 @@ function Body({ p }: { p: ShellProps }) {
   );
 }
 
+// Below this width the nav opens over the page instead of beside it, so each
+// page has one layout whatever the nav does.
+const DOCK = "(min-width: 1024px)";
+const docks = () => window.matchMedia(DOCK).matches;
+
 export function Shell(p: ShellProps) {
-  const [paneOpen, setPaneOpen] = useState(true);
+  const [docked, setDocked] = useState(docks);
+  const [paneOpen, setPaneOpen] = useState(() => docks() && !p.focus);
+  useEffect(() => {
+    const mq = window.matchMedia(DOCK);
+    const on = () => {
+      setDocked(mq.matches);
+      if (!mq.matches) setPaneOpen(false);
+    };
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  // Entering a board page puts the nav away; leaving it brings the docked nav back.
+  useEffect(() => setPaneOpen(docks() && !p.focus), [p.focus]);
   return (
     <div className="flex min-h-dvh flex-col md:h-dvh md:min-h-0 md:overflow-hidden">
       <MobileChrome p={p} />
@@ -161,9 +197,15 @@ export function Shell(p: ShellProps) {
         <div className="flex-1" />
         {p.pickers}
       </div>
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
+        {paneOpen && !docked && <div className="ui-overlay absolute! z-40 hidden md:block" onClick={() => setPaneOpen(false)} data-testid="nav-backdrop" />}
         {paneOpen && (
-          <nav className="hidden w-56 shrink-0 flex-col gap-0.5 overflow-auto border-r p-2 md:flex" style={{ background: "color-mix(in oklab, var(--surface) 70%, transparent)" }}>
+          <nav
+            className={`hidden w-56 shrink-0 flex-col gap-0.5 overflow-auto border-r p-2 md:flex ${docked ? "" : "absolute top-0 bottom-0 left-0 z-50 shadow-2xl"}`}
+            style={{ background: docked ? "color-mix(in oklab, var(--surface) 70%, transparent)" : "var(--surface)" }}
+            data-testid="nav-pane"
+            onClick={docked ? undefined : () => setPaneOpen(false)}
+          >
             <NavList p={p} />
           </nav>
         )}

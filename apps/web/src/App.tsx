@@ -289,7 +289,7 @@ export default function App() {
     { id: "games", label: "Games", icon: ListOrdered, group: "Analyze", disabled: !model },
     { id: "play", label: "Play vs bot", short: "Bots", icon: Bot, group: "Play" },
     { id: "lichess", label: "Play on Lichess", short: "Lichess", icon: LichessIcon, group: "Play" },
-    ...(reviewGame ? [{ id: "review", label: `${reviewGame.white} vs ${reviewGame.black}`, short: "Review", icon: FileSearch, group: "Game" as const }] : []),
+    ...(reviewGame ? [{ id: "review", label: `${reviewGame.white} vs ${reviewGame.black}`, short: "Review", icon: FileSearch, group: "Game" as const, onClose: () => history.back() }] : []),
   ];
   const go = (id: string) => setTab(id as View);
 
@@ -522,7 +522,6 @@ export default function App() {
           saveSettings(s);
         }}
         onPractice={(color, ucis) => (setBotStart({ color, ucis }), setTab("play"))}
-        onClose={() => history.back()}
       />
     );
 
@@ -589,6 +588,7 @@ export default function App() {
           toolbar={toolbar}
           status={statusText}
           hideHead={tab === "play"}
+          focus={tab === "play" || tab === "review"}
           main={main}
           board={boardPanel}
           onCommand={() => setCmdOpen(true)}

@@ -37,9 +37,24 @@ export async function seedGames(page: Page, games: unknown[]) {
 export const analyzed = (page: Page) => page.waitForFunction(() => performance.getEntriesByName("oob-analyzed").length > 0, null, { timeout: 170_000, polling: 250 });
 
 export const nav = async (page: Page, id: string) => {
-  const menu = page.getByRole("button", { name: "Menu" });
-  if (await menu.isVisible()) await menu.click();
-  await page.locator(`[data-testid=nav-${id}]:visible`).first().click();
+  const item = page.locator(`[data-testid=nav-${id}]:visible`).first();
+  if (!(await item.isVisible())) {
+    // Closed nav: the phone menu, or the pane's toggle (board pages close it).
+    const menu = page.getByRole("button", { name: "Menu" });
+    if (await menu.isVisible()) await menu.click();
+    else await page.getByRole("button", { name: "Toggle navigation" }).click();
+  }
+  await item.click();
+};
+/** Closes the reviewed game with the X on its nav item. */
+export const closeReview = async (page: Page) => {
+  const x = page.locator("[data-testid=close-review]:visible").first();
+  if (!(await x.isVisible())) {
+    const menu = page.getByRole("button", { name: "Menu" });
+    if (await menu.isVisible()) await menu.click();
+    else await page.getByRole("button", { name: "Toggle navigation" }).click();
+  }
+  await x.click();
 };
 
 /** Clicks a square on the visible board (white at the bottom unless `flip`). */

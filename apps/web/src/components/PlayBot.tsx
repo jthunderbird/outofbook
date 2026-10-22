@@ -379,24 +379,29 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   if (!game) heldEval.current = undefined;
   else if (evalNowShown) heldEval.current = evalNowShown;
 
-  // Board size from the screen: as large as fits with the controls below it
-  // still on screen; on wide screens the side column sits beside it at 440px.
+  // Board size from the space this page has, not the device: side by side
+  // whenever the area is wide for its height (desktops, tablets, unfolded
+  // phones, phones on their side), with the column at 300-440px so the current
+  // line and the top moves stay in view; stacked on tall screens. The board is
+  // as large as fits with the controls under it still on screen.
   const gridRef = useRef<HTMLDivElement>(null);
   const ctrlRef = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState<{ px: number; wide: boolean } | null>(null);
+  const [fit, setFit] = useState<{ px: number; wide: boolean; col: number } | null>(null);
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
     const measure = () => {
       const main = grid.closest("main");
-      const wide = window.matchMedia("(min-width: 1024px)").matches;
       const top = grid.getBoundingClientRect().top + (main?.scrollTop ?? 0) + window.scrollY;
       // The controls are measured once a game is on; before that, their usual height.
       const ctrl = Math.max(ctrlRef.current?.offsetHeight ?? 0, 112);
       const pad = main ? parseFloat(getComputedStyle(main).paddingBottom) : 16;
       const byHeight = window.innerHeight - top - ctrl - pad + (showEval ? 44 : 0);
-      const byWidth = wide ? grid.clientWidth - 440 - 16 : grid.clientWidth;
-      setFit({ px: Math.max(240, Math.floor(Math.min(byHeight, byWidth))), wide });
+      const w = grid.clientWidth;
+      const wide = w >= 600 && w > 0.8 * (window.innerHeight - top);
+      const col = wide ? Math.max(300, Math.min(440, Math.round(w * 0.42))) : 0;
+      const byWidth = wide ? w - col - 16 : w;
+      setFit({ px: Math.max(240, Math.floor(Math.min(byHeight, byWidth))), wide, col });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -411,7 +416,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   const navBtn = "ui-btn ui-btn-secondary h-11! justify-center";
 
   return (
-    <div ref={gridRef} className="grid items-start gap-[var(--gap)]" style={fit?.wide ? { gridTemplateColumns: `${fit.px}px 440px`, justifyContent: "center" } : undefined}>
+    <div ref={gridRef} className="grid items-start gap-[var(--gap)]" style={fit?.wide ? { gridTemplateColumns: `${fit.px}px ${fit.col}px`, justifyContent: "center" } : undefined}>
       <div className="mx-auto w-full" style={{ maxWidth: fit ? fit.px : undefined }}>
         <div className="relative">
           <Board
@@ -460,7 +465,43 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
             </div>
           )}
         </div>
-        <div ref={ctrlRef}>
+        <div ref={ctrlRef} className="relative">
+          {stopped && lastMine && (
+            // Over the controls, next to the board, until a choice is made.
+            <div className="absolute inset-x-0 top-2 z-20 rounded-ui shadow-2xl" style={{ background: "var(--surface)" }} data-testid="pause-prompt">
+              <Alert
+                tone={bad ? "bad" : "warn"}
+                action={
+                  <div className="flex flex-col gap-1.5">
+                    <Button size="sm" variant="primary" onClick={takeback}>
+                      <Undo2 size={14} /> Take back
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setAcked(lastMine.ply)}>
+                      Play on <ArrowRight size={14} />
+                    </Button>
+                  </div>
+                }
+              >
+                {bad && (
+                  <div>
+                    <b style={{ color: VERDICT_COLOR[mineJudged!.verdict!] }}>{mineJudged!.verdict}</b>: {lastMine.san}{" "}
+                    {mineEdge ? `(you have played it ${mineEdge.count}× here${lastMine.book !== "in" ? ", out of book" : ""})` : ""}. Best was <b>{mineJudged!.best}</b>.
+                  </div>
+                )}
+                {offLine && (
+                  <div>
+                    The line continues {uciToSan(lastMine.fenBefore, lineExpected!)}; you played {lastMine.san}.
+                  </div>
+                )}
+                {!offLine && offUsual && (
+                  <div>
+                    You usually play {usual!.san} here ({usual!.count}×); you played {lastMine.san}.{mineJudged?.usualAfter ? ` ${compareWith(mineJudged, myColor, lastMine.san)}` : ""}
+                  </div>
+                )}
+              </Alert>
+            </div>
+          )}
+
           {/* Always laid out, so the page height does not change while the bot thinks. */}
           <Progress className={thinking ? "mt-2" : "invisible mt-2"} />
           {game && (
@@ -591,38 +632,6 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
           </Card>
         )}
         {playing && <TopMovesCard top={top} current={top?.fen === fenNow} myTurn={myTurn} myColor={myColor} graph={graph} />}
-        {stopped && lastMine && (
-          <Alert
-            tone={bad ? "bad" : "warn"}
-            action={
-              <div className="flex flex-col gap-1.5">
-                <Button size="sm" variant="primary" onClick={takeback}>
-                  <Undo2 size={14} /> Take back
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setAcked(lastMine.ply)}>
-                  Play on <ArrowRight size={14} />
-                </Button>
-              </div>
-            }
-          >
-            {bad && (
-              <div>
-                <b style={{ color: VERDICT_COLOR[mineJudged!.verdict!] }}>{mineJudged!.verdict}</b>: {lastMine.san}{" "}
-                {mineEdge ? `(you have played it ${mineEdge.count}× here${lastMine.book !== "in" ? ", out of book" : ""})` : ""}. Best was <b>{mineJudged!.best}</b>.
-              </div>
-            )}
-            {offLine && (
-              <div>
-                The line continues {uciToSan(lastMine.fenBefore, lineExpected!)}; you played {lastMine.san}.
-              </div>
-            )}
-            {!offLine && offUsual && (
-              <div>
-                You usually play {usual!.san} here ({usual!.count}×); you played {lastMine.san}.{mineJudged?.usualAfter ? ` ${compareWith(mineJudged, myColor, lastMine.san)}` : ""}
-              </div>
-            )}
-          </Alert>
-        )}
         {!playing && (
           <Card>
             <CardHeader title="Play your repertoire vs a bot" sub="Maia plays like a human of a given rating; Stockfish is the engine, limited in strength." />
