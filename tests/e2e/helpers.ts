@@ -37,6 +37,11 @@ export async function seedGames(page: Page, games: unknown[]) {
 export const analyzed = (page: Page) => page.waitForFunction(() => performance.getEntriesByName("oob-analyzed").length > 0, null, { timeout: 170_000, polling: 250 });
 
 export const nav = async (page: Page, id: string) => {
+  // The shell first: before it renders, every item counts as hidden.
+  await page
+    .getByRole("button", { name: /^(Menu|Toggle navigation)$/ })
+    .first()
+    .waitFor();
   const item = page.locator(`[data-testid=nav-${id}]:visible`).first();
   if (!(await item.isVisible())) {
     // Closed nav: the phone menu, or the pane's toggle (board pages close it).

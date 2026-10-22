@@ -490,6 +490,19 @@ cg-board square.check {
 cg-board square.current-premove {
   background-color: rgba(220, 70, 220, 0.55);
 }
+/* Queued premoves: the premove color, darker for each later move. */
+cg-board square.premove-1 {
+  background-color: rgba(225, 90, 225, 0.62);
+}
+cg-board square.premove-2 {
+  background-color: rgba(165, 45, 170, 0.78);
+}
+cg-board square.premove-3 {
+  background-color: rgba(115, 25, 125, 0.86);
+}
+cg-board square.premove-4 {
+  background-color: rgba(75, 10, 85, 0.9);
+}
 .cg-wrap coords {
   font-family: var(--font-body);
   font-weight: 700;

@@ -380,6 +380,12 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
                 </Field>
               </>
             )}
+            <Switch
+              checked={live.multiPremove}
+              onChange={(v) => setL({ multiPremove: v })}
+              label="Multiple premoves"
+              hint="Queue several premoves, as on chess.com: each plays when the opponent moves, if still legal; an illegal one cancels the rest. Tap an empty square or right-click to cancel. Needs premoves on."
+            />
             <Switch checked={live.sound} onChange={(v) => setL({ sound: v })} label="Sounds" hint="Lichess's own move, capture, check and low-time sounds." />
             <Switch
               checked={live.vibrate}

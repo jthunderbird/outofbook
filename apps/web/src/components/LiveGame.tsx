@@ -11,7 +11,7 @@ import { buzz, playMoveSound, playSound, preloadSounds } from "../lib/gameFeel";
 import { ANIMATION_MS, type LichessPrefs } from "../lib/lichessPrefs";
 import { abort, claimDraw, claimVictory, exportGame, offerDraw, resign, sendMove, streamGame, type GameFull, type GameState, type OpponentGone } from "../lib/lichessBoard";
 import type { RawGame, Side } from "@outofbook/core/types";
-import { Board, type BoardFeel } from "./Board";
+import { Board, type BoardFeel, type PremoveQueue } from "./Board";
 import { Button, cx } from "./ui";
 import { LichessIcon } from "./LichessIcon";
 
@@ -26,6 +26,7 @@ export interface LiveSettings {
   vibrate: boolean;
   soundSet: string; // used when not following Lichess prefs
   columnLeft: boolean; // wide screens: clocks and buttons left of the board (switched in game)
+  multiPremove: boolean; // queue several premoves, as on chess.com (needs premoves on)
 }
 export const LIVE_DEFAULTS: LiveSettings = {
   warnPct: 50,
@@ -37,6 +38,7 @@ export const LIVE_DEFAULTS: LiveSettings = {
   vibrate: true,
   soundSet: "standard",
   columnLeft: false,
+  multiPremove: false,
 };
 
 /** What a game screen should do, from our settings and (when followed) the Lichess prefs. */
@@ -57,6 +59,7 @@ export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null) {
     fromLichess: !!p,
     feel,
     premove: p ? p.premove : settings.premove,
+    multiPremove: (p ? p.premove : settings.premove) && settings.multiPremove,
     soundSet: !settings.sound ? "silent" : p ? p.soundSet : settings.soundSet,
     tenths: p ? p.clockTenths : 1,
     lowTime: settings.sound && (p ? p.clockSound : true),
@@ -274,6 +277,11 @@ export function LiveGame({
   // My move, shown before Lichess echoes it; `base` is the server's move count
   // when it was sent, so the echo itself retires it (no frame with it twice).
   const [sent, setSent] = useState<{ uci: string; base: number } | null>(null);
+  // Queued premoves (multiPremove): each is sent when the opponent's next move arrives.
+  const [queue, setQueue] = useState<string[]>([]);
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const onMoveRef = useRef<(uci: string) => void>(() => {});
   const [err, setErr] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [viewPly, setViewPly] = useState<number | null>(null);
@@ -392,11 +400,24 @@ export function LiveGame({
         setGoneUntil(null);
         playMoveSound(g.soundSet, fens.sans[n] ?? "");
         if (g.vibrate) buzz(40);
+        // The next queued premove goes if it is legal now; if not, the whole queue does.
+        const [next, ...rest] = queueRef.current;
+        if (next) {
+          let legal = false;
+          try {
+            new Chess(fens.out[n]).move(uciParams(next));
+            legal = true;
+          } catch {
+            /* illegal here */
+          }
+          setQueue(legal ? rest : []);
+          if (legal) onMoveRef.current(next);
+        }
       }
       api.current?.playPremove();
     }
     prevLen.current = n;
-  }, [serverMoves.length, g.soundSet, g.vibrate, fens.sans]);
+  }, [serverMoves.length, g.soundSet, g.vibrate, fens.sans, fens.out]);
 
   // Arrow keys browse.
   useEffect(() => {
@@ -509,6 +530,12 @@ export function LiveGame({
       setErr(String(e));
     });
   };
+
+  onMoveRef.current = onMove;
+  // The queue ends with the game.
+  useEffect(() => {
+    if (!live) setQueue([]);
+  }, [live]);
 
   // Game start and end, as on Lichess: a notify sound at the start; a buzz at the end.
   const startedRef = useRef(false);
@@ -662,6 +689,8 @@ export function LiveGame({
     </div>
   );
 
+  const premoveQueue: PremoveQueue | undefined =
+    live && viewPly === null && g.multiPremove && turn !== myColor ? { color: myColor, moves: queue, onAdd: (u) => setQueue((q) => [...q, u]), onClear: () => setQueue([]) } : undefined;
   const board = (
     <Board
       fen={fen}
@@ -670,8 +699,9 @@ export function LiveGame({
       hideEval
       movable={live && viewPly === null ? myColor : undefined}
       onMove={onMove}
-      premove={g.premove}
+      premove={g.premove && !g.multiPremove}
       feel={g.feel}
+      premoveQueue={premoveQueue}
       onApi={(a) => (api.current = a)}
     />
   );

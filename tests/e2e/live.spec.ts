@@ -1,6 +1,6 @@
 // The live Lichess game screen, through its offline demo (shown with ?demo).
 import { expect, test, type Page } from "@playwright/test";
-import { move, nav, pageErrors } from "./helpers";
+import { clickSquare, move, nav, pageErrors } from "./helpers";
 
 async function openDemo(page: Page) {
   await nav(page, "lichess");
@@ -72,4 +72,49 @@ test("demo: the rating change shows when the game ends", async ({ page }) => {
   await expect(diffs).toHaveCount(2);
   await expect(diffs.last()).toHaveText("+7");
   await expect(diffs.first()).toHaveText("-7");
+});
+
+/** Squares holding pieces of a chessground class (e.g. "white knight"), white at the bottom. */
+async function squaresOf(page: Page, cls: string) {
+  const board = (await page.locator(".board-wrap:visible").first().boundingBox())!;
+  const boxes = await page.locator(`.board-wrap:visible piece.${cls.split(" ").join(".")}`).evaluateAll((els) =>
+    els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }),
+  );
+  const s = board.width / 8;
+  return boxes.map((b) => "abcdefgh"[Math.floor((b.x - board.x) / s)] + (8 - Math.floor((b.y - board.y) / s))).sort();
+}
+
+test("demo: multiple premoves are shaded darker in turn and played one by one", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("liveSettings", JSON.stringify({ multiPremove: true, premove: true, useLichessPrefs: false })));
+  await page.goto("/?demo");
+  await openDemo(page);
+  await move(page, "e2", "e4");
+  // While the demo thinks (at least 650 ms): two more moves, queued.
+  const queued = page.locator(".board-wrap[data-premoves]");
+  await expect(queued).toHaveAttribute("data-premoves", "0");
+  await move(page, "d2", "d4");
+  await expect(queued).toHaveAttribute("data-premoves", "1");
+  await move(page, "g1", "f3");
+  await expect(queued).toHaveAttribute("data-premoves", "2");
+  await expect(page.locator("cg-board square.premove-1")).toHaveCount(2);
+  await expect(page.locator("cg-board square.premove-2")).toHaveCount(2);
+  // The queue empties as the demo replies, each premove played on its turn.
+  await expect(page.locator("cg-board square[class*=premove-]")).toHaveCount(0, { timeout: 20_000 });
+  await expect.poll(() => squaresOf(page, "white knight"), { timeout: 10_000 }).toContain("f3");
+  expect(await squaresOf(page, "white pawn")).toEqual(expect.arrayContaining(["d4", "e4"]));
+});
+
+test("demo: a tap on an empty square cancels the queued premoves", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("liveSettings", JSON.stringify({ multiPremove: true, premove: true, useLichessPrefs: false })));
+  await page.goto("/?demo");
+  await openDemo(page);
+  await move(page, "e2", "e4");
+  await expect(page.locator(".board-wrap[data-premoves]")).toHaveCount(1);
+  await move(page, "d2", "d4");
+  await expect(page.locator("cg-board square.premove-1")).toHaveCount(2);
+  await clickSquare(page, "a5");
+  await expect(page.locator("cg-board square[class*=premove-]")).toHaveCount(0);
 });

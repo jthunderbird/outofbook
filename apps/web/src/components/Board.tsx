@@ -5,7 +5,9 @@ import { Chessground } from "chessground";
 import type { Api } from "chessground/api";
 import type { Config } from "chessground/config";
 import type { DrawShape } from "chessground/draw";
-import type { Key } from "chessground/types";
+import type { Key, Piece, Pieces } from "chessground/types";
+import { read as readFen, write as writeFen } from "chessground/fen";
+import { premove as premoveSquares } from "chessground/premove";
 import { Chess } from "chess.js";
 import { fmtEval, lineWinPct } from "@outofbook/core/chess";
 import type { Line, Side } from "@outofbook/core/types";
@@ -51,6 +53,37 @@ export function EvalBar({ line, orientation, big }: { line?: Line | { cp?: numbe
   );
 }
 
+/** Several premoves (as on chess.com): during the opponent's turn the board shows
+ * the position with the queued moves made, shaded darker the later they come. */
+export interface PremoveQueue {
+  color: Side;
+  moves: string[]; // uci, e1g1 for castling
+  onAdd: (uci: string) => void;
+  onClear: () => void;
+}
+
+const ROLES: Record<string, Piece["role"]> = { q: "queen", r: "rook", b: "bishop", n: "knight" };
+const fileOf = (k: string) => k.charCodeAt(0) - 97;
+
+/** The queued move as it would land, by geometry alone (what it captures is not known yet). */
+function applyPremove(pieces: Pieces, uci: string) {
+  const from = uci.slice(0, 2) as Key;
+  const to = uci.slice(2, 4) as Key;
+  const p = pieces.get(from);
+  if (!p) return;
+  pieces.delete(from);
+  if (p.role === "king" && Math.abs(fileOf(from) - fileOf(to)) === 2) {
+    const kside = fileOf(to) > fileOf(from);
+    const rank = from[1];
+    const rook = pieces.get(`${kside ? "h" : "a"}${rank}` as Key);
+    if (rook) {
+      pieces.delete(`${kside ? "h" : "a"}${rank}` as Key);
+      pieces.set(`${kside ? "f" : "d"}${rank}` as Key, rook);
+    }
+  }
+  pieces.set(to, uci[4] && p.role === "pawn" ? { role: ROLES[uci[4]], color: p.color } : p);
+}
+
 export interface BoardProps {
   fen: string;
   orientation: Side;
@@ -69,6 +102,8 @@ export interface BoardProps {
   coordinates?: boolean;
   /** Board feel, as the Lichess prefs of the same names (see lib/lichessPrefs). */
   feel?: BoardFeel;
+  /** Set during the opponent's turn to queue premoves instead of chessground's single one. */
+  premoveQueue?: PremoveQueue;
 }
 
 export interface BoardFeel {
@@ -86,11 +121,31 @@ const color = (s: Side) => (s === "w" ? "white" : "black");
 
 const NO_ARROWS: Arrow[] = [];
 
-export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine, hideEval, bigEval, movable, onMove, premove, onApi, className, coordinates = true, feel = NO_FEEL }: BoardProps) {
+export function Board({
+  fen,
+  orientation,
+  arrows = NO_ARROWS,
+  lastMove,
+  evalLine,
+  hideEval,
+  bigEval,
+  movable,
+  onMove,
+  premove,
+  onApi,
+  className,
+  coordinates = true,
+  feel = NO_FEEL,
+  premoveQueue,
+}: BoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const cg = useRef<Api | null>(null);
   const onMoveRef = useRef(onMove);
   onMoveRef.current = onMove;
+  const pq = useRef(premoveQueue);
+  pq.current = premoveQueue;
+  // The position the queued premoves lead to, for reading the next one.
+  const virtual = useRef<Pieces | null>(null);
   const autoQueen = useRef(feel.autoQueen ?? 1);
   autoQueen.current = feel.autoQueen ?? 1;
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
@@ -108,7 +163,45 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
   // rest of the app speaks e1g1.
   const castles = useRef(new Map<string, string>());
   const arrowsKey = arrows.map((a) => a.join()).join("|");
+  const queueKey = premoveQueue ? `${premoveQueue.color}:${premoveQueue.moves.join(",")}` : "";
   const config = useMemo<Config>(() => {
+    const drawable = {
+      enabled: true,
+      visible: true,
+      autoShapes: arrows.map(([o, d, b]): DrawShape => ({ orig: o as Key, dest: d as Key, brush: b })),
+    };
+    if (premoveQueue) {
+      const pieces = readFen(fen);
+      for (const u of premoveQueue.moves) applyPremove(pieces, u);
+      virtual.current = pieces;
+      const mine = color(premoveQueue.color);
+      const dests = new Map<Key, Key[]>();
+      for (const [k, p] of pieces) if (p.color === mine) dests.set(k, premoveSquares(pieces, k, true));
+      const custom = new Map<Key, string>();
+      premoveQueue.moves.forEach((u, i) => {
+        const cls = `premove-${Math.min(i + 1, 4)}`;
+        custom.set(u.slice(0, 2) as Key, cls);
+        custom.set(u.slice(2, 4) as Key, cls);
+      });
+      return {
+        fen: writeFen(pieces),
+        orientation: color(orientation),
+        turnColor: mine,
+        check: false,
+        lastMove: lastMove ? ([lastMove.slice(0, 2), lastMove.slice(2, 4)] as Key[]) : undefined,
+        coordinates: coordinates && feel.coords !== 0,
+        coordinatesOnSquares: feel.coords === 3,
+        viewOnly: false,
+        animation: { enabled: feel.animationMs !== 0, duration: feel.animationMs ?? 180 },
+        highlight: { lastMove: feel.highlight ?? true, check: false, custom },
+        movable: { free: false, color: mine, dests, showDests: feel.showDests ?? true, rookCastle: true },
+        premovable: { enabled: false },
+        draggable: { enabled: feel.moveEvent !== 0, showGhost: true },
+        selectable: { enabled: feel.moveEvent !== 1 },
+        drawable,
+      };
+    }
+    virtual.current = null;
     const turn = (chess?.turn() ?? "w") as Side;
     const dests = new Map<Key, Key[]>();
     castles.current.clear();
@@ -134,7 +227,6 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
       coordinatesOnSquares: feel.coords === 3,
       viewOnly: false,
       animation: { enabled: feel.animationMs !== 0, duration: feel.animationMs ?? 180 },
-      highlight: { lastMove: feel.highlight ?? true, check: feel.highlight ?? true },
       movable: {
         free: false,
         color: canMove ? (movable === "both" ? "both" : color(movable as Side)) : undefined,
@@ -145,13 +237,10 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
       premovable: { enabled: !!premove && canMove, showDests: feel.showDests ?? true, castle: true },
       draggable: { enabled: canMove && feel.moveEvent !== 0, showGhost: true },
       selectable: { enabled: canMove && feel.moveEvent !== 1 },
-      drawable: {
-        enabled: true,
-        visible: true,
-        autoShapes: arrows.map(([o, d, b]): DrawShape => ({ orig: o as Key, dest: d as Key, brush: b })),
-      },
+      highlight: { lastMove: feel.highlight ?? true, check: feel.highlight ?? true, custom: new Map() },
+      drawable,
     };
-  }, [fen, orientation, lastMove, chess, movable, hasOnMove, premove, arrowsKey, coordinates, feel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fen, orientation, lastMove, chess, movable, hasOnMove, premove, arrowsKey, coordinates, feel, queueKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!el.current) return;
@@ -162,6 +251,17 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
         ...config.movable,
         events: {
           after: (from, to, meta) => {
+            const q = pq.current;
+            const v = virtual.current;
+            if (q && v) {
+              // A king put on its own rook or moved two files castles.
+              const king = v.get(from)?.role === "king";
+              const onRook = king && v.get(to)?.role === "rook" && v.get(to)?.color === v.get(from)?.color;
+              const uci = king && (onRook || Math.abs(fileOf(from) - fileOf(to)) === 2) ? `${from}${fileOf(to) > fileOf(from) ? "g" : "c"}${from[1]}` : from + to;
+              const promotes = v.get(from)?.role === "pawn" && (to[1] === "8" || to[1] === "1");
+              q.onAdd(promotes ? uci + "q" : uci);
+              return;
+            }
             const c = cg.current;
             const pos = c?.state.pieces.get(to);
             const rank = to[1];
@@ -183,12 +283,28 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
     // banner above it closes), clicks land on the wrong squares; re-measure
     // before each press.
     const remeasure = () => api.state.dom.bounds.clear();
+    // A press on an empty square with nothing selected drops the queued
+    // premoves. Read before chessground handles the press, so a move being
+    // made never counts as one.
+    const press = (e: MouseEvent | TouchEvent) => {
+      remeasure();
+      const q = pq.current;
+      if (!q?.moves.length || api.state.selected) return;
+      const t = "touches" in e ? e.touches[0] : e;
+      if (!t || ("button" in e && e.button !== 0)) return;
+      const key = api.getKeyAtDomPos([t.clientX, t.clientY]);
+      if (key && !api.state.pieces.has(key)) q.onClear();
+    };
     const host = el.current;
-    host.addEventListener("mousedown", remeasure, true);
-    host.addEventListener("touchstart", remeasure, { capture: true, passive: true });
+    // Right-click drops the queued premoves, as on chess.com.
+    const clearQueue = () => pq.current?.moves.length && pq.current.onClear();
+    host.addEventListener("contextmenu", clearQueue);
+    host.addEventListener("mousedown", press, true);
+    host.addEventListener("touchstart", press, { capture: true, passive: true });
     return () => {
-      host.removeEventListener("mousedown", remeasure, true);
-      host.removeEventListener("touchstart", remeasure, true);
+      host.removeEventListener("contextmenu", clearQueue);
+      host.removeEventListener("mousedown", press, true);
+      host.removeEventListener("touchstart", press, true);
       ro.disconnect();
       api.destroy();
       cg.current = null;
@@ -197,7 +313,14 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
   }, []);
 
   useEffect(() => {
-    cg.current?.set(config);
+    const c = cg.current;
+    if (!c) return;
+    // Chessground already shows the position right after a move made on it;
+    // replacing its pieces anyway would drop a selection or a press in progress.
+    if (config.fen && c.getFen() === config.fen.split(" ")[0]) {
+      const { fen: _fen, ...rest } = config;
+      c.set(rest);
+    } else c.set(config);
   }, [config]);
 
   const pickPromo = (role: string | null) => {
@@ -216,7 +339,7 @@ export function Board({ fen, orientation, arrows = NO_ARROWS, lastMove, evalLine
   return (
     <div className={`flex gap-1.5 ${className ?? ""}`}>
       {!hideEval && <EvalBar line={evalLine} orientation={orientation} big={bigEval} />}
-      <div className="board-wrap min-w-0 flex-1">
+      <div className="board-wrap min-w-0 flex-1" data-premoves={premoveQueue ? premoveQueue.moves.length : undefined}>
         <div ref={el} className="h-full w-full" />
         {promo && (
           <div className="absolute inset-0 z-20 bg-black/40" onClick={() => pickPromo(null)}>
