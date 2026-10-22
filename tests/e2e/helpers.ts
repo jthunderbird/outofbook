@@ -63,8 +63,8 @@ export const closeReview = async (page: Page) => {
 };
 
 /** Clicks a square on the visible board (white at the bottom unless `flip`). */
-export async function clickSquare(page: Page, sq: string, flip = false) {
-  const box = (await page.locator(".board-wrap:visible").first().boundingBox())!;
+export async function clickSquare(page: Page, sq: string, flip = false, scope = "") {
+  const box = (await page.locator(`${scope} .board-wrap:visible`.trim()).first().boundingBox())!;
   let f = sq.charCodeAt(0) - 97;
   let r = +sq[1] - 1;
   if (flip) [f, r] = [7 - f, 7 - r];

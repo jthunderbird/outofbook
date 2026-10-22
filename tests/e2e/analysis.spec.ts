@@ -1,6 +1,7 @@
 // The analysis views on the user's real games (local fixture, 300 games).
 import { expect, test } from "@playwright/test";
-import { analyzed, games300, hasGames, nav, pageErrors, seedGames } from "./helpers";
+import { Chess } from "chess.js";
+import { analyzed, clickSquare, games300, hasGames, move, nav, pageErrors, seedGames } from "./helpers";
 
 test.skip(!hasGames, "needs packages/core/test/fixtures/local/games300.json");
 
@@ -43,10 +44,24 @@ test("every analysis view renders, and min games filters the lists", async ({ pa
   expect(errors).toEqual([]);
 });
 
-test("the book explorer opens from a list row", async ({ page }) => {
+test("the book explorer opens from a list row, and its board explores freely", async ({ page }) => {
   await nav(page, "repertoire");
   await page.getByTestId("explore-btn").first().click();
   await expect(page.getByTestId("explorer-history")).toBeVisible();
+  const dialog = "[role=dialog]";
+  const board = page.locator(`${dialog} [data-testid=explore-board]`);
+  const fen = (await board.getAttribute("data-fen"))!;
+  const flip = await page
+    .locator(`${dialog} .cg-wrap`)
+    .first()
+    .evaluate((e) => e.classList.contains("orientation-black"));
+  const m = new Chess(fen).moves({ verbose: true })[0];
+  await clickSquare(page, m.from, flip, dialog);
+  await clickSquare(page, m.to, flip, dialog);
+  await expect(page.locator(`${dialog} [data-testid=explore-line]`)).toContainText(m.san);
+  await expect(page.locator(`${dialog} [data-testid=explore-eval]`)).toContainText(/best|game over/, { timeout: 60_000 });
+  await page.locator(`${dialog} [data-testid=explore-back]`).click();
+  await expect(board).toHaveAttribute("data-fen", fen);
 });
 
 test("a game opens in review with accuracy and the eval graph", async ({ page }) => {
@@ -55,4 +70,21 @@ test("a game opens in review with accuracy and the eval graph", async ({ page })
   await expect(page.getByTestId("accuracy")).toBeVisible();
   await expect(page.getByTestId("eval-graph")).toBeVisible();
   await expect(page.getByTestId("review-moves")).toBeVisible();
+});
+
+test("the analysis board: moves on it explore, with the engine and your games there; Back returns", async ({ page }) => {
+  const errors = pageErrors(page);
+  await nav(page, "repertoire");
+  const board = page.getByTestId("explore-board").first();
+  await expect(board).toBeVisible();
+  await move(page, "e2", "e4");
+  const line = page.getByTestId("explore-line");
+  await expect(line).toContainText("1. e4");
+  await expect(page.getByTestId("explore-eval")).toContainText(/best/, { timeout: 60_000 });
+  await expect(page.getByTestId("explore-games")).toContainText(/Your games here|never reached/);
+  await move(page, "e7", "e5");
+  await expect(line).toContainText("1… e5");
+  await page.getByTestId("explore-back").click();
+  await expect(line).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

@@ -15,7 +15,7 @@ import { kvDel, kvGet, kvSet } from "./lib/evalCache";
 import { findPath } from "@outofbook/core/repertoire";
 import { loadSettings, saveSettings, type Settings } from "./lib/settings";
 import { BAD_VERDICTS, type MoveStat, type PosEval, type RawGame, type RepertoireModel, type Side, type Verdict } from "@outofbook/core/types";
-import { Board, type Arrow } from "./components/Board";
+import type { Arrow } from "./components/Board";
 import { BookExplorer, type ExploreTarget } from "./components/BookExplorer";
 import { GameReview } from "./components/GameReview";
 import { GamesView } from "./components/GamesView";
@@ -33,6 +33,7 @@ import { Shell, type NavItem } from "./shell/Shells";
 import { CommandPalette } from "./shell/CommandPalette";
 import { applyLook, loadLive } from "./components/LiveGame";
 import { cachedPrefs } from "./lib/lichessPrefs";
+import { ExploreBoard } from "./components/ExploreBoard";
 
 type View = "overview" | "repertoire" | "mistakes" | "outofbook" | "whocares" | "openings" | "games" | "play" | "lichess" | "review";
 const ANALYZE: View[] = ["overview", "repertoire", "mistakes", "outofbook", "whocares", "openings", "games"];
@@ -568,13 +569,26 @@ export default function App() {
   const showBoard = analyseView && !!model;
   const boardPanel = showBoard ? (
     <Card className="flex flex-col gap-2" pad>
-      <Board fen={board.fen} orientation={board.orientation} arrows={board.arrows} lastMove={board.lastMove} evalLine={board.evalLine ?? evalOf(posKey(board.fen))?.lines[0]} />
-      <div className="min-h-5 text-sm">{board.label ?? <span className="text-muted">Hover a move to see it here.</span>}</div>
-      {evalOf(posKey(board.fen))?.lines[0]?.pv[0] && (
-        <div className="num text-xs text-muted">
-          best {uciToSan(board.fen, evalOf(posKey(board.fen))!.lines[0].pv[0])} · depth {evalOf(posKey(board.fen))!.depth}
-        </div>
-      )}
+      <ExploreBoard
+        fen={board.fen}
+        orientation={board.orientation}
+        arrows={board.arrows}
+        lastMove={board.lastMove}
+        evalLine={board.evalLine ?? evalOf(posKey(board.fen))?.lines[0]}
+        graph={model?.graphs[board.orientation]}
+        build={settings.engineBuild}
+        depth={settings.depth}
+        footer={
+          <>
+            <div className="min-h-5 text-sm">{board.label ?? <span className="text-muted">Hover a move to see it here, or move on the board to explore.</span>}</div>
+            {evalOf(posKey(board.fen))?.lines[0]?.pv[0] && (
+              <div className="num text-xs text-muted">
+                best {uciToSan(board.fen, evalOf(posKey(board.fen))!.lines[0].pv[0])} · depth {evalOf(posKey(board.fen))!.depth}
+              </div>
+            )}
+          </>
+        }
+      />
     </Card>
   ) : null;
 
@@ -598,7 +612,7 @@ export default function App() {
         />
       </div>
       {!live && <CommandPalette open={cmdOpen} setOpen={setCmdOpen} nav={nav} onNav={go} model={model} onLine={jumpToLine} onAsk={onAsk} />}
-      {explore && !live && <BookExplorer target={explore} depth={settings.depth} onClose={() => setExplore(null)} />}
+      {explore && !live && <BookExplorer target={explore} depth={settings.depth} build={settings.engineBuild} onClose={() => setExplore(null)} />}
       <Dialog open={importOpen && !live} onClose={() => setImportOpen(false)} title="Load games" width={920}>
         <ImportPanel key={username || account?.username} token={token} defaultUser={username || account?.username || ""} saveLimit={account ? account.limit : undefined} onImported={onImported} />
         {account && (

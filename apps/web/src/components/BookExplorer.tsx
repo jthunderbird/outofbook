@@ -4,10 +4,11 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-r
 import { Alert, Badge, Button, Dialog } from "./ui";
 import { BOOK, bookChildren, bookMainLine, bookName, type Step } from "@outofbook/core/book";
 import { fmtEval, lineWinPct, posKey, uciParams, uciToSan } from "@outofbook/core/chess";
-import { EnginePool } from "../lib/engine";
+import { EnginePool, type EngineBuild } from "../lib/engine";
 import { evalNow } from "../lib/evalCache";
 import type { PosEval, RepNode, Side } from "@outofbook/core/types";
-import { Board, uciArrow } from "./Board";
+import { uciArrow } from "./Board";
+import { ExploreBoard } from "./ExploreBoard";
 
 export interface ExploreTarget {
   fen: string;
@@ -59,7 +60,7 @@ const moveNo = (fen: string) => {
 // the user's games, each with its continuation (main named line, or the user's
 // own most common line). Selecting a row steps through its moves like a game
 // viewer; nothing drills down. Blue arrow: next move; green: engine best.
-export function BookExplorer({ target, depth, onClose }: { target: ExploreTarget; depth: number; onClose: () => void }) {
+export function BookExplorer({ target, depth, build, onClose }: { target: ExploreTarget; depth: number; build: EngineBuild; onClose: () => void }) {
   // The moves that led here (plus the move in question): pick any of them to see
   // the alternatives at that point. `at` is the position before history[at].
   const { history, histFens, histSans } = useMemo(() => {
@@ -325,7 +326,16 @@ export function BookExplorer({ target, depth, onClose }: { target: ExploreTarget
           </div>
         </div>
         <div className="w-full shrink-0 lg:w-[440px]">
-          <Board fen={curFen} orientation={target.orientation} arrows={arrows} evalLine={curEval?.lines[0]} lastMove={selRow && sel && sel.idx >= 0 ? selRow.line[sel.idx].uci : undefined} />
+          <ExploreBoard
+            fen={curFen}
+            orientation={target.orientation}
+            arrows={arrows}
+            evalLine={curEval?.lines[0]}
+            lastMove={selRow && sel && sel.idx >= 0 ? selRow.line[sel.idx].uci : undefined}
+            graph={target.graph}
+            build={build}
+            depth={depth}
+          />
           <div className="mt-2 flex items-center gap-1">
             <Button size="sm" variant="ghost" icon onClick={() => sel && setSel({ ...sel, idx: -1 })} disabled={!selRow}>
               <ChevronsLeft size={16} />
