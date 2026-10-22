@@ -588,7 +588,6 @@ export default function App() {
           toolbar={toolbar}
           status={statusText}
           hideHead={tab === "play" || tab === "review"}
-          focus={tab === "play" || tab === "review"}
           main={main}
           board={boardPanel}
           onCommand={() => setCmdOpen(true)}

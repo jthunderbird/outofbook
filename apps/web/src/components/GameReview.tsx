@@ -41,6 +41,7 @@ const RECAP_LABEL: Record<MoveClass, string> = {
 };
 const DEPTHS: [string, string][] = [
   ["12", "depth 12"],
+  ["14", "depth 14"],
   ["16", "depth 16"],
   ["18", "depth 18"],
   ["20", "depth 20"],
@@ -177,7 +178,7 @@ export function GameReview({
   // Sources: the browser cache, the server's shared cache, the Lichess cloud, then the engine pool.
   const target = settings.reviewDepth;
   const nLines = settings.reviewLines;
-  const passDepth = target || 18;
+  const passDepth = target || 14;
   useEffect(() => {
     if (buildReady !== build) return;
     let live = true;

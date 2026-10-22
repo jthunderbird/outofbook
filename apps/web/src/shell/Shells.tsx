@@ -25,7 +25,6 @@ export interface ShellProps {
   toolbar?: ReactNode; // side filter + min games
   status?: ReactNode; // analysis progress
   hideHead?: boolean; // no title or status line (bot play: the board gets the height)
-  focus?: boolean; // a page played on a board (bot, review): the nav starts closed
   main: ReactNode;
   board: ReactNode | null;
   onCommand: () => void;
@@ -158,30 +157,46 @@ function Body({ p }: { p: ShellProps }) {
   );
 }
 
-// Below this width the nav opens over the page instead of beside it, so each
-// page has one layout whatever the nav does.
+// From this width (computers, larger tablets) the nav is docked beside the page
+// and stays as the user left it. Below it, it opens over the page and closes
+// on a pick, so each page has one layout whatever the nav does.
 const DOCK = "(min-width: 1024px)";
 const docks = () => window.matchMedia(DOCK).matches;
+const savedOpen = () => {
+  try {
+    return localStorage.getItem("navOpen") !== "0";
+  } catch {
+    return true;
+  }
+};
 
 export function Shell(p: ShellProps) {
   const [docked, setDocked] = useState(docks);
-  const [paneOpen, setPaneOpen] = useState(() => docks() && !p.focus);
+  const [paneOpen, setPaneOpen] = useState(() => docks() && savedOpen());
   useEffect(() => {
     const mq = window.matchMedia(DOCK);
     const on = () => {
       setDocked(mq.matches);
-      if (!mq.matches) setPaneOpen(false);
+      setPaneOpen(mq.matches && savedOpen());
     };
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-  // Entering a board page puts the nav away; leaving it brings the docked nav back.
-  useEffect(() => setPaneOpen(docks() && !p.focus), [p.focus]);
+  const togglePane = () =>
+    setPaneOpen((x) => {
+      if (docked)
+        try {
+          localStorage.setItem("navOpen", x ? "0" : "1");
+        } catch {
+          /* private mode */
+        }
+      return !x;
+    });
   return (
     <div className="flex min-h-dvh flex-col md:h-dvh md:min-h-0 md:overflow-hidden">
       <MobileChrome p={p} />
       <div className="hidden h-13 shrink-0 items-center gap-3 px-3 md:flex" style={{ background: "color-mix(in oklab, var(--surface-2) 80%, transparent)" }}>
-        <button className="ui-btn ui-btn-ghost ui-btn-icon ui-btn-sm" onClick={() => setPaneOpen((x) => !x)} aria-label="Toggle navigation">
+        <button className="ui-btn ui-btn-ghost ui-btn-icon ui-btn-sm" onClick={togglePane} aria-label="Toggle navigation">
           <Menu size={16} />
         </button>
         <Brand />

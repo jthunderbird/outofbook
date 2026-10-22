@@ -22,7 +22,7 @@ export const DEFAULTS: Settings = {
   depth: 14,
   poolSize: 0, // 0 = auto
   engineBuild: "lite",
-  reviewDepth: 18,
+  reviewDepth: 14,
   reviewLines: 5,
   useCloud: true,
   cloudMaxPly: 14,
@@ -35,13 +35,15 @@ export const DEFAULTS: Settings = {
 };
 
 // Bump when a default changes so saved settings pick it up.
-const VERSION = 3;
+const VERSION = 4;
 
 export const loadSettings = (): Settings => {
   try {
     const saved = JSON.parse(localStorage.getItem("settings") ?? "{}");
     // Version 2 had no engine fields: keep its values, the new fields take their defaults.
-    if (saved.version !== VERSION && saved.version !== 2) return DEFAULTS;
+    if (saved.version !== VERSION && saved.version !== 2 && saved.version !== 3) return DEFAULTS;
+    // Version 3 defaulted the review to depth 18, too slow on phones: 14 now.
+    if (saved.version !== VERSION && saved.reviewDepth === 18) saved.reviewDepth = 14;
     // The bundled Android app ships only the lite engine (the full one is 113 MB).
     return { ...DEFAULTS, ...saved, ...(IS_CAPACITOR ? { engineBuild: "lite" } : {}) };
   } catch {

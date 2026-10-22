@@ -75,7 +75,7 @@ test("the game is analyzed once; browsing it then only reads the results", async
     await closeReview(page);
   }
   const t0 = Date.now();
-  await expect(page.getByText(/Analyzing the game at depth 18, 5 lines/)).toBeHidden({ timeout: 300_000 });
+  await expect(page.getByText(/Analyzing the game at depth 14, 5 lines/)).toBeHidden({ timeout: 300_000 });
   console.log(`game pass: ${((Date.now() - t0) / 1000).toFixed(1)} s for ${await page.locator("[data-testid=review-moves] [data-ply]").count()} plies`);
   const status = page.getByTestId("engine-status");
   for (let i = 0; i < 40; i++) {

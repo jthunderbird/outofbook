@@ -22,13 +22,15 @@ async function open(browser: Browser, w: number, h: number) {
 }
 
 for (const [name, w, h] of SIZES)
-  test(`bot, ${name}: the nav starts closed, and the take-back prompt and current line are on screen`, async ({ browser }) => {
+  test(`bot, ${name}: the nav docked only on wide screens, and the take-back prompt and current line are on screen`, async ({ browser }) => {
     const page = await open(browser, w, h);
     await nav(page, "play");
     await page.getByRole("radio", { name: "White", exact: true }).click();
     await page.getByRole("radio", { name: "Stockfish" }).click();
     await page.getByRole("button", { name: /Start game/ }).click();
-    await expect(page.getByTestId("nav-pane")).toHaveCount(0);
+    // Docked from 1024 px and left open; narrower, it is put away.
+    if (w >= 1024) await expect(page.getByTestId("nav-pane")).toBeVisible();
+    else await expect(page.getByTestId("nav-pane")).toHaveCount(0);
     await move(page, "d2", "d4"); // not the usual 1.e4
     const prompt = page.getByTestId("pause-prompt");
     await expect(prompt).toBeVisible({ timeout: 30_000 });
@@ -71,3 +73,18 @@ for (const [name, w, h] of SIZES.slice(0, 3))
     await expect(page.getByTestId("review-engine").locator("[data-testid=engine-line]").first()).toBeInViewport();
     await page.context().close();
   });
+
+test("desktop: the nav stays as the user left it, across pages and reloads", async ({ browser }) => {
+  const page = await open(browser, 1600, 1000);
+  await expect(page.getByTestId("nav-pane")).toBeVisible();
+  await page.getByRole("button", { name: "Toggle navigation" }).click();
+  await expect(page.getByTestId("nav-pane")).toHaveCount(0);
+  await nav(page, "play");
+  await expect(page.getByTestId("nav-pane")).toBeVisible(); // opened by nav() to get there
+  await page.getByRole("button", { name: "Toggle navigation" }).click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Toggle navigation" })).toBeVisible();
+  await expect(page.getByTestId("nav-pane")).toHaveCount(0);
+  await page.getByRole("button", { name: "Toggle navigation" }).click(); // leave it open
+  await page.context().close();
+});
