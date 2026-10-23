@@ -9,6 +9,7 @@ import fastifyStatic from "@fastify/static";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type pg from "pg";
+import { registerReleases } from "./releases.js";
 
 export const SAVE_LIMIT = 200;
 
@@ -20,6 +21,8 @@ export interface AppOptions {
   devAuth: boolean;
   /** Production: the built web app, served with the API from one origin. */
   staticDir?: string;
+  /** The folder of Android builds served at /releases (see releases.ts). */
+  releasesDir?: string;
   /** How the API asks Lichess who a token belongs to; replaced in tests. */
   lichessAccount?: (authorization: string) => Promise<{ id: string; username: string } | null>;
   /** Origins of other apps allowed to call the API: the bundled Android app runs at https://localhost. */
@@ -188,6 +191,8 @@ export async function buildApp(o: AppOptions): Promise<FastifyInstance> {
     );
     return { stored: gz.length };
   });
+
+  if (o.releasesDir) registerReleases(app, o.releasesDir);
 
   if (o.staticDir) {
     // COOP/COEP make the page cross-origin isolated (SharedArrayBuffer for engines),

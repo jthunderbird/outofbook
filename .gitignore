@@ -4,6 +4,8 @@ poc/
 node_modules/
 dist/
 .env
+# Android builds served at /releases when RELEASES_HOST_DIR is not set.
+releases/
 *.log
 
 # Generated or downloaded (npm run build:book, npm run assets).

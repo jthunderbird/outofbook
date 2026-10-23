@@ -53,7 +53,7 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(caches.match(req).then((hit) => hit ?? fetch(req).then((res) => keep(req, res))));
     return;
   }
-  if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname === "/sw.js") return;
+  if (req.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname.startsWith("/releases") || url.pathname === "/sw.js") return;
   if (req.mode === "navigate") {
     // Fresh when online; the cached app when not. Query strings (the login's ?code=) do not matter.
     e.respondWith(

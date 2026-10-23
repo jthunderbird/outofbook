@@ -1,5 +1,6 @@
 # OutOfBook production stack: the app (API + built web) and Postgres.
-# Set POSTGRES_PASSWORD (and UNLIMITED_USERS) in a .env file next to this one.
+# Set POSTGRES_PASSWORD (and UNLIMITED_USERS, RELEASES_HOST_DIR) in a .env file
+# next to this one.
 # The app speaks plain HTTP on ${APP_BIND}:${APP_PORT} (default 127.0.0.1:8080) for
 # a reverse proxy (SWAG) that puts HTTPS in front. If SWAG runs on another
 # machine, set APP_BIND=0.0.0.0.
@@ -14,8 +15,12 @@ services:
     environment:
       DATABASE_URL: postgres://outofbook:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/outofbook
       UNLIMITED_USERS: ${UNLIMITED_USERS:-}
+      RELEASES_DIR: /releases
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    # The Android builds offered at /releases (APKs, older ones in old/).
+    volumes:
+      - ${RELEASES_HOST_DIR:-./releases}:/releases:ro
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped
