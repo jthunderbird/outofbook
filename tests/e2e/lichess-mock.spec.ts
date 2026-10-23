@@ -227,13 +227,17 @@ test("quick play seeks the last rapid or classical game's type against a person"
   await page.goto("/");
   const quick = page.locator("[data-testid=quick-play]:visible");
   await expect(quick).toHaveText(/15\+10 rated/);
+  // The button itself seeks, on the page the user is on, and cancels on a second press.
   await quick.click();
-  await expect(page.getByTestId("seeking")).toContainText("rated 15+10");
+  await expect(quick).toHaveAttribute("data-seeking", "");
+  await expect(quick).toContainText("15+10 · cancel");
+  await expect(page.getByTestId("play-ai")).toBeHidden();
   await expect.poll(() => calls.seeks.length).toBe(1);
   const body = new URLSearchParams(calls.seeks[0]);
   expect([body.get("time"), body.get("increment"), body.get("rated")]).toEqual(["15", "10", "true"]);
-  await page.getByTestId("seeking").getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByTestId("seeking")).toHaveCount(0);
+  await quick.click();
+  await expect(quick).not.toHaveAttribute("data-seeking");
+  await expect(quick).toHaveText(/15\+10 rated/);
 });
 
 test("quick play defaults to 10+0 casual with no last game", async ({ page }) => {
@@ -246,3 +250,12 @@ test("quick play defaults to 10+0 casual with no last game", async ({ page }) =>
   const body = new URLSearchParams(calls.seeks[0]);
   expect([body.get("time"), body.get("increment"), body.get("rated")]).toEqual(["10", "0", "false"]);
 });
+
+for (const width of [280, 412])
+  test(`quick play fits the title bar at ${width} px, so the page never runs wider than the screen`, async ({ page }) => {
+    await fakeLichess(page);
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    await expect(page.locator("[data-testid=quick-play]:visible")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });

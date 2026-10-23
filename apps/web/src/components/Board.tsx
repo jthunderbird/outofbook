@@ -102,6 +102,21 @@ function queuedPosition(fen: string, side: Side, moves: string[]) {
   return { pieces, now: new Map([...at].map(([q, n]) => [n, q])) };
 }
 
+/** The queue's move for a premove dragged from orig (where the piece stands now) to dest. */
+function queuedUci(v: ReturnType<typeof queuedPosition>, orig: Key, dest: Key) {
+  // The piece standing on orig goes on from where the queue has put it.
+  const from = v.now.get(orig);
+  const p = from && v.pieces.get(from);
+  if (!from || !p) return null;
+  // A king put on its own rook or moved two files castles.
+  const king = p.role === "king";
+  const target = v.pieces.get(dest);
+  const onRook = king && target?.role === "rook" && target.color === p.color;
+  const uci = king && (onRook || Math.abs(fileOf(from) - fileOf(dest)) === 2) ? `${from}${fileOf(dest) > fileOf(from) ? "g" : "c"}${from[1]}` : from + dest;
+  const promotes = p.role === "pawn" && (dest[1] === "8" || dest[1] === "1");
+  return promotes ? uci + "q" : uci;
+}
+
 export interface BoardProps {
   fen: string;
   orientation: Side;
@@ -290,17 +305,8 @@ export function Board({
             const v = virtual.current;
             if (!q || !v) return;
             cg.current?.cancelPremove();
-            // The piece standing on orig goes on from where the queue has put it.
-            const from = v.now.get(orig);
-            const p = from && v.pieces.get(from);
-            if (!from || !p) return;
-            // A king put on its own rook or moved two files castles.
-            const king = p.role === "king";
-            const target = v.pieces.get(dest);
-            const onRook = king && target?.role === "rook" && target.color === p.color;
-            const uci = king && (onRook || Math.abs(fileOf(from) - fileOf(dest)) === 2) ? `${from}${fileOf(dest) > fileOf(from) ? "g" : "c"}${from[1]}` : from + dest;
-            const promotes = p.role === "pawn" && (dest[1] === "8" || dest[1] === "1");
-            q.onAdd(promotes ? uci + "q" : uci);
+            const uci = queuedUci(v, orig, dest);
+            if (uci) q.onAdd(uci);
           },
         },
       },
@@ -348,11 +354,19 @@ export function Board({
     if (!c) return;
     // Chessground already shows the position right after a move made on it;
     // replacing its pieces anyway would drop a selection or a press in progress.
+    // A premove made in the moment between our move and the queue taking over
+    // (chessground's own single premove) joins the queue.
+    const early = premoveQueue && c.state.premovable.current;
     if (config.fen && c.getFen() === config.fen.split(" ")[0]) {
       const { fen: _fen, ...rest } = config;
       c.set(rest);
     } else c.set(config);
-  }, [config]);
+    if (early && virtual.current) {
+      c.cancelPremove();
+      const uci = queuedUci(virtual.current, early[0], early[1]);
+      if (uci) premoveQueue.onAdd(uci);
+    }
+  }, [config]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pickPromo = (role: string | null) => {
     const p = promo;
@@ -370,7 +384,7 @@ export function Board({
   return (
     <div className={`flex gap-1.5 ${className ?? ""}`}>
       {!hideEval && <EvalBar line={evalLine} orientation={orientation} big={bigEval} />}
-      <div className="board-wrap min-w-0 flex-1" data-premoves={premoveQueue ? premoveQueue.moves.length : undefined}>
+      <div className="board-wrap min-w-0 flex-1" data-premoves={premoveQueue ? premoveQueue.moves.length : undefined} data-queue={premoveQueue?.moves.join(" ")}>
         <div ref={el} className="h-full w-full" />
         {promo && (
           <div className="absolute inset-0 z-20 bg-black/40" onClick={() => pickPromo(null)}>

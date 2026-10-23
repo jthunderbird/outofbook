@@ -32,10 +32,10 @@ export interface ShellProps {
 }
 
 /** The horizontal logo, 50% taller than the old icon-and-name mark; one image per theme. */
-const Brand = () => (
-  <div className="flex shrink-0 items-center">
-    <img src="/brand/web-horizontal.png" alt="OutOfBook" className="brand-dark h-[42px] w-auto" />
-    <img src="/brand/web-horizontal-light.png" alt="OutOfBook" className="brand-light h-[42px] w-auto" />
+const Brand = ({ shrink }: { shrink?: boolean }) => (
+  <div className={`flex items-center ${shrink ? "min-w-0 shrink" : "shrink-0"}`}>
+    <img src="/brand/web-horizontal.png" alt="OutOfBook" className="brand-dark h-auto max-h-[42px] w-auto max-w-full object-contain" />
+    <img src="/brand/web-horizontal-light.png" alt="OutOfBook" className="brand-light h-auto max-h-[42px] w-auto max-w-full object-contain" />
   </div>
 );
 
@@ -92,7 +92,7 @@ function MobileChrome({ p }: { p: ShellProps }) {
         <button className="ui-btn ui-btn-ghost ui-btn-icon" onClick={() => setOpen(true)} aria-label="Menu">
           <Menu size={18} />
         </button>
-        <Brand />
+        <Brand shrink />
         <div className="flex-1" />
         {p.quick}
         <button className="ui-btn ui-btn-ghost ui-btn-icon" onClick={p.onCommand} aria-label="Search">

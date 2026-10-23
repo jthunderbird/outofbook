@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Bot, Loader2, MonitorPlay, Send, ShieldCheck, Swords, Users } from "lucide-react";
 import { account, login, tokenScopes, type Perfs } from "../lib/auth";
-import { acceptChallenge, challengeAi, challengeUser, declineChallenge, seek, streamEvents, type QuickPlay } from "../lib/lichessBoard";
+import { acceptChallenge, challengeAi, challengeUser, declineChallenge, seek, streamEvents } from "../lib/lichessBoard";
 import type { RawGame } from "@outofbook/core/types";
 import { canVibrate } from "../lib/gameFeel";
 import { cachedPrefs, loadPrefs, type LichessPrefs } from "../lib/lichessPrefs";
@@ -42,20 +42,7 @@ interface Incoming {
 // The offline demo of the game screen is for tests: open the app with ?demo.
 const SHOW_DEMO = new URLSearchParams(location.search).has("demo");
 
-export function LichessPlay({
-  token,
-  username,
-  onLiveChange,
-  onReview,
-  quick,
-}: {
-  token: string | null;
-  username: string;
-  onLiveChange: (live: boolean) => void;
-  onReview: (g: RawGame) => void;
-  /** Quick play from the title bar: seek this game type (n tells repeated presses apart). */
-  quick?: { play: QuickPlay; n: number } | null;
-}) {
+export function LichessPlay({ token, username, onLiveChange, onReview }: { token: string | null; username: string; onLiveChange: (live: boolean) => void; onReview: (g: RawGame) => void }) {
   const [scopes, setScopes] = useState<string | null>(null);
   const [live, setLive] = useState<LiveSettings>(loadLive);
   const [rated, setRated] = useState<"rated" | "casual">("rated");
@@ -144,17 +131,6 @@ export function LichessPlay({
       .catch((e) => !ac.signal.aborted && setErr(String(e)))
       .finally(() => setSeeking((s) => (s?.ac === ac ? null : s)));
   };
-  // Quick play: seek the game type asked for once playing is possible, unless
-  // a game or another seek is already on.
-  const quickDone = useRef(0);
-  useEffect(() => {
-    if (!quick || quick.n === quickDone.current || !canPlay) return;
-    quickDone.current = quick.n;
-    if (gameId || seeking) return;
-    setRated(quick.play.rated ? "rated" : "casual");
-    startSeek(quick.play.minutes, quick.play.increment, quick.play.rated);
-  }, [quick, canPlay]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const demoGame = demo && (
     <LiveGame demo token="" gameId="demo" username={username} settings={live} prefs={prefs} onLiveChange={() => {}} onExit={() => setDemo(false)} onReview={(g) => (setDemo(false), onReview(g))} />
   );

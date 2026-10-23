@@ -1,6 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chess } from "chess.js";
-import { AlertTriangle, Bot, DoorOpen, Download, FileSearch, Gem, GitBranch, LayoutDashboard, ListOrdered, LogOut, Minus, Plus, Settings as Gear, SignpostBig, Sparkles, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  DoorOpen,
+  Download,
+  FileSearch,
+  Gem,
+  GitBranch,
+  LayoutDashboard,
+  ListOrdered,
+  LogOut,
+  Minus,
+  Plus,
+  Settings as Gear,
+  Loader2,
+  SignpostBig,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 import { LichessIcon } from "./components/LichessIcon";
 import { account as lichessAccount, completeLogin, login, logout, onAppLogin } from "./lib/auth";
 import { hasAuth, loadSavedGames, me, saveGames, type Me } from "./lib/server";
@@ -34,7 +52,7 @@ import { CommandPalette } from "./shell/CommandPalette";
 import { applyLook, loadLive } from "./components/LiveGame";
 import { cachedPrefs } from "./lib/lichessPrefs";
 import { ExploreBoard } from "./components/ExploreBoard";
-import { lastQuickPlay, QUICK_DEFAULT, type QuickPlay } from "./lib/lichessBoard";
+import { lastQuickPlay, QUICK_DEFAULT, seek, type QuickPlay } from "./lib/lichessBoard";
 
 type View = "overview" | "repertoire" | "mistakes" | "outofbook" | "whocares" | "openings" | "games" | "play" | "lichess" | "review";
 const ANALYZE: View[] = ["overview", "repertoire", "mistakes", "outofbook", "whocares", "openings", "games"];
@@ -267,7 +285,13 @@ export default function App() {
     }
   });
   const quickChecked = useRef(false);
-  const [quick, setQuick] = useState<{ play: QuickPlay; n: number } | null>(null);
+  // The title bar's own seek: the button shows it and cancels it; a game
+  // starting (Lichess's event stream, kept open by LichessPlay) ends it.
+  const [quickSeek, setQuickSeek] = useState<AbortController | null>(null);
+  const [quickErr, setQuickErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (live) setQuickSeek((ac) => (ac?.abort(), null));
+  }, [live]);
   useEffect(() => {
     if (!token || !username || live) return;
     let stop = false;
@@ -294,21 +318,30 @@ export default function App() {
     };
   }, [token, username, live]);
   const quickLabel = `${quickType.minutes}+${quickType.increment} ${quickType.rated ? "rated" : "casual"}`;
+  const quickPlay = () => {
+    if (!token) return login();
+    if (quickSeek) return (quickSeek.abort(), setQuickSeek(null));
+    const ac = new AbortController();
+    setQuickErr(null);
+    setQuickSeek(ac);
+    seek(token, quickType.minutes, quickType.increment, quickType.rated, ac.signal)
+      .catch((e) => !ac.signal.aborted && setQuickErr(String(e)))
+      .finally(() => setQuickSeek((s) => (s === ac ? null : s)));
+  };
+  // Shrinks with the title bar, so the bar never runs wider than the screen.
   const quickBtn = (
-    <Tip content={`Quick play: seek a ${quickLabel} game on Lichess`}>
-      <Button
-        size="sm"
-        variant="primary"
-        onClick={() => {
-          if (!token) return login();
-          setQuick({ play: quickType, n: Date.now() });
-          setTab("lichess");
-        }}
-        data-testid="quick-play"
-      >
-        <Zap size={14} /> <span className="num">{quickLabel}</span>
-      </Button>
-    </Tip>
+    <Button
+      size="sm"
+      variant={quickSeek ? "secondary" : "primary"}
+      className="min-w-0 shrink"
+      onClick={quickPlay}
+      title={quickSeek ? `Looking for a ${quickLabel} opponent on Lichess: press to cancel` : `Quick play: find a ${quickLabel} opponent on Lichess`}
+      data-testid="quick-play"
+      data-seeking={quickSeek ? "" : undefined}
+    >
+      {quickSeek ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <Zap size={14} className="shrink-0" />}
+      <span className="num truncate">{quickSeek ? `${quickType.minutes}+${quickType.increment} · cancel` : quickLabel}</span>
+    </Button>
   );
 
   const reviewExtra = useCallback(
@@ -612,6 +645,11 @@ export default function App() {
   const main = (
     <>
       {answerCard}
+      {quickErr && (
+        <Alert tone="bad" className="mb-3" onClose={() => setQuickErr(null)}>
+          Quick play: {quickErr}
+        </Alert>
+      )}
       {saveMsg && (
         <Alert tone="info" className="mb-3" onClose={() => setSaveMsg(null)}>
           <span data-testid="save-msg">{saveMsg}</span>
@@ -620,7 +658,7 @@ export default function App() {
       {view}
       {/* Kept mounted so incoming Lichess games and challenges are always seen. */}
       <div style={{ display: tab === "lichess" ? undefined : "none" }}>
-        <LichessPlay token={token} username={username} onLiveChange={setLive} onReview={reviewExtra} quick={quick} />
+        <LichessPlay token={token} username={username} onLiveChange={setLive} onReview={reviewExtra} />
       </div>
     </>
   );

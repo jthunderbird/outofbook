@@ -151,7 +151,8 @@ const realConn = (token: string, id: string): Conn => ({
 
 /** Offline demo: you are White vs a random mover, 1+1 so the clock colors show quickly.
  * From the browser console, window.demoOpponentGone(seconds) makes the opponent "leave",
- * and window.demoClocks(whiteMs, blackMs) sets the clocks. */
+ * window.demoClocks(whiteMs, blackMs) sets the clocks, and window.demoReplyMs (set
+ * before the game) fixes the opponent's thinking time. */
 function demoConn(username: string): Conn {
   const initial = 60_000;
   const inc = 1000;
@@ -203,7 +204,7 @@ function demoConn(username: string): Conn {
           const m = moves[Math.floor(Math.random() * moves.length)];
           play(m.from + m.to + (m.promotion ?? ""));
         },
-        500 + Math.random() * 2500,
+        (window as { demoReplyMs?: number }).demoReplyMs ?? 500 + Math.random() * 2500,
       );
     },
     abort: async () => push({ status: "aborted" }),
@@ -714,7 +715,7 @@ export function LiveGame({
       hideEval
       movable={live && viewPly === null ? myColor : undefined}
       onMove={onMove}
-      premove={g.premove && !g.multiPremove}
+      premove={g.premove || g.multiPremove}
       feel={g.feel}
       premoveQueue={premoveQueue}
       onApi={(a) => (api.current = a)}
