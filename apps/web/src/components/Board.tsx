@@ -5,8 +5,8 @@ import { Chessground } from "chessground";
 import type { Api } from "chessground/api";
 import type { Config } from "chessground/config";
 import type { DrawShape } from "chessground/draw";
-import type { Key, Piece, Pieces } from "chessground/types";
-import { read as readFen, write as writeFen } from "chessground/fen";
+import type { Key, Piece } from "chessground/types";
+import { read as readFen } from "chessground/fen";
 import { premove as premoveSquares } from "chessground/premove";
 import { Chess } from "chess.js";
 import { fmtEval, lineWinPct } from "@outofbook/core/chess";
@@ -53,8 +53,10 @@ export function EvalBar({ line, orientation, big }: { line?: Line | { cp?: numbe
   );
 }
 
-/** Several premoves (as on chess.com): during the opponent's turn the board shows
- * the position with the queued moves made, shaded darker the later they come. */
+/** Several premoves (as on chess.com): the pieces stay where they are until a
+ * premove is played; the shaded squares (darker the later the move) show the
+ * queue. A piece already premoved is grabbed where it stands and goes on from
+ * the square it was premoved to. */
 export interface PremoveQueue {
   color: Side;
   moves: string[]; // uci, e1g1 for castling
@@ -65,23 +67,39 @@ export interface PremoveQueue {
 const ROLES: Record<string, Piece["role"]> = { q: "queen", r: "rook", b: "bishop", n: "knight" };
 const fileOf = (k: string) => k.charCodeAt(0) - 97;
 
-/** The queued move as it would land, by geometry alone (what it captures is not known yet). */
-function applyPremove(pieces: Pieces, uci: string) {
-  const from = uci.slice(0, 2) as Key;
-  const to = uci.slice(2, 4) as Key;
-  const p = pieces.get(from);
-  if (!p) return;
-  pieces.delete(from);
-  if (p.role === "king" && Math.abs(fileOf(from) - fileOf(to)) === 2) {
-    const kside = fileOf(to) > fileOf(from);
-    const rank = from[1];
-    const rook = pieces.get(`${kside ? "h" : "a"}${rank}` as Key);
-    if (rook) {
-      pieces.delete(`${kside ? "h" : "a"}${rank}` as Key);
-      pieces.set(`${kside ? "f" : "d"}${rank}` as Key, rook);
+/**
+ * The position the queued moves lead to, by geometry alone (what they capture
+ * is not known yet), and where each of the mover's pieces (by the square it
+ * stands on now) has got to.
+ */
+function queuedPosition(fen: string, side: Side, moves: string[]) {
+  const pieces = readFen(fen);
+  const mine = color(side);
+  const at = new Map<Key, Key>(); // where it is in the queue's position -> where it stands now
+  for (const [k, p] of pieces) if (p.color === mine) at.set(k, k);
+  const put = (from: Key, to: Key, p: Piece) => {
+    const origin = at.get(from);
+    pieces.delete(from);
+    at.delete(from);
+    at.delete(to);
+    pieces.set(to, p);
+    if (origin) at.set(to, origin);
+  };
+  for (const uci of moves) {
+    const from = uci.slice(0, 2) as Key;
+    const to = uci.slice(2, 4) as Key;
+    const p = pieces.get(from);
+    if (!p) continue;
+    if (p.role === "king" && Math.abs(fileOf(from) - fileOf(to)) === 2) {
+      const kside = fileOf(to) > fileOf(from);
+      const rank = from[1];
+      const corner = `${kside ? "h" : "a"}${rank}` as Key;
+      const rook = pieces.get(corner);
+      if (rook) put(corner, `${kside ? "f" : "d"}${rank}` as Key, rook);
     }
+    put(from, to, uci[4] && p.role === "pawn" ? { role: ROLES[uci[4]], color: p.color } : p);
   }
-  pieces.set(to, uci[4] && p.role === "pawn" ? { role: ROLES[uci[4]], color: p.color } : p);
+  return { pieces, now: new Map([...at].map(([q, n]) => [n, q])) };
 }
 
 export interface BoardProps {
@@ -145,7 +163,7 @@ export function Board({
   const pq = useRef(premoveQueue);
   pq.current = premoveQueue;
   // The position the queued premoves lead to, for reading the next one.
-  const virtual = useRef<Pieces | null>(null);
+  const virtual = useRef<ReturnType<typeof queuedPosition> | null>(null);
   const autoQueen = useRef(feel.autoQueen ?? 1);
   autoQueen.current = feel.autoQueen ?? 1;
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
@@ -171,12 +189,13 @@ export function Board({
       autoShapes: arrows.map(([o, d, b]): DrawShape => ({ orig: o as Key, dest: d as Key, brush: b })),
     };
     if (premoveQueue) {
-      const pieces = readFen(fen);
-      for (const u of premoveQueue.moves) applyPremove(pieces, u);
-      virtual.current = pieces;
+      // Chessground's own premove mode, which leaves the pieces in place: each
+      // premove it reports is added to the queue and its own one dropped.
+      const q = queuedPosition(fen, premoveQueue.color, premoveQueue.moves);
+      virtual.current = q;
       const mine = color(premoveQueue.color);
       const dests = new Map<Key, Key[]>();
-      for (const [k, p] of pieces) if (p.color === mine) dests.set(k, premoveSquares(pieces, k, true));
+      for (const [now, there] of q.now) dests.set(now, premoveSquares(q.pieces, there, true));
       const custom = new Map<Key, string>();
       premoveQueue.moves.forEach((u, i) => {
         const cls = `premove-${Math.min(i + 1, 4)}`;
@@ -184,9 +203,9 @@ export function Board({
         custom.set(u.slice(2, 4) as Key, cls);
       });
       return {
-        fen: writeFen(pieces),
+        fen,
         orientation: color(orientation),
-        turnColor: mine,
+        turnColor: premoveQueue.color === "w" ? "black" : "white",
         check: false,
         lastMove: lastMove ? ([lastMove.slice(0, 2), lastMove.slice(2, 4)] as Key[]) : undefined,
         coordinates: coordinates && feel.coords !== 0,
@@ -194,8 +213,8 @@ export function Board({
         viewOnly: false,
         animation: { enabled: feel.animationMs !== 0, duration: feel.animationMs ?? 180 },
         highlight: { lastMove: feel.highlight ?? true, check: false, custom },
-        movable: { free: false, color: mine, dests, showDests: feel.showDests ?? true, rookCastle: true },
-        premovable: { enabled: false },
+        movable: { free: false, color: mine, dests: new Map(), showDests: feel.showDests ?? true, rookCastle: true },
+        premovable: { enabled: true, showDests: feel.showDests ?? true, castle: true, customDests: dests },
         draggable: { enabled: feel.moveEvent !== 0, showGhost: true },
         selectable: { enabled: feel.moveEvent !== 1 },
         drawable,
@@ -234,7 +253,7 @@ export function Board({
         showDests: feel.showDests ?? true,
         rookCastle: feel.rookCastle ?? true,
       },
-      premovable: { enabled: !!premove && canMove, showDests: feel.showDests ?? true, castle: true },
+      premovable: { enabled: !!premove && canMove, showDests: feel.showDests ?? true, castle: true, customDests: undefined },
       draggable: { enabled: canMove && feel.moveEvent !== 0, showGhost: true },
       selectable: { enabled: canMove && feel.moveEvent !== 1 },
       highlight: { lastMove: feel.highlight ?? true, check: feel.highlight ?? true, custom: new Map() },
@@ -251,17 +270,6 @@ export function Board({
         ...config.movable,
         events: {
           after: (from, to, meta) => {
-            const q = pq.current;
-            const v = virtual.current;
-            if (q && v) {
-              // A king put on its own rook or moved two files castles.
-              const king = v.get(from)?.role === "king";
-              const onRook = king && v.get(to)?.role === "rook" && v.get(to)?.color === v.get(from)?.color;
-              const uci = king && (onRook || Math.abs(fileOf(from) - fileOf(to)) === 2) ? `${from}${fileOf(to) > fileOf(from) ? "g" : "c"}${from[1]}` : from + to;
-              const promotes = v.get(from)?.role === "pawn" && (to[1] === "8" || to[1] === "1");
-              q.onAdd(promotes ? uci + "q" : uci);
-              return;
-            }
             const c = cg.current;
             const pos = c?.state.pieces.get(to);
             const rank = to[1];
@@ -270,6 +278,28 @@ export function Board({
             if (promotes && queen) onMoveRef.current?.(from + to + "q");
             else if (promotes) setPromo({ from, to });
             else onMoveRef.current?.(castles.current.get(from + to) ?? from + to);
+          },
+        },
+      },
+      premovable: {
+        ...config.premovable,
+        events: {
+          set: (orig, dest) => {
+            const q = pq.current;
+            const v = virtual.current;
+            if (!q || !v) return;
+            cg.current?.cancelPremove();
+            // The piece standing on orig goes on from where the queue has put it.
+            const from = v.now.get(orig);
+            const p = from && v.pieces.get(from);
+            if (!from || !p) return;
+            // A king put on its own rook or moved two files castles.
+            const king = p.role === "king";
+            const target = v.pieces.get(dest);
+            const onRook = king && target?.role === "rook" && target.color === p.color;
+            const uci = king && (onRook || Math.abs(fileOf(from) - fileOf(dest)) === 2) ? `${from}${fileOf(dest) > fileOf(from) ? "g" : "c"}${from[1]}` : from + dest;
+            const promotes = p.role === "pawn" && (dest[1] === "8" || dest[1] === "1");
+            q.onAdd(promotes ? uci + "q" : uci);
           },
         },
       },

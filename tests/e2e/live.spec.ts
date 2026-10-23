@@ -101,10 +101,26 @@ test("demo: multiple premoves are shaded darker in turn and played one by one", 
   await expect(queued).toHaveAttribute("data-premoves", "2");
   await expect(page.locator("cg-board square.premove-1")).toHaveCount(2);
   await expect(page.locator("cg-board square.premove-2")).toHaveCount(2);
+  // Queued, not shown as made: the pieces stay put, the shading is the guide.
+  expect(await squaresOf(page, "white pawn")).toContain("d2");
+  expect(await squaresOf(page, "white knight")).toContain("g1");
   // The queue empties as the demo replies, each premove played on its turn.
   await expect(page.locator("cg-board square[class*=premove-]")).toHaveCount(0, { timeout: 20_000 });
   await expect.poll(() => squaresOf(page, "white knight"), { timeout: 10_000 }).toContain("f3");
   expect(await squaresOf(page, "white pawn")).toEqual(expect.arrayContaining(["d4", "e4"]));
+});
+
+test("demo: a premoved piece is grabbed where it stands and goes on from its premove square", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("liveSettings", JSON.stringify({ multiPremove: true, premove: true, useLichessPrefs: false })));
+  await page.goto("/?demo");
+  await openDemo(page);
+  await move(page, "e2", "e4");
+  await move(page, "g1", "f3");
+  // The knight still stands on g1; its next move is read from f3.
+  await move(page, "g1", "e5");
+  await expect(page.locator("cg-board square.premove-2")).toHaveCount(2);
+  expect(await squaresOf(page, "white knight")).toEqual(["b1", "g1"]);
+  await expect.poll(() => squaresOf(page, "white knight"), { timeout: 20_000 }).toContain("e5");
 });
 
 test("demo: a tap on an empty square cancels the queued premoves", async ({ page }) => {
