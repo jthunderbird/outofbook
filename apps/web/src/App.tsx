@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chess } from "chess.js";
-import { AlertTriangle, Bot, DoorOpen, Download, FileSearch, Gem, GitBranch, LayoutDashboard, ListOrdered, LogOut, Minus, Plus, Settings as Gear, SignpostBig, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, DoorOpen, Download, FileSearch, Gem, GitBranch, LayoutDashboard, ListOrdered, LogOut, Minus, Plus, Settings as Gear, SignpostBig, Sparkles, Zap } from "lucide-react";
 import { LichessIcon } from "./components/LichessIcon";
 import { account as lichessAccount, completeLogin, login, logout, onAppLogin } from "./lib/auth";
 import { hasAuth, loadSavedGames, me, saveGames, type Me } from "./lib/server";
@@ -34,6 +34,7 @@ import { CommandPalette } from "./shell/CommandPalette";
 import { applyLook, loadLive } from "./components/LiveGame";
 import { cachedPrefs } from "./lib/lichessPrefs";
 import { ExploreBoard } from "./components/ExploreBoard";
+import { lastQuickPlay, QUICK_DEFAULT, type QuickPlay } from "./lib/lichessBoard";
 
 type View = "overview" | "repertoire" | "mistakes" | "outofbook" | "whocares" | "openings" | "games" | "play" | "lichess" | "review";
 const ANALYZE: View[] = ["overview", "repertoire", "mistakes", "outofbook", "whocares", "openings", "games"];
@@ -256,6 +257,60 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live]);
 
+  // Quick play: the type of the last game played on Lichess (rapid or
+  // classical, as boards may seek), looked up again after each game here.
+  const [quickType, setQuickType] = useState<QuickPlay>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("quickPlay") ?? "") as QuickPlay;
+    } catch {
+      return QUICK_DEFAULT;
+    }
+  });
+  const quickChecked = useRef(false);
+  const [quick, setQuick] = useState<{ play: QuickPlay; n: number } | null>(null);
+  useEffect(() => {
+    if (!token || !username || live) return;
+    let stop = false;
+    // Lichess lists a game a moment after it ends.
+    const t = setTimeout(
+      () =>
+        lastQuickPlay(token, username)
+          .then((q) => {
+            if (stop) return;
+            setQuickType(q ?? QUICK_DEFAULT);
+            try {
+              localStorage.setItem("quickPlay", JSON.stringify(q ?? QUICK_DEFAULT));
+            } catch {
+              /* private mode */
+            }
+          })
+          .catch(() => {}),
+      quickChecked.current ? 2000 : 0,
+    );
+    quickChecked.current = true;
+    return () => {
+      stop = true;
+      clearTimeout(t);
+    };
+  }, [token, username, live]);
+  const quickLabel = `${quickType.minutes}+${quickType.increment} ${quickType.rated ? "rated" : "casual"}`;
+  const quickBtn = (
+    <Tip content={`Quick play: seek a ${quickLabel} game on Lichess`}>
+      <Button
+        size="sm"
+        variant="primary"
+        onClick={() => {
+          if (!token) return login();
+          setQuick({ play: quickType, n: Date.now() });
+          setTab("lichess");
+        }}
+        data-testid="quick-play"
+      >
+        <Zap size={14} /> <span className="num">{quickLabel}</span>
+      </Button>
+    </Tip>
+  );
+
   const reviewExtra = useCallback(
     (g: RawGame) => {
       setExtraGames((x) => [g, ...x]);
@@ -374,6 +429,11 @@ export default function App() {
     analysis.current?.stop();
     await logout();
     await Promise.all([kvDel("lastGames"), kvDel("model")]).catch(() => {});
+    try {
+      localStorage.removeItem("quickPlay");
+    } catch {
+      /* private mode */
+    }
     location.replace("/");
   };
 
@@ -560,7 +620,7 @@ export default function App() {
       {view}
       {/* Kept mounted so incoming Lichess games and challenges are always seen. */}
       <div style={{ display: tab === "lichess" ? undefined : "none" }}>
-        <LichessPlay token={token} username={username} onLiveChange={setLive} onReview={reviewExtra} />
+        <LichessPlay token={token} username={username} onLiveChange={setLive} onReview={reviewExtra} quick={quick} />
       </div>
     </>
   );
@@ -602,6 +662,7 @@ export default function App() {
           title={tab === "review" && reviewGame ? `${reviewGame.white} vs ${reviewGame.black}` : t[0]}
           subtitle={t[1]}
           actions={actions}
+          quick={quickBtn}
           pickers={pickers}
           toolbar={toolbar}
           status={statusText}

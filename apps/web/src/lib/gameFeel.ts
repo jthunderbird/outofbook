@@ -66,4 +66,6 @@ export function buzz(pattern: number | number[] = 40) {
     /* unsupported */
   }
 }
+/** The buzz for a move received: a stronger double one when it gives check. */
+export const buzzMove = (san: string) => buzz(san.includes("+") || san.includes("#") ? [110, 60, 110] : 40);
 export const canVibrate = () => typeof navigator !== "undefined" && "vibrate" in navigator;

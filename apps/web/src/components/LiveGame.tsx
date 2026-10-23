@@ -7,7 +7,7 @@ import { Chess } from "chess.js";
 import type { Api } from "chessground/api";
 import { ArrowLeftRight, ChevronLeft, ChevronRight, Flag, Handshake, X } from "lucide-react";
 import { uciParams } from "@outofbook/core/chess";
-import { buzz, playMoveSound, playSound, preloadSounds } from "../lib/gameFeel";
+import { buzz, buzzMove, playMoveSound, playSound, preloadSounds } from "../lib/gameFeel";
 import { ANIMATION_MS, LICHESS_DEFAULTS, type LichessPrefs } from "../lib/lichessPrefs";
 import { applyBoardLook, resolveBoard, type BoardChoice } from "../lib/boardLook";
 import { abort, claimDraw, claimVictory, exportGame, offerDraw, resign, sendMove, streamGame, type GameFull, type GameState, type OpponentGone } from "../lib/lichessBoard";
@@ -406,7 +406,7 @@ export function LiveGame({
       if (mover !== myColorRef.current) {
         setGoneUntil(null);
         playMoveSound(g.soundSet, fens.sans[n] ?? "");
-        if (g.vibrate) buzz(40);
+        if (g.vibrate) buzzMove(fens.sans[n] ?? "");
         // The next queued premove goes if it is legal now; if not, the whole queue does.
         const [next, ...rest] = queueRef.current;
         if (next) {

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, Loader2, MonitorPlay, Send, ShieldCheck, Swords, Users } from "lucide-react";
 import { account, login, tokenScopes, type Perfs } from "../lib/auth";
-import { acceptChallenge, challengeAi, challengeUser, declineChallenge, seek, streamEvents } from "../lib/lichessBoard";
+import { acceptChallenge, challengeAi, challengeUser, declineChallenge, seek, streamEvents, type QuickPlay } from "../lib/lichessBoard";
 import type { RawGame } from "@outofbook/core/types";
 import { canVibrate } from "../lib/gameFeel";
 import { cachedPrefs, loadPrefs, type LichessPrefs } from "../lib/lichessPrefs";
@@ -42,7 +42,20 @@ interface Incoming {
 // The offline demo of the game screen is for tests: open the app with ?demo.
 const SHOW_DEMO = new URLSearchParams(location.search).has("demo");
 
-export function LichessPlay({ token, username, onLiveChange, onReview }: { token: string | null; username: string; onLiveChange: (live: boolean) => void; onReview: (g: RawGame) => void }) {
+export function LichessPlay({
+  token,
+  username,
+  onLiveChange,
+  onReview,
+  quick,
+}: {
+  token: string | null;
+  username: string;
+  onLiveChange: (live: boolean) => void;
+  onReview: (g: RawGame) => void;
+  /** Quick play from the title bar: seek this game type (n tells repeated presses apart). */
+  quick?: { play: QuickPlay; n: number } | null;
+}) {
   const [scopes, setScopes] = useState<string | null>(null);
   const [live, setLive] = useState<LiveSettings>(loadLive);
   const [rated, setRated] = useState<"rated" | "casual">("rated");
@@ -122,6 +135,26 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
     return () => ac.abort();
   }, [canPlay, token, username]);
 
+  const startSeek = (m: number, i: number, asRated = rated === "rated") => {
+    if (!token) return;
+    const ac = new AbortController();
+    setErr(null);
+    setSeeking({ ac, tc: `${m}+${i}` });
+    seek(token, m, i, asRated, ac.signal)
+      .catch((e) => !ac.signal.aborted && setErr(String(e)))
+      .finally(() => setSeeking((s) => (s?.ac === ac ? null : s)));
+  };
+  // Quick play: seek the game type asked for once playing is possible, unless
+  // a game or another seek is already on.
+  const quickDone = useRef(0);
+  useEffect(() => {
+    if (!quick || quick.n === quickDone.current || !canPlay) return;
+    quickDone.current = quick.n;
+    if (gameId || seeking) return;
+    setRated(quick.play.rated ? "rated" : "casual");
+    startSeek(quick.play.minutes, quick.play.increment, quick.play.rated);
+  }, [quick, canPlay]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const demoGame = demo && (
     <LiveGame demo token="" gameId="demo" username={username} settings={live} prefs={prefs} onLiveChange={() => {}} onExit={() => setDemo(false)} onReview={(g) => (setDemo(false), onReview(g))} />
   );
@@ -152,14 +185,6 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
       </Alert>
     );
 
-  const startSeek = (m: number, i: number) => {
-    const ac = new AbortController();
-    setErr(null);
-    setSeeking({ ac, tc: `${m}+${i}` });
-    seek(token, m, i, rated === "rated", ac.signal)
-      .catch((e) => !ac.signal.aborted && setErr(String(e)))
-      .finally(() => setSeeking((s) => (s?.ac === ac ? null : s)));
-  };
   const sendChallenge = () => {
     const ac = new AbortController();
     const [m, i] = chTc.split("+").map(Number);
@@ -268,8 +293,14 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
             })}
           </div>
           {seeking && (
-            <div className="mt-3 flex items-center gap-2 text-sm">
-              <Loader2 size={15} className="animate-spin" /> Looking for a {rated} {seeking.tc} opponent… click the tile again to cancel.
+            <div className="mt-3 flex items-center gap-2 text-sm" data-testid="seeking">
+              <Loader2 size={15} className="animate-spin" />{" "}
+              <span className="flex-1">
+                Looking for a {rated} {seeking.tc} opponent…
+              </span>
+              <Button size="sm" variant="secondary" onClick={() => (seeking.ac.abort(), setSeeking(null))}>
+                Cancel
+              </Button>
             </div>
           )}
           <div className="mt-2 text-xs text-muted">

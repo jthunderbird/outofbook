@@ -7,7 +7,7 @@ import { posKey, uciParams, uciToSan } from "@outofbook/core/chess";
 import { classify } from "@outofbook/core/classify";
 import { EnginePool } from "../lib/engine";
 import { evalNow } from "../lib/evalCache";
-import { buzz, playMoveSound, preloadSounds } from "../lib/gameFeel";
+import { buzz, buzzMove, playMoveSound, preloadSounds } from "../lib/gameFeel";
 import { cachedPrefs } from "../lib/lichessPrefs";
 import { trackLine } from "@outofbook/core/lineTracker";
 import { betterMoveAvailable, compareText, pct, povPawns, povText } from "@outofbook/core/moveNotes";
@@ -215,7 +215,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
         const m = game.chess.move(uciParams(uci));
         game.history.push(uci);
         playMoveSound(feel.soundSet, m.san);
-        if (feel.vibrate) buzz(40);
+        if (feel.vibrate) buzzMove(m.san);
         setBotWhy(why);
         finishIfOver(game);
         force((x) => x + 1);

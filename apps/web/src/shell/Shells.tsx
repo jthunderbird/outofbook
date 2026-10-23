@@ -21,6 +21,7 @@ export interface ShellProps {
   title: string;
   subtitle?: ReactNode;
   actions: ReactNode; // account, load games, settings
+  quick?: ReactNode; // quick play, in the title bar at every size
   pickers: ReactNode; // the dark/light toggle
   toolbar?: ReactNode; // side filter + min games
   status?: ReactNode; // analysis progress
@@ -93,6 +94,7 @@ function MobileChrome({ p }: { p: ShellProps }) {
         </button>
         <Brand />
         <div className="flex-1" />
+        {p.quick}
         <button className="ui-btn ui-btn-ghost ui-btn-icon" onClick={p.onCommand} aria-label="Search">
           <Search size={17} />
         </button>
@@ -205,6 +207,7 @@ export function Shell(p: ShellProps) {
             <Search size={14} /> <span className="flex-1 text-xs">Search openings, views, settings</span> <span className="ui-kbd">⌘K</span>
           </button>
         </div>
+        {p.quick}
         {p.actions}
       </div>
       <div className="hidden min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 md:flex" style={{ background: "color-mix(in oklab, var(--surface) 80%, transparent)" }}>

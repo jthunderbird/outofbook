@@ -268,3 +268,35 @@ export async function exportGame(id: string) {
   if (!res.ok) throw new Error(`Export: HTTP ${res.status}`);
   return res.json();
 }
+
+/** A game type to seek again: the clock and whether it is rated. */
+export interface QuickPlay {
+  minutes: number;
+  increment: number;
+  rated: boolean;
+}
+/** No last game to repeat: 10+0 rapid, casual. */
+export const QUICK_DEFAULT: QuickPlay = { minutes: 10, increment: 0, rated: false };
+
+/**
+ * The type of the user's last game against a person that a board can seek
+ * (rapid or classical: Lichess lets third-party boards seek nothing faster),
+ * or null when there is none.
+ */
+export async function lastQuickPlay(token: string, username: string): Promise<QuickPlay | null> {
+  const q = new URLSearchParams({ max: "10", perfType: "rapid,classical", moves: "false", pgnInJson: "false" });
+  const res = await fetch(`${API}/games/user/${encodeURIComponent(username)}?${q}`, { headers: { ...auth(token), Accept: "application/x-ndjson" } });
+  if (!res.ok) return null;
+  for (const line of (await res.text()).split("\n")) {
+    let g: { clock?: { initial: number; increment: number }; rated?: boolean; variant?: string; players?: Record<string, { aiLevel?: number }> };
+    try {
+      g = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!g.clock || (g.variant && g.variant !== "standard")) continue;
+    if (Object.values(g.players ?? {}).some((p) => p.aiLevel)) continue;
+    return { minutes: Math.round(g.clock.initial / 60), increment: g.clock.increment, rated: !!g.rated };
+  }
+  return null;
+}

@@ -14,8 +14,8 @@ const FULL = (id: string, status = "started") => ({
   state: { type: "gameState", moves: "", wtime: 600000, btime: 600000, status },
 });
 
-async function fakeLichess(page: Page, opts: { finishAfter?: number } = {}) {
-  const calls = { events: 0, game: 0, account: 0 };
+async function fakeLichess(page: Page, opts: { finishAfter?: number; games?: object[] } = {}) {
+  const calls = { events: 0, game: 0, account: 0, seeks: [] as string[] };
   // Logged in once, on the first load only, so logging out sticks.
   await page.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return;
@@ -40,6 +40,12 @@ async function fakeLichess(page: Page, opts: { finishAfter?: number } = {}) {
       return r.fulfill({ contentType: "application/x-ndjson", body: finish ? JSON.stringify({ type: "gameFinish", game: { id: "x" } }) + "\n" : "\n" });
     }
     if (p === "/api/challenge/ai") return r.fulfill({ json: { id: "aigame01" } });
+    if (p === "/api/games/user/tester") return r.fulfill({ contentType: "application/x-ndjson", body: (opts.games ?? []).map((g) => JSON.stringify(g) + "\n").join("") });
+    // A seek stays open until a game starts or it is cancelled.
+    if (p === "/api/board/seek") {
+      calls.seeks.push(r.request().postData() ?? "");
+      return;
+    }
     if (p.startsWith("/api/board/game/stream/")) {
       calls.game++;
       return r.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(FULL("aigame01")) + "\n" });
@@ -209,4 +215,34 @@ test("board look: Lichess's default brown shows as OutOfBook blue; another impor
       .first()
       .evaluate((e) => getComputedStyle(e).backgroundImage),
   ).toContain("blue3.jpg");
+});
+
+test("quick play seeks the last rapid or classical game's type against a person", async ({ page }) => {
+  const calls = await fakeLichess(page, {
+    games: [
+      { id: "g1", rated: false, variant: "standard", clock: { initial: 600, increment: 5 }, players: { white: { user: { id: "tester" } }, black: { aiLevel: 4 } } },
+      { id: "g2", rated: true, variant: "standard", clock: { initial: 900, increment: 10 }, players: { white: { user: { id: "tester" } }, black: { user: { id: "someone" } } } },
+    ],
+  });
+  await page.goto("/");
+  const quick = page.locator("[data-testid=quick-play]:visible");
+  await expect(quick).toHaveText(/15\+10 rated/);
+  await quick.click();
+  await expect(page.getByTestId("seeking")).toContainText("rated 15+10");
+  await expect.poll(() => calls.seeks.length).toBe(1);
+  const body = new URLSearchParams(calls.seeks[0]);
+  expect([body.get("time"), body.get("increment"), body.get("rated")]).toEqual(["15", "10", "true"]);
+  await page.getByTestId("seeking").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("seeking")).toHaveCount(0);
+});
+
+test("quick play defaults to 10+0 casual with no last game", async ({ page }) => {
+  const calls = await fakeLichess(page);
+  await page.goto("/");
+  const quick = page.locator("[data-testid=quick-play]:visible");
+  await expect(quick).toHaveText(/10\+0 casual/);
+  await quick.click();
+  await expect.poll(() => calls.seeks.length).toBe(1);
+  const body = new URLSearchParams(calls.seeks[0]);
+  expect([body.get("time"), body.get("increment"), body.get("rated")]).toEqual(["10", "0", "false"]);
 });

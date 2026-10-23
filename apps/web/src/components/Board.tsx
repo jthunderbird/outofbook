@@ -206,13 +206,13 @@ export function Board({
         fen,
         orientation: color(orientation),
         turnColor: premoveQueue.color === "w" ? "black" : "white",
-        check: false,
+        check: chess?.inCheck() ?? false,
         lastMove: lastMove ? ([lastMove.slice(0, 2), lastMove.slice(2, 4)] as Key[]) : undefined,
         coordinates: coordinates && feel.coords !== 0,
         coordinatesOnSquares: feel.coords === 3,
         viewOnly: false,
         animation: { enabled: feel.animationMs !== 0, duration: feel.animationMs ?? 180 },
-        highlight: { lastMove: feel.highlight ?? true, check: false, custom },
+        highlight: { lastMove: feel.highlight ?? true, check: true, custom },
         movable: { free: false, color: mine, dests: new Map(), showDests: feel.showDests ?? true, rookCastle: true },
         premovable: { enabled: true, showDests: feel.showDests ?? true, castle: true, customDests: dests },
         draggable: { enabled: feel.moveEvent !== 0, showGhost: true },
@@ -256,7 +256,8 @@ export function Board({
       premovable: { enabled: !!premove && canMove, showDests: feel.showDests ?? true, castle: true, customDests: undefined },
       draggable: { enabled: canMove && feel.moveEvent !== 0, showGhost: true },
       selectable: { enabled: canMove && feel.moveEvent !== 1 },
-      highlight: { lastMove: feel.highlight ?? true, check: feel.highlight ?? true, custom: new Map() },
+      // A king in check always glows, whatever the highlight setting.
+      highlight: { lastMove: feel.highlight ?? true, check: true, custom: new Map() },
       drawable,
     };
   }, [fen, orientation, lastMove, chess, movable, hasOnMove, premove, arrowsKey, coordinates, feel, queueKey]); // eslint-disable-line react-hooks/exhaustive-deps
