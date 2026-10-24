@@ -139,6 +139,8 @@ export interface BoardProps {
   premoveQueue?: PremoveQueue;
   /** The Arena board style: a 3D board with acting figures (no arrows, premoves or promotion choice). */
   arena?: boolean;
+  /** Arena board: told when it starts and stops acting out moves. */
+  onArenaBusy?: (busy: boolean) => void;
 }
 
 export interface BoardFeel {
@@ -160,13 +162,13 @@ const ArenaBoard = lazy(() => import("../arena/ArenaBoard"));
 
 export function Board(props: BoardProps) {
   if (!props.arena) return <FlatBoard {...props} />;
-  const { fen, orientation, lastMove, movable, onMove, hideEval, evalLine, bigEval, className } = props;
+  const { fen, orientation, lastMove, movable, onMove, hideEval, evalLine, bigEval, className, onArenaBusy } = props;
   return (
     <div className={`flex gap-1.5 ${className ?? ""}`}>
       {!hideEval && <EvalBar line={evalLine} orientation={orientation} big={bigEval} />}
       <div className="board-wrap min-w-0 flex-1">
         <Suspense fallback={null}>
-          <ArenaBoard fen={fen} orientation={orientation} lastMove={lastMove} movable={movable} onMove={onMove} />
+          <ArenaBoard fen={fen} orientation={orientation} lastMove={lastMove} movable={movable} onMove={onMove} onBusy={onArenaBusy} />
         </Suspense>
       </div>
     </div>

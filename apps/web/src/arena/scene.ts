@@ -8,7 +8,6 @@ import {
   ACESFilmicToneMapping,
   AdditiveBlending,
   CylinderGeometry,
-  BoxGeometry,
   CanvasTexture,
   CircleGeometry,
   Color,
@@ -23,6 +22,7 @@ import {
   PerspectiveCamera,
   Plane,
   PlaneGeometry,
+  PMREMGenerator,
   PointLight,
   Raycaster,
   RingGeometry,
@@ -35,7 +35,9 @@ import {
   type Object3D,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { Clock, Particles, Portal, SPEED, clip, clipAbove, ease, followClip, magicArc, ownMaterials, tween, wait } from "./fx";
+import { Pit, buildBoard } from "./board";
 import { MAGIC, makeFig, type Fig, type Role, type Side } from "./figures";
 
 const FILES = "abcdefgh";
@@ -58,6 +60,7 @@ export class Arena {
   private clock = new Clock();
   private fx: Particles;
   private figs = new Map<string, Fig>();
+  private squares: Map<string, Mesh>;
   /** Every figure in the scene, on a square or on its way to one. */
   private live = new Set<Fig>();
   private marks = new Group();
@@ -79,7 +82,11 @@ export class Arena {
   private ro: ResizeObserver;
   private down: [number, number] | null = null;
 
-  constructor(private host: HTMLElement) {
+  constructor(
+    private host: HTMLElement,
+    /** Told when the arena starts and stops acting out moves. */
+    private onBusy?: (busy: boolean) => void,
+  ) {
     const r = (this.renderer = new WebGLRenderer({ antialias: true }));
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     r.shadowMap.enabled = true;
@@ -90,9 +97,14 @@ export class Arena {
     r.domElement.style.cssText = "width:100%;height:100%;display:block;touch-action:none;border-radius:var(--board-radius,4px)";
     host.appendChild(r.domElement);
     this.fx = new Particles(this.scene);
-    this.scene.background = new Color(0x141824);
+    this.scene.background = new Color(0x0d111a);
+    // A soft studio environment for metal and marble to reflect.
+    const pmrem = new PMREMGenerator(r);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.55;
+    pmrem.dispose();
 
-    this.scene.add(new HemisphereLight(0xcfd8ff, 0x2a2018, 1.4));
+    this.scene.add(new HemisphereLight(0xcfd8ff, 0x1a2038, 0.8));
     const sun = new DirectionalLight(0xfff1dc, 2.4);
     sun.position.set(4, 12, 6);
     sun.castShadow = true;
@@ -103,21 +115,7 @@ export class Arena {
     this.flash.position.set(0, 2, 0);
     this.scene.add(this.flash);
 
-    // The board: a thick plinth (pieces sink into it and rise out of it) with 64 squares on top.
-    const plinth = new Mesh(new BoxGeometry(9.4, 1.4, 9.4), new MeshStandardMaterial({ color: 0x2a1f17, roughness: 0.8 }));
-    plinth.position.y = -0.71;
-    plinth.receiveShadow = true;
-    this.scene.add(plinth);
-    const light = new MeshStandardMaterial({ color: 0xd9c7a3, roughness: 0.6 });
-    const dark = new MeshStandardMaterial({ color: 0x7b5a3e, roughness: 0.6 });
-    const sq = new BoxGeometry(1, 0.1, 1);
-    for (let f = 0; f < 8; f++)
-      for (let k = 0; k < 8; k++) {
-        const m = new Mesh(sq, (f + k) % 2 ? light : dark);
-        m.position.set(f - 3.5, -0.05, 3.5 - k);
-        m.receiveShadow = true;
-        this.scene.add(m);
-      }
+    this.squares = buildBoard(this.scene);
     this.labels = new Mesh(new PlaneGeometry(9.4, 9.4).rotateX(-Math.PI / 2), new MeshBasicMaterial({ transparent: true, depthWrite: false }));
     this.labels.position.y = 0.001;
     this.scene.add(this.labels, this.marks);
@@ -137,21 +135,29 @@ export class Arena {
       this.raf = requestAnimationFrame(frame);
       const ms = Math.min(50, now - last);
       last = now;
-      this.clock.update(ms);
-      this.fx.update(ms * SPEED);
-      for (const f of this.live)
-        if (f.root.parent) f.update(ms * SPEED);
-        else this.live.delete(f);
-      this.controls.update();
-      const cam = this.camera.position.clone();
-      if (this.shake > 0) {
-        this.shake -= ms;
-        this.camera.position.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12));
-      }
-      this.renderer.render(this.scene, this.camera);
-      this.camera.position.copy(cam);
+      if (!this.manual) this.step(ms);
     };
     this.raf = requestAnimationFrame(frame);
+  }
+
+  /** Dev (recording): time stands still and moves only by step(). */
+  manual = false;
+
+  /** Advances everything ms and draws a frame. */
+  step(ms: number) {
+    this.clock.update(ms);
+    this.fx.update(ms * SPEED);
+    for (const f of this.live)
+      if (f.root.parent) f.update(ms * SPEED);
+      else this.live.delete(f);
+    this.controls.update();
+    const cam = this.camera.position.clone();
+    if (this.shake > 0) {
+      this.shake -= ms;
+      this.camera.position.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12));
+    }
+    this.renderer.render(this.scene, this.camera);
+    this.camera.position.copy(cam);
   }
 
   /** Nothing acting out and nothing waiting. */
@@ -206,7 +212,7 @@ export class Arena {
     c.width = c.height = 1024;
     const g = c.getContext("2d")!;
     const px = 1024 / 9.4;
-    g.fillStyle = "#c9b48e";
+    g.fillStyle = "#8fa3cf";
     g.font = `bold ${px * 0.32}px system-ui, sans-serif`;
     g.textAlign = "center";
     g.textBaseline = "middle";
@@ -326,6 +332,7 @@ export class Arena {
   private async pump() {
     if (this.busy) return;
     this.busy = true;
+    this.onBusy?.(true);
     while (this.queue.length && !this.disposed) {
       const next = this.queue.shift()!;
       // Far behind (a game loaded, moves flying in): catch up without acting.
@@ -337,8 +344,10 @@ export class Arena {
         }
       }
       this.sync(next.fen);
+      if (!this.queue.length) await this.regicide(next).catch((e) => console.error("arena", e));
     }
     this.busy = false;
+    this.onBusy?.(false);
     this.highlight();
   }
 
@@ -414,15 +423,49 @@ export class Arena {
       await this.kingFloat(mover, m.to, victim);
     } else {
       if (king) await this.order(king, mover);
-      const to = m.to;
-      if (mover.role === "r") await (victim ? this.portalKill(mover, to, victim) : this.rookMove(mover, to));
-      else if (mover.role === "n") await this.gallop(mover, to, victim);
-      else if (mover.role === "b") await this.fly(mover, to, victim);
-      else if (mover.role === "q") await this.glide(mover, to, victim);
-      else await this.march(mover, to, victim);
+      await this.strike(mover, m.to, victim);
       if (m.promotion) this.fx.burst(squareAt(m.to).setY(0.6), MAGIC[side], 30, { glow: true, speed: 1.5, up: 2.5, gravity: 1 });
     }
     this.figs.set(m.to, mover);
+  }
+
+  /** Moves a piece other than the king to a square, taking victim there its own way. */
+  private strike(f: Fig, to: string, victim?: Fig) {
+    if (f.role === "r") return victim ? this.portalKill(f, to, victim) : this.rookMove(f, to);
+    if (f.role === "n") return this.gallop(f, to, victim);
+    if (f.role === "b") return this.fly(f, to, victim);
+    if (f.role === "q") return this.glide(f, to, victim);
+    return this.march(f, to, victim);
+  }
+
+  /** Checkmate: the piece giving mate (the one that moved, if it does) kills the king. */
+  private async regicide(next: { fen: string; lastMove?: string }) {
+    let c: Chess;
+    try {
+      c = new Chess(next.fen);
+    } catch {
+      return;
+    }
+    if (!c.isCheckmate()) return;
+    const loser = c.turn();
+    const winner = loser === "w" ? "b" : "w";
+    const k = c
+      .board()
+      .flat()
+      .find((p) => p?.type === "k" && p.color === loser);
+    if (!k) return;
+    const attackers: string[] = c.attackers(k.square, winner);
+    const moved = next.lastMove?.slice(2, 4);
+    const from = moved && attackers.includes(moved) ? moved : attackers[0];
+    const a = from && this.figs.get(from);
+    const v = this.figs.get(k.square);
+    if (!a || !v) return;
+    const boss = [...this.figs.values()].find((f) => f.role === "k" && f.side === winner);
+    this.figs.delete(from);
+    this.figs.delete(k.square);
+    if (boss) await this.order(boss, a);
+    await this.strike(a, k.square, v);
+    this.figs.set(k.square, a);
   }
 
   // ---------- The king ----------
@@ -690,7 +733,7 @@ export class Arena {
       f.legs[1].rotation.x = -s * 0.6;
       f.body.position.y = Math.abs(s) * 0.025;
     });
-    const pace = 750;
+    const pace = 380;
     if (victim) {
       const s = Math.max(0, 1 - 0.7 / dist);
       await this.line(f, this.along(a, b, s), s * dist * pace);
@@ -724,6 +767,11 @@ export class Arena {
       fr.rotation.x = c * 0.7;
       bl.rotation.x = -s * 0.6;
       br.rotation.x = -c * 0.6;
+      // Knees fold as a leg comes forward: front knees back, hind knees forward.
+      fl.userData.knee.rotation.x = Math.max(0, -Math.cos(phase)) * 1.1;
+      fr.userData.knee.rotation.x = Math.max(0, -Math.cos(phase + 0.6)) * 1.1;
+      bl.userData.knee.rotation.x = -Math.max(0, Math.cos(phase)) * 0.9;
+      br.userData.knee.rotation.x = -Math.max(0, Math.cos(phase + 0.6)) * 0.9;
       f.body.rotation.x = s * 0.07;
       f.body.position.y = Math.max(0, s) * 0.05;
     });
@@ -969,41 +1017,52 @@ export class Arena {
     await this.strikeDown(v, dir);
   }
 
-  /** Killed by the queen: a fiery hole opens under the piece; it burns to a crisp and falls through. */
+  /** The name of the square under a point. */
+  private squareOf(p: Vector3) {
+    return FILES[Math.round(p.x + 3.5)] + (Math.round(3.5 - p.z) + 1);
+  }
+
+  /** Killed by the queen: a pit to hell opens under the piece; it falls in, burns up at the bottom, and the pit closes. */
   private async burn(v: Fig) {
     const p = v.root.position.clone();
-    const hole = new Portal(this.clock, this.scene, p.clone().setY(0.015), new Color(0xff5a1a));
-    const flames = this.loop(() => {
-      for (let i = 0; i < 3; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const onFig = i === 0;
-        const at = onFig
-          ? v.root.position.clone().add(new Vector3((Math.random() - 0.5) * 0.4, Math.random() * v.height, (Math.random() - 0.5) * 0.4))
-          : new Vector3(p.x + Math.cos(a) * 0.45, 0.03, p.z + Math.sin(a) * 0.45);
-        this.fx.spawn(at, {
+    const square = this.squares.get(this.squareOf(p));
+    if (!square) return this.strikeDown(v, new Vector3(0, 0, 1));
+    const pit = new Pit(this.clock, this.scene, square);
+    this.flash.color.setHex(0xff5a10);
+    this.flash.position.set(p.x, 0.4, p.z);
+    let depth = 0;
+    const embers = this.loop(() => {
+      for (let i = 0; i < 3; i++)
+        this.fx.spawn(new Vector3(p.x + (Math.random() - 0.5) * 0.5, -depth * Math.random() - 0.05, p.z + (Math.random() - 0.5) * 0.5), {
           color: Math.random() < 0.5 ? 0xff7a1a : 0xffd04a,
-          size: 0.04 + Math.random() * 0.04,
-          vel: new Vector3(0, 1 + Math.random(), 0),
-          life: 450,
+          size: 0.03 + Math.random() * 0.04,
+          vel: new Vector3((Math.random() - 0.5) * 0.4, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * 0.4),
+          life: 600,
           gravity: 0,
           glow: true,
         });
-      }
     });
-    await hole.open(280);
-    await this.char(v, 1, 400);
+    void tween(this.clock, 450, (t) => (this.flash.intensity = 10 * t));
+    await pit.open(450);
+    depth = 1.1;
     await tween(
       this.clock,
-      850,
+      650,
       (t) => {
-        v.root.position.y = -(v.height + 0.3) * t;
-        v.body.rotation.y = t * 1.5;
+        v.root.position.y = -1.15 * t;
+        v.body.rotation.x = t * 0.6;
       },
       ease.in,
     );
-    flames();
+    // At the bottom: a burst of fire, and the piece burns away to nothing.
+    this.fx.burst(new Vector3(p.x, -1.1, p.z), 0xff8a2a, 40, { glow: true, speed: 0.6, up: 4, gravity: 0, size: 0.06, life: 700 });
+    this.flash.intensity = 25;
+    void this.char(v, 1, 200);
+    await tween(this.clock, 550, (t) => v.body.scale.setScalar(Math.max(0.01, 1 - t)));
     v.root.removeFromParent();
-    await hole.close(300);
+    embers();
+    void tween(this.clock, 400, (t) => (this.flash.intensity = 25 * (1 - t)));
+    await pit.close(400);
   }
 }
 

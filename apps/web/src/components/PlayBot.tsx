@@ -129,6 +129,8 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   const feel = useMemo(() => gameFeel(loadLive(), cachedPrefs()), []);
   useEffect(() => preloadSounds(feel.soundSet), [feel.soundSet]);
   const [hideEnd, setHideEnd] = useState(false);
+  // The arena board acts out the last move (a checkmate: the king's death) before the result shows.
+  const [arenaBusy, setArenaBusy] = useState(false);
   useEffect(() => {
     setHideEnd(false);
     if (over && feel.vibrate) buzz([60, 80, 60]);
@@ -431,6 +433,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
             onMove={onMove}
             feel={feel.feel}
             arena={feel.arena}
+            onArenaBusy={setArenaBusy}
           />
           {viewPly !== null && (
             <div className="pointer-events-none absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white">
@@ -446,7 +449,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
               </div>
             </div>
           )}
-          {over && game && !hideEnd && (
+          {over && game && !hideEnd && !arenaBusy && (
             <div className="absolute inset-0 z-30 flex items-center justify-center p-4" style={{ background: "rgb(0 0 0 / 0.45)" }} data-testid="bot-result">
               <div className="ui-card ui-pad relative flex max-w-[90%] flex-col items-center gap-3 text-center shadow-2xl" style={{ background: "var(--surface)" }}>
                 <button className="absolute top-2 right-2 text-muted hover:text-fg" onClick={() => setHideEnd(true)} aria-label="Show the board" title="Show the board">

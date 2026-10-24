@@ -316,6 +316,8 @@ export function LiveGame({
       return !v;
     });
   const [hideEnd, setHideEnd] = useState(false);
+  // The arena board acts out the last move (a checkmate: the king's death) before the result shows.
+  const [arenaBusy, setArenaBusy] = useState(false);
   // False while the game stream is down and being reopened.
   const [linkUp, setLinkUp] = useState(true);
   // Opponent left: when Lichess opens the claim (our clock time), or null.
@@ -721,6 +723,7 @@ export function LiveGame({
       premoveQueue={premoveQueue}
       onApi={(a) => (api.current = a)}
       arena={g.arena}
+      onArenaBusy={setArenaBusy}
     />
   );
   const viewingPast = viewPly !== null && (
@@ -730,7 +733,7 @@ export function LiveGame({
   );
   // The result sits over the board, so it is plain the game is over; it can be
   // put away to look at the final position (and brought back from the column).
-  const endCard = status && !hideEnd && (
+  const endCard = status && !hideEnd && !arenaBusy && (
     <div className="absolute inset-0 z-30 flex items-center justify-center p-4" style={{ background: "rgb(0 0 0 / 0.45)" }}>
       <div className="ui-card ui-pad relative flex max-w-[90%] flex-col items-center gap-3 text-center shadow-2xl" style={{ background: "var(--surface)" }} data-testid="live-result">
         <button className="absolute top-2 right-2 text-muted hover:text-fg" onClick={() => setHideEnd(true)} aria-label="Show the board" title="Show the board">
