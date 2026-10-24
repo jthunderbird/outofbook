@@ -37,7 +37,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { Clock, Particles, Portal, SPEED, clip, clipAbove, ease, followClip, magicArc, ownMaterials, tween, wait } from "./fx";
+import { Clock, FIRE_TIME, Particles, Portal, SPEED, flame, clip, clipAbove, ease, followClip, magicArc, ownMaterials, tween, wait } from "./fx";
 import { Pit, buildBoard } from "./board";
 import { MAGIC, makeFig, type Fig, type Role, type Side } from "./figures";
 
@@ -147,6 +147,7 @@ export class Arena {
   /** Advances everything ms and draws a frame. */
   step(ms: number) {
     this.clock.update(ms);
+    FIRE_TIME.value += (ms * SPEED) / 1000;
     this.fx.update(ms * SPEED);
     for (const f of this.live)
       if (f.root.parent) f.update(ms * SPEED);
@@ -1181,21 +1182,25 @@ export class Arena {
     const pit = new Pit(this.clock, this.scene, square);
     this.flash.color.setHex(0xff5a10);
     this.flash.position.set(p.x, 0.4, p.z);
-    let depth = 0;
-    const embers = this.loop(() => {
-      for (let i = 0; i < 3; i++)
-        this.fx.spawn(new Vector3(p.x + (Math.random() - 0.5) * 0.5, -depth * Math.random() - 0.05, p.z + (Math.random() - 0.5) * 0.5), {
-          color: Math.random() < 0.5 ? 0xff7a1a : 0xffd04a,
-          size: 0.03 + Math.random() * 0.04,
-          vel: new Vector3((Math.random() - 0.5) * 0.4, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * 0.4),
-          life: 600,
-          gravity: 0,
-          glow: true,
-        });
-    });
+    // Flames licking up out of the pit, all round its rim and from deep inside.
+    const fire = new Group();
+    const tongues: { m: Mesh; h: number }[] = [];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + Math.random() * 0.4;
+      const deep = i % 3 === 0;
+      const h = deep ? 0.9 + Math.random() * 0.3 : 0.4 + Math.random() * 0.3;
+      const m = flame(deep ? 0.32 : 0.22, h, 1.2);
+      const r = deep ? 0.12 : 0.3;
+      m.position.set(p.x + Math.cos(a) * r, deep ? -0.7 : -0.12, p.z + Math.sin(a) * r);
+      fire.add(m);
+      tongues.push({ m, h });
+    }
+    this.scene.add(fire);
+    const grow = (k: number) => tongues.forEach(({ m, h }) => (m.scale.y = Math.max(0.001, h * k)));
+    grow(0);
     void tween(this.clock, 450, (t) => (this.flash.intensity = 10 * t));
+    void tween(this.clock, 600, grow, ease.out);
     await pit.open(450);
-    depth = 1.1;
     await tween(
       this.clock,
       650,
@@ -1205,15 +1210,21 @@ export class Arena {
       },
       ease.in,
     );
-    // At the bottom: a burst of fire, and the piece burns away to nothing.
-    this.fx.burst(new Vector3(p.x, -1.1, p.z), 0xff8a2a, 40, { glow: true, speed: 0.6, up: 4, gravity: 0, size: 0.06, life: 700 });
+    // At the bottom: a pillar of fire roars up out of the pit, and the piece burns away to nothing.
+    const pillar = flame(0.75, 0.001, 1.8);
+    pillar.position.set(p.x, -1.15, p.z);
+    fire.add(pillar);
     this.flash.intensity = 25;
+    this.shake = 140;
+    void tween(this.clock, 260, (t) => (pillar.scale.y = Math.max(0.001, 2.3 * t)), ease.out).then(() => tween(this.clock, 640, (t) => (pillar.scale.y = Math.max(0.001, 2.3 * (1 - t))), ease.in));
     void this.char(v, 1, 200);
     await tween(this.clock, 550, (t) => v.body.scale.setScalar(Math.max(0.01, 1 - t)));
     v.root.removeFromParent();
-    embers();
     void tween(this.clock, 400, (t) => (this.flash.intensity = 25 * (1 - t)));
+    void tween(this.clock, 380, (t) => grow(1 - t), ease.in);
     await pit.close(400);
+    fire.removeFromParent();
+    fire.children.forEach((m) => ((m as Mesh).material as Material).dispose());
   }
 }
 

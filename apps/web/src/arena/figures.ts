@@ -32,7 +32,7 @@ import {
   type Object3D,
 } from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { clipAbove, ease, ownMaterials, tween, type Clock } from "./fx";
+import { clipAbove, ease, flame, ownMaterials, tween, type Clock } from "./fx";
 
 export type Role = "k" | "q" | "r" | "b" | "n" | "p";
 export type Side = "w" | "b";
@@ -58,8 +58,6 @@ export class Fig {
   /** Soldiers' legs (they walk); the horse's legs FL, FR, BL, BR, each with its knee as userData.knee. */
   legs: Group[] = [];
   hooves: Group[] = [];
-  /** Fire that flickers (the horseman's flames). */
-  flames: Mesh[] = [];
   /** Parts with a rest pose (userData.rest) to go back to. */
   private posed: Object3D[] = [];
   /** Robes and gowns sway; floating figures bob. */
@@ -106,10 +104,6 @@ export class Fig {
     }
     if (this.robed) this.body.rotation.z = Math.sin(this.t * 1.3) * 0.02;
     if (this.floating) this.body.position.y = Math.sin(this.t * 5) * 0.03;
-    for (const f of this.flames) {
-      (f.material as MeshStandardMaterial).emissiveIntensity = 2 + Math.random() * 1.5;
-      f.scale.y = f.userData.sy * (0.85 + Math.random() * 0.3);
-    }
   }
 
   /** Staff holders: raise the staff, the orb flaring (a bigger flare to kill). */
@@ -692,7 +686,8 @@ function nobleBishop(): Fig {
 /** A horse in a cloth drape (white with gold, or black with burning eyes, mane and tail); legs with knees. */
 function horse(f: Fig, w: boolean) {
   const hide = mat(w ? 0xf2eee6 : 0x141217, { rough: 0.45 });
-  const fire = mat(0xff5010, { emissive: 0xff4a10, ei: 2.5 });
+  // Black's mane and tail: charred strands, burning.
+  const ember = mat(0x2a0a04, { emissive: 0xff3a08, ei: 0.8, rough: 0.8 });
   const b = f.body;
   b.add(egg(0.14, 0.15, 0.3, hide, 0, 0.53, 0), egg(0.13, 0.145, 0.13, hide, 0, 0.54, 0.2), egg(0.135, 0.145, 0.14, hide, 0, 0.56, -0.19));
   const neck = egg(0.07, 0.19, 0.095, hide, 0, 0.73, 0.27);
@@ -712,7 +707,7 @@ function horse(f: Fig, w: boolean) {
       [0, 0.66, 0.1],
     ],
     0.025,
-    w ? mat(0xe2d9c6, { rough: 0.7 }) : fire,
+    w ? mat(0xe2d9c6, { rough: 0.7 }) : ember,
   );
   const tail = tube(
     [
@@ -722,13 +717,21 @@ function horse(f: Fig, w: boolean) {
       [0, 0.28, -0.42],
     ],
     0.025,
-    w ? mat(0xe2d9c6, { rough: 0.7 }) : fire,
+    w ? mat(0xe2d9c6, { rough: 0.7 }) : ember,
   );
   b.add(mane, tail);
   if (!w)
-    for (const m of [mane, tail]) {
-      m.userData.sy = 1;
-      f.flames.push(m);
+    for (const [x, y, z, fw, fh] of [
+      [0, 0.92, 0.28, 0.12, 0.2],
+      [0, 0.84, 0.2, 0.13, 0.22],
+      [0, 0.74, 0.13, 0.13, 0.22],
+      [0, 0.56, -0.36, 0.14, 0.26],
+      [0, 0.44, -0.43, 0.13, 0.24],
+      [0, 0.32, -0.42, 0.1, 0.18],
+    ]) {
+      const fl = flame(fw, fh, 1.3);
+      fl.position.set(x, y, z);
+      b.add(fl);
     }
   // The drape: a cloth skirt around the body, stretched along it, with a trim.
   const drape = mesh(
@@ -819,11 +822,13 @@ function knight(side: Side): Fig {
   } else {
     // No head: a gorget with fire rising out of it.
     b.add(mesh(new CylinderGeometry(0.05, 0.06, 0.04, 24), plate, 0, 0.97, 0));
-    const flame = mesh(new ConeGeometry(0.045, 0.16, 20), mat(0xff6a1a, { emissive: 0xff6a1a, ei: 2.5, opacity: 0.9 }), 0, 1.07, 0);
-    flame.userData.sy = 1;
-    flame.add(halo(0xff7a2a, 0.35));
-    f.flames.push(flame);
-    b.add(flame);
+    const head = flame(0.26, 0.46, 1.8);
+    head.position.y = 0.96;
+    const lick = flame(0.18, 0.34, 1.4);
+    lick.position.set(0.02, 0.97, -0.03);
+    const light = halo(0xff7a2a, 0.5);
+    light.position.y = 1.1;
+    b.add(head, lick, light);
   }
   const arm = limb(0.22, 0.03, plate, 0.13, 0.9, 0);
   const sw = sword(side, 0.42);

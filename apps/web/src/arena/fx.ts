@@ -11,6 +11,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   Plane,
+  PlaneGeometry,
   QuadraticBezierCurve3,
   RingGeometry,
   ShaderMaterial,
@@ -68,13 +69,20 @@ export function tween(clock: Clock, ms: number, fn: (t: number) => void, e: (t: 
 
 export const wait = (clock: Clock, ms: number) => tween(clock, ms, () => {});
 
+/** A copy of a material; fire keeps the shared clock (a shader's clone copies its uniforms). */
+function own(m: Material): Material {
+  const c = m.clone();
+  if (m.userData.fire) (c as ShaderMaterial).uniforms.time = FIRE_TIME;
+  return c;
+}
+
 /** Gives each mesh under obj its own copies of its materials (for clipping and fading one figure). */
 export function ownMaterials(obj: Object3D): Material[] {
   const out: Material[] = [];
   obj.traverse((o) => {
     const m = o as Mesh;
     if (!m.isMesh) return;
-    m.material = Array.isArray(m.material) ? m.material.map((x) => x.clone()) : m.material.clone();
+    m.material = Array.isArray(m.material) ? m.material.map(own) : own(m.material);
     out.push(...(Array.isArray(m.material) ? m.material : [m.material]));
   });
   return out;
@@ -311,4 +319,77 @@ export function followClip(clock: Clock, obj: Object3D, plane: Plane) {
     plane.copy(local).applyMatrix4(obj.matrixWorld);
     return !obj.parent;
   });
+}
+
+// ---------- Fire ----------
+
+/** The clock every flame burns by, in seconds. */
+export const FIRE_TIME = { value: 0 };
+
+const FIRE_VERT = `
+#include <common>
+#include <clipping_planes_pars_vertex>
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  // Faces the camera and always stands up on screen, the height kept whole.
+  vec4 c = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  float sx = length(modelMatrix[0].xyz);
+  float sy = length(modelMatrix[1].xyz);
+  vec3 up = (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+  up = normalize(vec3(up.xy, 0.0) + vec3(0.0, 0.001, 0.0));
+  vec3 right = vec3(up.y, -up.x, 0.0);
+  vec4 mvPosition = vec4(c.xyz + right * position.x * sx + up * position.y * sy, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <clipping_planes_vertex>
+}`;
+
+const FIRE_FRAG = `
+#include <clipping_planes_pars_fragment>
+uniform float time; uniform float seed; uniform float power;
+varying vec2 vUv;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) { return noise(p) * 0.55 + noise(p * 2.1 + 3.7) * 0.3 + noise(p * 4.3 + 7.1) * 0.15; }
+void main() {
+  #include <clipping_planes_fragment>
+  float y = vUv.y;
+  float t = time * 1.6 + seed * 10.0;
+  float n = fbm(vec2(vUv.x * 3.0 + seed * 5.0, y * 2.4 - t * 1.8));
+  // Licks: the column sways more toward the top, and its edge is torn by the noise.
+  float x = vUv.x - 0.5 + (n - 0.5) * 0.45 * y + sin(t * 2.3 + y * 4.0) * 0.04 * y;
+  float w = 0.46 * pow(1.0 - y, 0.75) * (0.55 + 0.45 * smoothstep(0.0, 0.22, y));
+  float body = 1.0 - smoothstep(0.45, 1.0, abs(x) / max(w, 0.001) + (n - 0.5) * 0.7);
+  body *= 1.0 - smoothstep(0.45, 1.0, y + (n - 0.5) * 0.5);
+  body *= smoothstep(0.0, 0.06, y);
+  float heat = clamp(body * (1.25 - y) * 1.1, 0.0, 1.0);
+  vec3 col = mix(vec3(0.7, 0.06, 0.01), vec3(1.0, 0.42, 0.04), smoothstep(0.0, 0.45, heat));
+  col = mix(col, vec3(1.0, 0.86, 0.45), smoothstep(0.55, 1.0, heat));
+  gl_FragColor = vec4(col * power, body);
+}`;
+
+const FLAME_GEO = new PlaneGeometry(1, 1).translate(0, 0.5, 0);
+
+/** A flame w wide and h tall standing on its position: torn, licking fire that always faces the camera. */
+export function flame(w: number, h: number, power = 1.6): Mesh {
+  const mat = new ShaderMaterial({
+    vertexShader: FIRE_VERT,
+    fragmentShader: FIRE_FRAG,
+    uniforms: { time: FIRE_TIME, seed: { value: Math.random() }, power: { value: power } },
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    clipping: true,
+  });
+  mat.userData.fire = true;
+  const m = new Mesh(FLAME_GEO, mat);
+  m.scale.set(w, h, 1);
+  // The plane is turned in the shader, so its bounds can't be trusted for culling.
+  m.frustumCulled = false;
+  m.renderOrder = 2;
+  return m;
 }
