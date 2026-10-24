@@ -292,3 +292,23 @@ export class Portal {
     this.obj.removeFromParent();
   }
 }
+
+/** Clips these materials to the kept side of the planes, or not at all with null. */
+export function clip(mats: Material[], planes: Plane[] | null) {
+  for (const m of mats) m.clippingPlanes = planes;
+}
+
+/**
+ * Keeps a world clipping plane fixed to obj as it moves (clipping planes are
+ * in world space): the plane is read in obj's frame now and put back in the
+ * world each frame. Stops when obj leaves the scene.
+ */
+export function followClip(clock: Clock, obj: Object3D, plane: Plane) {
+  obj.updateMatrixWorld(true);
+  const local = plane.clone().applyMatrix4(obj.matrixWorld.clone().invert());
+  clock.add(() => {
+    obj.updateMatrixWorld(true);
+    plane.copy(local).applyMatrix4(obj.matrixWorld);
+    return !obj.parent;
+  });
+}
