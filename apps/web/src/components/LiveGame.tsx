@@ -65,6 +65,7 @@ export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null) {
   return {
     fromLichess: settings.useLichessPrefs,
     feel,
+    arena: settings.board === "arena",
     premove: p.premove,
     multiPremove: p.premove && settings.multiPremove,
     soundSet: p.soundSet,
@@ -719,6 +720,7 @@ export function LiveGame({
       feel={g.feel}
       premoveQueue={premoveQueue}
       onApi={(a) => (api.current = a)}
+      arena={g.arena}
     />
   );
   const viewingPast = viewPly !== null && (

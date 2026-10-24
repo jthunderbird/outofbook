@@ -430,6 +430,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
             movable={playing && !thinking && viewPly === null && !maiaLoad ? myColor : undefined}
             onMove={onMove}
             feel={feel.feel}
+            arena={feel.arena}
           />
           {viewPly !== null && (
             <div className="pointer-events-none absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white">

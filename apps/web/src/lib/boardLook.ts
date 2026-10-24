@@ -75,7 +75,7 @@ export const BOARDS: Record<string, { file: string; light: string; dark: string 
   horsey: { file: "horsey.jpg", light: "#f0d9b5", dark: "#946f51" },
 };
 
-/** "lichess": the user's Lichess board; "outofbook": our own blue one; else a Lichess board by name. */
+/** "lichess": the user's Lichess board; "outofbook": our own blue one; "arena": 3D game boards (other boards ours); else a Lichess board by name. */
 export type BoardChoice = "lichess" | "outofbook" | string;
 
 /** The board to draw: Lichess's default (brown) counts as "not chosen" and gets ours. */

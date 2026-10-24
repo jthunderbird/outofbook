@@ -1,0 +1,6 @@
+Arena models (white's king and rooks), all CC0 (public domain):
+
+Mage.glb: KayKit Adventurers Character Pack 1.0 by Kay Lousberg (www.kaylousberg.com)
+  https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+building_tower_A_blue.gltf/.bin, hexagons_medieval.png: KayKit Medieval Hexagon Pack 1.0 by Kay Lousberg
+  https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0

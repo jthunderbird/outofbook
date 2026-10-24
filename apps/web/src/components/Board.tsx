@@ -1,6 +1,6 @@
 // Chessground (Lichess's own board, GPL-3.0): click-to-move with destination
 // dots, drag, last-move and check highlights, premoves, right-click arrows.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Chessground } from "chessground";
 import type { Api } from "chessground/api";
 import type { Config } from "chessground/config";
@@ -137,6 +137,8 @@ export interface BoardProps {
   feel?: BoardFeel;
   /** Set during the opponent's turn to queue premoves instead of chessground's single one. */
   premoveQueue?: PremoveQueue;
+  /** The Arena board style: a 3D board with acting figures (no arrows, premoves or promotion choice). */
+  arena?: boolean;
 }
 
 export interface BoardFeel {
@@ -154,7 +156,24 @@ const color = (s: Side) => (s === "w" ? "white" : "black");
 
 const NO_ARROWS: Arrow[] = [];
 
-export function Board({
+const ArenaBoard = lazy(() => import("../arena/ArenaBoard"));
+
+export function Board(props: BoardProps) {
+  if (!props.arena) return <FlatBoard {...props} />;
+  const { fen, orientation, lastMove, movable, onMove, hideEval, evalLine, bigEval, className } = props;
+  return (
+    <div className={`flex gap-1.5 ${className ?? ""}`}>
+      {!hideEval && <EvalBar line={evalLine} orientation={orientation} big={bigEval} />}
+      <div className="board-wrap min-w-0 flex-1">
+        <Suspense fallback={null}>
+          <ArenaBoard fen={fen} orientation={orientation} lastMove={lastMove} movable={movable} onMove={onMove} />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function FlatBoard({
   fen,
   orientation,
   arrows = NO_ARROWS,

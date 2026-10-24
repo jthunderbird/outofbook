@@ -428,6 +428,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
 const BOARD_OPTIONS: [string, string][] = [
   ["lichess", "Same as my Lichess board"],
   ["outofbook", "OutOfBook blue"],
+  ["arena", "Arena (3D game board, dev)"],
   ...Object.keys(BOARDS)
     .filter((b) => b !== "brown")
     .map((b): [string, string] => [b, b[0].toUpperCase() + b.slice(1).replace("-", " ")]),
