@@ -24,6 +24,7 @@ import {
   PlaneGeometry,
   PMREMGenerator,
   PointLight,
+  QuadraticBezierCurve3,
   Raycaster,
   RingGeometry,
   Scene,
@@ -582,17 +583,31 @@ export class Arena {
     await this.rebuild(r);
   }
 
+  /**
+   * Keeps the rook's filled middle no higher than its wall: the top of the
+   * highest stone still standing (in place, for "down"; landed, for "up").
+   * Returns the function that stops it.
+   */
+  private coreTracksWall(r: Fig, standing: (s: Mesh) => boolean) {
+    const core = r.core!;
+    return this.loop(() => {
+      let top = 0;
+      for (const s of r.stones) if (standing(s)) top = Math.max(top, s.userData.home.pos.y + 0.095);
+      const h = Math.min(0.8, top);
+      // Eased toward the wall so a row leaving doesn't make it jump.
+      core.scale.y = Math.max(0.001, core.scale.y + (h / 0.8 - core.scale.y) * 0.35);
+    });
+  }
+
   private async tearDown(r: Fig) {
     const p = r.root.position.clone();
     const stones = [...r.stones].sort((a, b) => b.userData.home.pos.y - a.userData.home.pos.y);
-    const total = stones.length * 18 + 420;
-    void tween(this.clock, total, (t) => {
-      r.core!.scale.y = Math.max(0.01, 1 - t);
-      r.core!.position.y = 0.4 * (1 - t);
-    });
+    const gone = new Set<Mesh>();
+    const stop = this.coreTracksWall(r, (s) => !gone.has(s));
     await Promise.all(
       stones.map(async (s, i) => {
         await wait(this.clock, i * 18);
+        gone.add(s);
         const start = s.position.clone();
         const out = new Vector3(start.x, 0, start.z).normalize();
         const spin = (Math.random() - 0.5) * 5;
@@ -608,6 +623,8 @@ export class Arena {
         );
       }),
     );
+    stop();
+    r.core!.scale.y = 0.001;
   }
 
   private async rebuild(r: Fig) {
@@ -623,19 +640,20 @@ export class Arena {
       rune.visible = true;
       (rune.material as MeshStandardMaterial).emissiveIntensity = 3;
     }
-    const total = stones.length * 16 + 380;
-    void tween(this.clock, total, (t) => {
-      r.core!.scale.y = Math.max(0.01, t);
-      r.core!.position.y = 0.4 * t;
-    });
+    r.core!.scale.y = 0.001;
+    const landed = new Set<Mesh>();
+    const stop = this.coreTracksWall(r, (s) => landed.has(s));
     await Promise.all(
       stones.map(async (s, i) => {
         await wait(this.clock, i * 16);
         const home = s.userData.home.pos.y;
         if (i % 4 === 0) this.fx.burst(p.clone().setY(home), magic, 3, { glow: true, speed: 0.8, up: 0.8, gravity: 0, life: 500 });
         await tween(this.clock, 380, (t) => (s.position.y = -0.45 + (home + 0.45) * t), ease.back);
+        landed.add(s);
       }),
     );
+    stop();
+    r.core!.scale.y = 1;
     await tween(this.clock, 400, (t) => r.runes.forEach((rune) => ((rune.material as MeshStandardMaterial).emissiveIntensity = 3 * (1 - t))));
     for (const rune of r.runes) rune.visible = false;
   }
@@ -749,12 +767,20 @@ export class Arena {
     await this.turn(f, this.restFacing(f));
   }
 
-  /** Knights: gallop the L, leaping on the long leg; to take, a sword slash that cuts the piece in half. */
+  /**
+   * Knights: one flowing curve through the L, a bounding leap over whatever is
+   * in the way and down to a gallop. To take, the rider swings while still
+   * riding, cuts the piece in half as he reaches it, and the horse rears up and
+   * stops on its square.
+   */
   private async gallop(f: Fig, to: string, victim?: Fig) {
     const a = f.root.position.clone();
     const b = squareAt(to);
     const d = b.clone().sub(a);
     const corner = Math.abs(d.x) > Math.abs(d.z) ? new Vector3(b.x, 0, a.z) : new Vector3(a.x, 0, b.z);
+    // The corner pulled toward the middle: a curve that still reads as an L.
+    const path = new QuadraticBezierCurve3(a, corner.lerp(a.clone().lerp(b, 0.5), 0.45), b);
+    const L = path.getLength();
     let phase = 0;
     let running = true;
     const stop = this.loop((ms) => {
@@ -775,43 +801,113 @@ export class Arena {
       f.body.rotation.x = s * 0.07;
       f.body.position.y = Math.max(0, s) * 0.05;
     });
-    const pace = 380;
-    const face = (p: Vector3, q: Vector3) => this.turn(f, Math.atan2(q.x - p.x, q.z - p.z), 150);
-    await face(a, corner);
-    await this.line(f, corner, a.distanceTo(corner) * pace, (t) => Math.sin(Math.PI * t) * 0.35);
-    await face(corner, b);
-    const len = corner.distanceTo(b);
-    if (victim) {
-      const s = Math.max(0, 1 - 0.75 / len);
-      await this.line(f, this.along(corner, b, s), Math.max(1, s * len * pace));
-      running = false;
-      f.rest();
-      f.root.rotation.y = Math.atan2(b.x - corner.x, b.z - corner.z);
-      await f.swing(this.clock, "slash");
-      void this.slice(victim, b.clone().sub(corner).normalize());
-      await wait(this.clock, 450);
-      running = true;
-      await this.line(f, b, (1 - s) * len * pace);
-    } else await this.line(f, b, len * pace);
+    const face = f.root.rotation.y;
+    const ms = L * 330;
+    // Moving: speed up and slow down. Taking: speed up and keep riding through.
+    const speed = victim ? (t: number) => (t < 0.2 ? (t * t) / 0.4 : t - 0.1) / 0.9 : ease.inOut;
+    // The hit lands half a square short of the piece; the swing takes 380 ms to get there.
+    const hitAt = victim ? (1 - 0.55 / L) * 0.9 + 0.1 : 2;
+    let swung = false;
+    const tangent = new Vector3();
+    await tween(
+      this.clock,
+      ms,
+      (t) => {
+        const u = Math.min(1, speed(t));
+        const p = path.getPointAt(u);
+        // A leap over the first stretch, then back on the ground for the run in.
+        const leap = u < 0.7 ? Math.sin((Math.PI * u) / 0.7) * 0.3 : 0;
+        f.root.position.set(p.x, leap, p.z);
+        path.getTangentAt(u, tangent);
+        f.root.rotation.y = lerpAngle(face, Math.atan2(tangent.x, tangent.z), Math.min(1, u / 0.12));
+        if (victim && !swung && t * ms >= hitAt * ms - 380) {
+          swung = true;
+          const across = new Vector3(tangent.z, 0, -tangent.x);
+          void f.swing(this.clock, "slash").then(() => this.slice(victim, across, true));
+        }
+      },
+      ease.linear,
+    );
+    running = false;
+    f.rest();
+    f.root.rotation.y = Math.atan2(tangent.x, tangent.z);
+    if (victim) await this.rear(f);
     stop();
     f.rest();
+    this.fx.dust(b, victim ? 14 : 8, 0xd8cdb8);
     await this.turn(f, this.restFacing(f));
   }
 
-  /** Bishops: fly; to take, arrive above the piece crackling and strike it down with lightning. */
+  /** The horse rears up on its hind legs, front hooves pawing, and comes down. */
+  private async rear(f: Fig) {
+    const [fl, fr, bl, br] = f.hooves;
+    // Pitched about the hind hooves (z -0.2 on the ground), not the middle.
+    const pitch = (k: number, paw = 0) => {
+      const th = -0.7 * k;
+      f.body.rotation.x = th;
+      f.body.position.set(0, -0.2 * Math.sin(th), -0.2 + 0.2 * Math.cos(th));
+      for (const [leg, off] of [
+        [fl, 0],
+        [fr, 1.4],
+      ] as const) {
+        leg.rotation.x = -1.1 * k + Math.sin(paw + off) * 0.35 * k;
+        leg.userData.knee.rotation.x = 1.4 * k;
+      }
+      // Hind legs stay upright under the pitched body.
+      bl.rotation.x = br.rotation.x = 0.7 * k;
+    };
+    await tween(this.clock, 300, (t) => pitch(t), ease.out);
+    await tween(this.clock, 420, (t) => pitch(1, t * 12), ease.linear);
+    await tween(this.clock, 260, (t) => pitch(1 - t), ease.in);
+    this.shake = 120;
+  }
+
+  /**
+   * Bishops, gods of thunder: they go by lightning. The bishop flashes away, a
+   * bolt runs from his square to the new one, and he forms there out of the
+   * electricity. To take, the bolt wraps the piece, drives it to the ground,
+   * and he forms standing over it.
+   */
   private async fly(f: Fig, to: string, victim?: Fig) {
-    const a = f.root.position.clone();
     const b = squareAt(to);
-    const bolt = BOLT[f.side];
-    await this.turn(f, Math.atan2(b.x - a.x, b.z - a.z));
-    const H = victim ? victim.height + 0.35 : 0.8;
-    f.floating = true;
-    let charged = !!victim;
-    const sparks = this.loop(() => {
-      if (!charged) return;
+    const color = BOLT[f.side];
+    const charge = this.electrify(f, color);
+    void f.cast(this.clock, victim ? "kill" : "order");
+    const sparks = this.sparkle(f, color);
+    await tween(this.clock, 380, (t) => charge(t), ease.in);
+    sparks();
+    const from = f.middle();
+    f.root.visible = false;
+    this.fx.burst(from, color, 26, { glow: true, speed: 2.6, size: 0.035, life: 350, gravity: 0 });
+    this.flashAt(from, color, 35);
+    this.shake = 90;
+    const end = victim ? victim.middle() : b.clone().setY(0.5);
+    await this.trail(from, end, color);
+    if (victim) await this.envelop(victim, color, end.clone().sub(from).setY(0));
+    f.root.position.copy(b);
+    await this.form(f, color, charge);
+    if (victim) void this.sink(victim);
+    this.fx.dust(b, 8, 0xd8cdb8);
+  }
+
+  /** Makes f glow toward color by k (0..1); 0 puts its own glow back. */
+  private electrify(f: Fig, color: number) {
+    const mats = this.standard(f.mats);
+    const base = mats.map((m) => ({ e: m.emissive.clone(), i: m.emissiveIntensity }));
+    const c = new Color(color);
+    return (k: number) =>
+      mats.forEach((m, i) => {
+        m.emissive.copy(base[i].e).lerp(c, k);
+        m.emissiveIntensity = base[i].i + (2.2 - base[i].i) * k;
+      });
+  }
+
+  /** Sparks crackling off a figure until the returned function is called. */
+  private sparkle(f: Fig, color: number) {
+    return this.loop(() => {
       for (let i = 0; i < 2; i++)
-        this.fx.spawn(f.middle().add(new Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.6)), {
-          color: bolt,
+        this.fx.spawn(f.middle().add(new Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * f.height, (Math.random() - 0.5) * 0.6)), {
+          color,
           size: 0.025,
           vel: new Vector3((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2),
           life: 220,
@@ -819,30 +915,82 @@ export class Arena {
           glow: true,
         });
     });
-    await tween(this.clock, 350, (t) => {
-      f.root.position.y = H * t;
-      f.body.rotation.x = 0.2 * t;
-    });
-    await this.line(f, b, Math.max(450, a.distanceTo(b) * 220), () => H, ease.inOut);
-    if (victim) {
-      void f.cast(this.clock, "kill");
-      await wait(this.clock, 220);
-      await this.smite(f.staffTip(), victim, bolt, b.clone().sub(a));
-      charged = false;
+  }
+
+  /** A flash of light at a point that dies away. */
+  private flashAt(at: Vector3, color: number, power: number) {
+    this.flash.color.setHex(color);
+    this.flash.position.copy(at).setY(at.y + 0.6);
+    this.flash.intensity = power;
+    void tween(this.clock, 350, (t) => (this.flash.intensity = power * (1 - t)), ease.out);
+  }
+
+  /** The bolt the bishop travels as: it flickers from a to b, and its last stroke fades as he forms. */
+  private async trail(a: Vector3, b: Vector3, color: number) {
+    const n = Math.max(6, Math.round(a.distanceTo(b) * 3.5));
+    for (let i = 0; i < 3; i++) {
+      const bolt = this.bolt(a, b, color, n, 0.4);
+      this.flash.intensity = Math.max(this.flash.intensity, 18);
+      this.flash.position.copy(a).lerp(b, 0.5).setY(1.2);
+      await wait(this.clock, 60);
+      if (i < 2) bolt.remove();
+      else void bolt.fade(450);
+      await wait(this.clock, 30);
     }
-    await tween(
-      this.clock,
-      350,
-      (t) => {
-        f.root.position.y = H * (1 - t);
-        f.body.rotation.x = 0.2 * (1 - t);
-      },
-      ease.in,
-    );
+  }
+
+  /** Lightning wraps the piece, scorching it, then one stroke drives it to the ground. */
+  private async envelop(v: Fig, color: number, dir: Vector3) {
+    const p = v.root.position;
+    const on = () => {
+      const a = Math.random() * Math.PI * 2;
+      const r = 0.25 + Math.random() * 0.12;
+      return new Vector3(p.x + Math.cos(a) * r, 0.05 + Math.random() * v.height, p.z + Math.sin(a) * r);
+    };
+    void this.char(v, 0.7, 600);
+    const wrap = this.electrify(v, color);
+    for (let i = 0; i < 12; i++) {
+      wrap(0.4 + Math.random() * 0.5);
+      const arcs = [this.bolt(on(), on(), color, 4, 0.12), this.bolt(on(), on(), color, 4, 0.12)];
+      this.flash.intensity = 8 + Math.random() * 10;
+      await wait(this.clock, 55);
+      for (const x of arcs) x.remove();
+    }
+    wrap(0);
+    // The stroke from above, and down it goes.
+    const top = v.middle().setY(v.height);
+    const stroke = this.bolt(top.clone().setY(3.2), top, color, 7, 0.25);
+    this.flashAt(top, color, 40);
+    this.shake = 200;
+    this.fx.burst(top, color, 20, { glow: true, speed: 2.5, size: 0.04, life: 450 });
+    void stroke.fade(300);
+    await this.topple(v, dir, 220);
+    this.fx.dust(p, 12);
+  }
+
+  /** The bishop forms on his square out of the electricity: sparks rush in, he appears from the feet up, and his glow settles. */
+  private async form(f: Fig, color: number, charge: (k: number) => void) {
+    const p = f.root.position;
+    for (let i = 0; i < 30; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const off = new Vector3(Math.cos(a), (Math.random() - 0.3) * 1.2, Math.sin(a)).multiplyScalar(0.5 + Math.random() * 0.4);
+      this.fx.spawn(
+        p
+          .clone()
+          .setY(f.height * 0.5)
+          .add(off),
+        { color, size: 0.03, vel: off.clone().multiplyScalar(-1 / 0.3), life: 300, gravity: 0, glow: true },
+      );
+    }
+    await wait(this.clock, 200);
+    charge(1);
+    clipAbove(f.mats, 0);
+    f.root.visible = true;
+    const sparks = this.sparkle(f, color);
+    await tween(this.clock, 420, (t) => clipAbove(f.mats, f.height * 1.15 * t), ease.out);
+    clipAbove(f.mats, null);
     sparks();
-    f.floating = false;
-    this.fx.dust(b, 8, 0xd8cdb8);
-    await this.turn(f, this.restFacing(f));
+    await tween(this.clock, 450, (t) => charge(1 - t));
   }
 
   /** Queens: a swift, smooth float, no turning; to take, a fiery hole opens under the piece as she comes. */
@@ -889,28 +1037,43 @@ export class Arena {
     );
   }
 
-  /** Killed by a pawn or lightning: knocked over away from the blow, then sunk into the board. */
+  /** Killed by a pawn: knocked over away from the blow, then sunk into the board. */
   private async strikeDown(v: Fig, dir: Vector3) {
+    this.fx.burst(v.middle(), 0xfff2c0, 8, { glow: true, speed: 1.5, size: 0.04, life: 300 });
+    await this.topple(v, dir);
+    this.fx.dust(v.root.position, 10);
+    await wait(this.clock, 300);
+    await this.sink(v);
+  }
+
+  /** Falls over away from dir. */
+  private topple(v: Fig, dir: Vector3, ms = 320) {
     const axis = new Vector3(dir.z, 0, -dir.x).normalize();
     const start = v.root.quaternion.clone();
-    this.fx.burst(v.middle(), 0xfff2c0, 8, { glow: true, speed: 1.5, size: 0.04, life: 300 });
-    await tween(
+    return tween(
       this.clock,
-      320,
+      ms,
       (t) => {
         v.root.quaternion.copy(start);
         v.root.rotateOnWorldAxis(axis, (Math.PI / 2) * t);
       },
       ease.in,
     );
-    this.fx.dust(v.root.position, 10);
-    await wait(this.clock, 300);
-    await tween(this.clock, 400, (t) => (v.root.position.y = -0.4 * t));
+  }
+
+  /** Sinks into the board and is gone. */
+  private async sink(v: Fig) {
+    const y = v.root.position.y;
+    await tween(this.clock, 400, (t) => (v.root.position.y = y - 0.4 * t));
     v.root.removeFromParent();
   }
 
-  /** Killed by a knight: cut through the middle on a slant; the top slides off and falls, then both go. */
-  private async slice(v: Fig, dir: Vector3) {
+  /**
+   * Killed by a knight: cut through the middle on a slant; the top slides off
+   * toward dir and falls, then both go. Trampled: the horse comes onto the
+   * square, so the bottom half sinks away at once.
+   */
+  private async slice(v: Fig, dir: Vector3, trampled = false) {
     const p = v.root.position.clone();
     const side = new Vector3(dir.z, 0, -dir.x).normalize();
     const n = new Vector3(0, 1, 0).addScaledVector(side, 0.35).normalize();
@@ -935,6 +1098,7 @@ export class Arena {
       });
     const start = top.position.clone();
     const q = top.quaternion.clone();
+    if (trampled) void tween(this.clock, 300, (t) => (v.root.position.y = -v.height * 0.6 * t), ease.in);
     await tween(
       this.clock,
       550,
@@ -947,16 +1111,17 @@ export class Arena {
     );
     this.fx.dust(p.clone().addScaledVector(dir, 0.4), 12);
     await wait(this.clock, 400);
+    const y = v.root.position.y;
     await tween(this.clock, 400, (t) => {
-      v.root.position.y = -0.5 * t;
+      v.root.position.y = Math.min(y, -0.5 * t);
       top.position.y = start.y - v.height * 0.4 - 0.6 * t;
     });
     v.root.removeFromParent();
     top.removeFromParent();
   }
 
-  /** A jagged bolt from a to b (a core and a colored glow, a side branch); removed by the caller. */
-  private bolt(a: Vector3, b: Vector3, color: number) {
+  /** A jagged bolt from a to b in n strokes (a core and a colored glow, a side branch); the caller removes it or fades it out. */
+  private bolt(a: Vector3, b: Vector3, color: number, n = 9, spread = 0.3) {
     const g = new Group();
     const core = new MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: AdditiveBlending, depthWrite: false });
     const halo = new MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: AdditiveBlending, depthWrite: false });
@@ -983,38 +1148,24 @@ export class Arena {
         }
       return pts;
     };
-    const pts = jag(a, b, 9, 0.3);
-    const fork = pts[3 + Math.floor(Math.random() * 3)];
+    const pts = jag(a, b, n, spread);
+    const fork = pts[Math.floor(n / 3 + Math.random() * (n / 3))];
     jag(fork, fork.clone().add(new Vector3((Math.random() - 0.5) * 0.8, -0.5, (Math.random() - 0.5) * 0.8)), 4, 0.15);
     this.scene.add(g);
-    return () => {
+    const remove = () => {
       g.removeFromParent();
       g.traverse((o) => (o as Mesh).geometry?.dispose());
+      core.dispose();
+      halo.dispose();
     };
-  }
-
-  /** Lightning: three flickering bolts and a flash, the piece scorched and knocked to the ground. */
-  private async smite(from: Vector3, v: Fig, color: number, dir: Vector3) {
-    const at = v.middle();
-    this.flash.color.setHex(color);
-    this.flash.position.copy(at).setY(at.y + 0.6);
-    for (let i = 0; i < 3; i++) {
-      const done = this.bolt(from, at, color);
-      this.flash.intensity = 40;
-      if (i === 0) {
-        this.shake = 150;
-        this.fx.burst(at, color, 20, { glow: true, speed: 2.5, size: 0.04, life: 450 });
-        void this.char(v, 0.7, 250);
-      }
-      await wait(this.clock, 70);
-      done();
-      this.flash.intensity = 6;
-      await wait(this.clock, 45);
-    }
-    void tween(this.clock, 300, (t) => (this.flash.intensity = 6 * (1 - t)));
-    for (let i = 0; i < 6; i++)
-      this.fx.spawn(at.clone(), { color: 0x555555, size: 0.08, vel: new Vector3((Math.random() - 0.5) * 0.3, 0.6, (Math.random() - 0.5) * 0.3), life: 900, gravity: 0, round: true });
-    await this.strikeDown(v, dir);
+    const fade = async (ms: number) => {
+      await tween(this.clock, ms, (t) => {
+        core.opacity = 1 - t;
+        halo.opacity = 0.6 * (1 - t);
+      });
+      remove();
+    };
+    return { remove, fade };
   }
 
   /** The name of the square under a point. */

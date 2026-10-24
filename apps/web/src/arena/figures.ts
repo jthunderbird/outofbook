@@ -48,7 +48,8 @@ export class Fig {
   mats: Material[] = [];
   /** Rooks: their stones, each with its home in userData.home. */
   stones: Mesh[] = [];
-  core?: Mesh;
+  /** Rooks: the filled middle (and its cap) as one group, scaled to the height of the wall. */
+  core?: Group;
   runes: Mesh[] = [];
   /** The arm that holds the staff or sword, and a staff's orb. */
   arm?: Group;
@@ -92,7 +93,6 @@ export class Fig {
       s.rotation.set(0, s.userData.home.rot, 0);
     }
     this.core?.scale.set(1, 1, 1);
-    this.core?.position.setY(0.4);
     for (const r of this.runes) r.visible = false;
     this.floating = false;
     clipAbove(this.mats, null);
@@ -958,9 +958,12 @@ function stoneTower(side: Side): Fig {
   };
   for (let row = 0; row < 4; row++) for (let j = 0; j < 8; j++) add(block, ((j + (row % 2) * 0.5) / 8) * Math.PI * 2, 0.1 + row * 0.2);
   for (let j = 0; j < 4; j++) add(merlon, (j / 4) * Math.PI * 2 + Math.PI / 4, 0.88);
-  f.core = mesh(new CylinderGeometry(0.25, 0.27, 0.8, 24), mat(side === "b" ? 0x1a1d27 : 0xa8a49a), 0, 0.4, 0);
+  f.core = new Group();
+  f.core.add(
+    mesh(new CylinderGeometry(0.25, 0.27, 0.8, 24), mat(side === "b" ? 0x1a1d27 : 0xa8a49a), 0, 0.4, 0),
+    mesh(new CylinderGeometry(0.27, 0.27, 0.01, 24), mat(side === "b" ? 0x262a36 : 0xc8c3b8), 0, 0.8, 0),
+  );
   f.body.add(f.core);
-  f.body.add(mesh(new CylinderGeometry(0.27, 0.27, 0.01, 24), mat(side === "b" ? 0x262a36 : 0xc8c3b8), 0, 0.8, 0));
   for (let row = 1; row < 4; row++) {
     const r = mesh(new TorusGeometry(0.33, 0.01, 6, 28), mat(magic, { emissive: magic, ei: 0 }), 0, row * 0.2, 0);
     r.rotation.x = Math.PI / 2;
