@@ -144,8 +144,12 @@ export class Arena {
   /** Dev (recording): time stands still and moves only by step(). */
   manual = false;
 
+  /** A tap while moves are acted out: they run fast to the end. */
+  private hurry = false;
+
   /** Advances everything ms and draws a frame. */
-  step(ms: number) {
+  step(frame: number) {
+    const ms = this.hurry ? frame * 8 : frame;
     this.clock.update(ms);
     FIRE_TIME.value += (ms * SPEED) / 1000;
     this.fx.update(ms * SPEED);
@@ -155,7 +159,7 @@ export class Arena {
     this.controls.update();
     const cam = this.camera.position.clone();
     if (this.shake > 0) {
-      this.shake -= ms;
+      this.shake -= frame;
       this.camera.position.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12));
     }
     this.renderer.render(this.scene, this.camera);
@@ -252,6 +256,10 @@ export class Arena {
     const d = this.down;
     this.down = null;
     if (!d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 8) return;
+    if (this.busy) {
+      this.hurry = true;
+      return;
+    }
     const sq = this.squareAtPointer(e);
     if (sq) this.tap(sq);
   };
@@ -349,6 +357,7 @@ export class Arena {
       if (!this.queue.length) await this.regicide(next).catch((e) => console.error("arena", e));
     }
     this.busy = false;
+    this.hurry = false;
     this.onBusy?.(false);
     this.highlight();
   }

@@ -180,7 +180,7 @@ const look = (page: Page) =>
     pieces: document.getElementById("piece-set")?.textContent ?? "",
   }));
 
-test("board look: Lichess's default brown shows as OutOfBook blue; another imported board and piece set show; our board choice wins", async ({ page }) => {
+test("board look: Lichess's default brown shows as OutOfBook blue; another imported board and piece set show; the app's board choice wins", async ({ page }) => {
   let theme = "brown";
   await page.addInitScript(() => localStorage.setItem("lichessToken", "fake-token"));
   await page.route("https://lichess.org/**", async (r) => {
@@ -199,13 +199,22 @@ test("board look: Lichess's default brown shows as OutOfBook blue; another impor
   await page.reload();
   await nav(page, "lichess");
   await expect.poll(async () => (await look(page)).board).toContain("/images/board/wood4.jpg");
-  // Our own board setting takes precedence over the imported one.
-  await page.getByTestId("board-choice").selectOption("green");
+  // Our own board setting (in Settings) takes precedence over the imported one.
+  const choose = async (board: string) => {
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByTestId("board-choice").selectOption(board);
+    await page.getByRole("button", { name: "Save" }).click();
+  };
+  await choose("green");
   await expect.poll(async () => (await look(page)).board).toContain("/images/board/green.png");
-  await page.getByTestId("board-choice").selectOption("outofbook");
+  await choose("outofbook");
   await expect.poll(async () => (await look(page)).board).toBe("ours");
+  // The Lichess screen's board is for Lichess games only: the app's look stays.
+  await page.getByTestId("game-board-choice").selectOption("green");
+  await page.waitForTimeout(200);
+  expect((await look(page)).board).toBe("ours");
   // The look holds on other boards and after a reload.
-  await page.getByTestId("board-choice").selectOption("blue3");
+  await choose("blue3");
   await page.reload();
   await nav(page, "play");
   await expect.poll(async () => (await look(page)).board).toContain("/images/board/blue3.jpg");

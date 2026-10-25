@@ -6,7 +6,8 @@ import type { RawGame } from "@outofbook/core/types";
 import { canVibrate } from "../lib/gameFeel";
 import { cachedPrefs, loadPrefs, type LichessPrefs } from "../lib/lichessPrefs";
 import { applyLook, lichessSettings, LiveGame, loadLive, saveLive, type LiveSettings } from "./LiveGame";
-import { BOARDS, PIECE_SETS } from "../lib/boardLook";
+import { BOARD_NAMES, PIECE_SETS } from "../lib/boardLook";
+import { loadSettings } from "../lib/settings";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Progress, Seg, Select, Switch } from "./ui";
 import { LichessIcon } from "./LichessIcon";
 
@@ -86,7 +87,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
     if (token && canPrefs) loadPrefs(token).then((p) => p && setPrefs(p));
   }, [token, canPrefs]);
   const canPlay = !!token && !!scopes?.includes("board:play");
-  useEffect(() => applyLook(live, prefs), [live, prefs]);
+  useEffect(() => applyLook(loadSettings().board, live, prefs), [live, prefs]);
   const setL = (p: Partial<LiveSettings>) => {
     const n = { ...live, ...p };
     setLive(n);
@@ -390,8 +391,13 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
             </Field>
           </div>
           <div className="mt-4 flex flex-col gap-3">
-            <Field label="Board" hint="Every board in the app. Lichess's default brown board shows as OutOfBook blue.">
-              <Select value={live.board} onChange={(e) => setL({ board: e.target.value })} options={BOARD_OPTIONS} data-testid="board-choice" />
+            <Field label="Board in Lichess games" hint="Only for Lichess games; the app's board and Arena are in Settings.">
+              <Select
+                value={live.gameBoard === "lichess" && !live.useLichessPrefs ? "app" : live.gameBoard}
+                onChange={(e) => setL({ gameBoard: e.target.value })}
+                options={[["app", "Same as the app's board"], ...(live.useLichessPrefs ? [["lichess", "Same as my Lichess board"] as [string, string]] : []), ["arena", "Arena (3D)"], ...BOARD_NAMES]}
+                data-testid="game-board-choice"
+              />
             </Field>
             <Switch
               checked={live.oppClockWarn}
@@ -424,16 +430,6 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
     </div>
   );
 }
-
-const BOARD_OPTIONS: [string, string][] = [
-  ["lichess", "Same as my Lichess board"],
-  ["outofbook", "OutOfBook blue"],
-  ["arena", "Arena (3D game board, dev)"],
-  ...Object.keys(BOARDS)
-    .filter((b) => b !== "brown")
-    .map((b): [string, string] => [b, b[0].toUpperCase() + b.slice(1).replace("-", " ")]),
-  ["brown", "Brown (Lichess default)"],
-];
 
 const SOUND_SETS: [string, string][] = [
   ["standard", "Standard"],

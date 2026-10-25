@@ -16,6 +16,7 @@ import { BAD_VERDICTS, type Line, type PosEval, type RawGame, type RepertoireMod
 import { BookChip, VERDICT_COLOR, VerdictChip } from "./bits";
 import { Board, uciArrow, type Arrow } from "./Board";
 import { gameFeel, loadLive } from "./LiveGame";
+import { loadSettings } from "../lib/settings";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Progress, Seg, Select, Switch } from "./ui";
 
 type TopMoves = { fen: string; ev: PosEval; extra: Record<string, Line> };
@@ -126,7 +127,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   };
 
   // Same board feel as live Lichess games: sounds, vibration, the user's Lichess prefs.
-  const feel = useMemo(() => gameFeel(loadLive(), cachedPrefs()), []);
+  const feel = useMemo(() => gameFeel(loadLive(), cachedPrefs(), loadSettings().arena), []);
   useEffect(() => preloadSounds(feel.soundSet), [feel.soundSet]);
   const [hideEnd, setHideEnd] = useState(false);
   // The arena board acts out the last move (a checkmate: the king's death) before the result shows.

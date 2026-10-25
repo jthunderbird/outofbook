@@ -101,7 +101,7 @@ export default function App() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   // The save note is news, not a state: it goes away by itself.
   // Every board's look (piece set, board) from the saved settings and Lichess prefs.
-  useEffect(() => applyLook(loadLive(), cachedPrefs()), []);
+  useEffect(() => applyLook(settings.board, loadLive(), cachedPrefs()), [settings.board]);
   useEffect(() => {
     if (!saveMsg) return;
     const t = setTimeout(() => setSaveMsg(null), 8000);

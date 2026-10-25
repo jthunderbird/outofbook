@@ -115,3 +115,12 @@ export function applyBoardLook(board: string, pieceSet: string) {
     .flatMap(([role, r]) => (["white", "black"] as const).map((c) => `.cg-wrap piece.${role}.${c}{background-image:url("${ASSETS}/piece/${pieceSet}/${c[0]}${r}.svg")}`))
     .join("\n");
 }
+
+/** The 2D boards to choose from (without "Same as my Lichess board"), Lichess's default last. */
+export const BOARD_NAMES: [string, string][] = [
+  ["outofbook", "OutOfBook blue"],
+  ...Object.keys(BOARDS)
+    .filter((b) => b !== "brown")
+    .map((b): [string, string] => [b, b[0].toUpperCase() + b.slice(1).replace("-", " ")]),
+  ["brown", "Brown (Lichess default)"],
+];
