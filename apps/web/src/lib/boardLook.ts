@@ -116,6 +116,9 @@ export function applyBoardLook(board: string, pieceSet: string) {
     .join("\n");
 }
 
+/** OutOfBook's own look, for every board outside Lichess games. */
+export const applyStandardLook = () => applyBoardLook("outofbook", "cburnett");
+
 /** The 2D boards to choose from (without "Same as my Lichess board"), Lichess's default last. */
 export const BOARD_NAMES: [string, string][] = [
   ["outofbook", "OutOfBook blue"],

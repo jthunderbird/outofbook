@@ -49,8 +49,7 @@ import { Alert, Button, Card, Dialog, Input, Seg, Tip } from "./components/ui";
 import { MODES, useDesign } from "./design/design";
 import { Shell, type NavItem } from "./shell/Shells";
 import { CommandPalette } from "./shell/CommandPalette";
-import { applyLook, loadLive } from "./components/LiveGame";
-import { cachedPrefs } from "./lib/lichessPrefs";
+import { applyStandardLook } from "./lib/boardLook";
 import { ExploreBoard } from "./components/ExploreBoard";
 import { lastQuickPlay, QUICK_DEFAULT, seek, type QuickPlay } from "./lib/lichessBoard";
 
@@ -99,9 +98,9 @@ export default function App() {
   const accountRef = useRef<Me | null>(null);
   accountRef.current = account;
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  // Every board is OutOfBook's own; a Lichess game puts on the Lichess look while it is open.
+  useEffect(applyStandardLook, []);
   // The save note is news, not a state: it goes away by itself.
-  // Every board's look (piece set, board) from the saved settings and Lichess prefs.
-  useEffect(() => applyLook(settings.board, loadLive(), cachedPrefs()), [settings.board]);
   useEffect(() => {
     if (!saveMsg) return;
     const t = setTimeout(() => setSaveMsg(null), 8000);

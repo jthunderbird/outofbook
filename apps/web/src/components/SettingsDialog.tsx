@@ -3,9 +3,8 @@ import { MODES, useDesign } from "../design/design";
 import { IN_APP, IS_CAPACITOR } from "../lib/platform";
 import { deleteAccount, hasAuth } from "../lib/server";
 import type { Settings } from "../lib/settings";
-import { BOARD_NAMES } from "../lib/boardLook";
 import type { Verdict } from "@outofbook/core/types";
-import { Button, Dialog, Field, Input, Seg, Select, Switch } from "./ui";
+import { Button, Dialog, Field, Input, Seg, Switch } from "./ui";
 
 const num = (v: string, min: number, max: number) => Math.max(min, Math.min(max, Math.round(+v || 0)));
 
@@ -35,15 +34,6 @@ export function SettingsDialog({ open, value, onClose }: { open: boolean; value:
           <Field label="Theme" hint="Applies right away.">
             <Seg value={design.mode} onChange={(mode) => setDesign({ mode })} options={MODES} />
           </Field>
-          <Field label="Board" hint="Every board in the app. Lichess's default brown board shows as OutOfBook blue.">
-            <Select value={s.board} onChange={(e) => setS({ ...s, board: e.target.value })} options={[["lichess", "Same as my Lichess board"], ...BOARD_NAMES]} data-testid="board-choice" />
-          </Field>
-          <Switch
-            checked={s.arena}
-            onChange={(v) => setS({ ...s, arena: v })}
-            label="Arena: 3D game boards"
-            hint="Games against bots and on Lichess are played on a 3D board where the pieces fight. Other boards stay 2D. Lichess games can choose their own board on the Lichess screen."
-          />
         </section>
         <section className="flex flex-col gap-3">
           <div className="ui-h2">Analysis</div>

@@ -180,7 +180,7 @@ const look = (page: Page) =>
     pieces: document.getElementById("piece-set")?.textContent ?? "",
   }));
 
-test("board look: Lichess's default brown shows as OutOfBook blue; another imported board and piece set show; the app's board choice wins", async ({ page }) => {
+test("board look: Lichess games get the Lichess board and pieces (brown shows as OutOfBook blue) or the board chosen for them; every other board stays OutOfBook's own", async ({ page }) => {
   let theme = "brown";
   await page.addInitScript(() => localStorage.setItem("lichessToken", "fake-token"));
   await page.route("https://lichess.org/**", async (r) => {
@@ -191,39 +191,40 @@ test("board look: Lichess's default brown shows as OutOfBook blue; another impor
     if (p === "/api/stream/event") return r.fulfill({ contentType: "application/x-ndjson", body: "\n" });
     return r.fulfill({ json: {} });
   });
-  await page.goto("/");
+  const game = async () => {
+    await page.getByTestId("live-demo").click();
+    await expect(page.getByTestId("live-game")).toBeVisible();
+  };
+  // Out of the demo game the way a real one ends: the opponent leaves, we claim the win.
+  const leave = async () => {
+    await page.evaluate(() => (window as unknown as { demoOpponentGone: (s: number) => void }).demoOpponentGone(1));
+    await page.getByRole("button", { name: "Claim victory" }).click();
+    await page.getByRole("button", { name: "Back to OutOfBook" }).click();
+    await expect(page.getByTestId("live-game")).toBeHidden();
+  };
+  await page.goto("/?demo");
   await nav(page, "lichess");
+  await game();
   await expect.poll(async () => (await look(page)).pieces).toContain("/piece/merida/wK.svg");
   expect((await look(page)).board).toBe("ours");
+  await leave();
   theme = "wood4";
   await page.reload();
   await nav(page, "lichess");
+  // Outside the game the look is ours.
+  await expect.poll(async () => (await look(page)).pieces).toBe("");
+  await game();
   await expect.poll(async () => (await look(page)).board).toContain("/images/board/wood4.jpg");
-  // Our own board setting (in Settings) takes precedence over the imported one.
-  const choose = async (board: string) => {
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByTestId("board-choice").selectOption(board);
-    await page.getByRole("button", { name: "Save" }).click();
-  };
-  await choose("green");
-  await expect.poll(async () => (await look(page)).board).toContain("/images/board/green.png");
-  await choose("outofbook");
+  await leave();
   await expect.poll(async () => (await look(page)).board).toBe("ours");
-  // The Lichess screen's board is for Lichess games only: the app's look stays.
-  await page.getByTestId("game-board-choice").selectOption("green");
-  await page.waitForTimeout(200);
-  expect((await look(page)).board).toBe("ours");
-  // The look holds on other boards and after a reload.
-  await choose("blue3");
-  await page.reload();
+  // The board chosen for Lichess games wins over the account's, in Lichess games only.
+  await page.getByTestId("board-choice").selectOption("green");
+  await game();
+  await expect.poll(async () => (await look(page)).board).toContain("/images/board/green.png");
+  await leave();
   await nav(page, "play");
-  await expect.poll(async () => (await look(page)).board).toContain("/images/board/blue3.jpg");
-  expect(
-    await page
-      .locator("cg-board")
-      .first()
-      .evaluate((e) => getComputedStyle(e).backgroundImage),
-  ).toContain("blue3.jpg");
+  await expect.poll(async () => (await look(page)).board).toBe("ours");
+  expect((await look(page)).pieces).toBe("");
 });
 
 test("quick play seeks the last rapid or classical game's type against a person", async ({ page }) => {

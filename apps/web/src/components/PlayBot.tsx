@@ -8,15 +8,13 @@ import { classify } from "@outofbook/core/classify";
 import { EnginePool } from "../lib/engine";
 import { evalNow } from "../lib/evalCache";
 import { buzz, buzzMove, playMoveSound, preloadSounds } from "../lib/gameFeel";
-import { cachedPrefs } from "../lib/lichessPrefs";
 import { trackLine } from "@outofbook/core/lineTracker";
 import { betterMoveAvailable, compareText, pct, povPawns, povText } from "@outofbook/core/moveNotes";
 import { findPath } from "@outofbook/core/repertoire";
 import { BAD_VERDICTS, type Line, type PosEval, type RawGame, type RepertoireModel, type RepNode, type Side, type Verdict } from "@outofbook/core/types";
 import { BookChip, VERDICT_COLOR, VerdictChip } from "./bits";
 import { Board, uciArrow, type Arrow } from "./Board";
-import { gameFeel, loadLive } from "./LiveGame";
-import { loadSettings } from "../lib/settings";
+import { gameFeel, LIVE_DEFAULTS } from "./LiveGame";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Progress, Seg, Select, Switch } from "./ui";
 
 type TopMoves = { fen: string; ev: PosEval; extra: Record<string, Line> };
@@ -126,8 +124,15 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
     retryAt.current = null;
   };
 
-  // Same board feel as live Lichess games: sounds, vibration, the user's Lichess prefs.
-  const feel = useMemo(() => gameFeel(loadLive(), cachedPrefs(), loadSettings().arena), []);
+  // OutOfBook's own board feel (the Lichess settings are for Lichess games only), on the Arena board if chosen.
+  const [arena, setArena] = useState(() => {
+    try {
+      return localStorage.getItem("botArena") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const feel = useMemo(() => gameFeel(LIVE_DEFAULTS, null, arena), [arena]);
   useEffect(() => preloadSounds(feel.soundSet), [feel.soundSet]);
   const [hideEnd, setHideEnd] = useState(false);
   // The arena board acts out the last move (a checkmate: the king's death) before the result shows.
@@ -738,6 +743,19 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
                 onChange={setDrill}
                 label="Drill"
                 hint="After each move: engine verdict, your usual move and the line; a banner with take-back on mistakes or when you leave your repertoire."
+              />
+              <Switch
+                checked={arena}
+                onChange={(v) => {
+                  setArena(v);
+                  try {
+                    localStorage.setItem("botArena", v ? "1" : "0");
+                  } catch {
+                    /* private mode */
+                  }
+                }}
+                label="Arena mode"
+                hint="Play on a 3D board where the pieces fight it out: every piece kills its own way."
               />
               <Switch checked={showEval} onChange={setShowEval} label="Show eval bar during the game" />
               <Button variant="primary" size="lg" onClick={newGame}>

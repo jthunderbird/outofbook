@@ -5,9 +5,8 @@ import { acceptChallenge, challengeAi, challengeUser, declineChallenge, seek, st
 import type { RawGame } from "@outofbook/core/types";
 import { canVibrate } from "../lib/gameFeel";
 import { cachedPrefs, loadPrefs, type LichessPrefs } from "../lib/lichessPrefs";
-import { applyLook, lichessSettings, LiveGame, loadLive, saveLive, type LiveSettings } from "./LiveGame";
+import { lichessSettings, LiveGame, loadLive, saveLive, type LiveSettings } from "./LiveGame";
 import { BOARD_NAMES, PIECE_SETS } from "../lib/boardLook";
-import { loadSettings } from "../lib/settings";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Progress, Seg, Select, Switch } from "./ui";
 import { LichessIcon } from "./LichessIcon";
 
@@ -87,7 +86,6 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
     if (token && canPrefs) loadPrefs(token).then((p) => p && setPrefs(p));
   }, [token, canPrefs]);
   const canPlay = !!token && !!scopes?.includes("board:play");
-  useEffect(() => applyLook(loadSettings().board, live, prefs), [live, prefs]);
   const setL = (p: Partial<LiveSettings>) => {
     const n = { ...live, ...p };
     setLive(n);
@@ -391,12 +389,12 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
             </Field>
           </div>
           <div className="mt-4 flex flex-col gap-3">
-            <Field label="Board in Lichess games" hint="Only for Lichess games; the app's board and Arena are in Settings.">
+            <Field label="Board" hint="For Lichess games. Lichess's default brown board shows as OutOfBook blue. Arena: a 3D board where the pieces fight.">
               <Select
-                value={live.gameBoard === "lichess" && !live.useLichessPrefs ? "app" : live.gameBoard}
+                value={live.gameBoard}
                 onChange={(e) => setL({ gameBoard: e.target.value })}
-                options={[["app", "Same as the app's board"], ...(live.useLichessPrefs ? [["lichess", "Same as my Lichess board"] as [string, string]] : []), ["arena", "Arena (3D)"], ...BOARD_NAMES]}
-                data-testid="game-board-choice"
+                options={[["lichess", "Same as my Lichess board"], ["arena", "Arena (3D)"], ...BOARD_NAMES]}
+                data-testid="board-choice"
               />
             </Field>
             <Switch
