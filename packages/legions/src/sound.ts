@@ -1,8 +1,10 @@
-// The Arena board's sounds: CC0 clips (public/arena-sounds, built by
-// scripts/build-arena-sounds.py), started by the scene at each step of a fight
+// The Arena board's sounds: CC0 clips (../sounds, built by
+// scripts/build-arena-sounds.py, bundled by Vite), started by the scene at each step of a fight
 // so they land with what is seen. Each play varies its pitch a little so
 // repeats do not sound canned. Off, or while the fight is hurried, nothing plays.
-import { audioContext } from "../lib/gameFeel";
+import { audioContext } from "./audio";
+
+const URLS = import.meta.glob<string>("../sounds/*.mp3", { eager: true, query: "?url", import: "default" });
 
 export const SOUNDS = [
   "order",
@@ -42,7 +44,7 @@ function load(name: SoundName) {
   let b = buffers.get(name);
   if (!b) {
     const ctx = audioContext();
-    b = fetch(`/arena-sounds/${name}.mp3`)
+    b = fetch(URLS[`../sounds/${name}.mp3`])
       .then((r) => r.arrayBuffer())
       .then((a) => ctx.decodeAudioData(a))
       .catch(() => null);

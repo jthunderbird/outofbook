@@ -2,18 +2,13 @@
 // streamed from its asset CDN at run time (not bundled: the standard set is not
 // under a free license, see COPYING.md in lichess-org/lila). Same choice of
 // sound as lila's ui/site/src/sound.ts: capture or move, then check/checkmate.
+import { audioContext } from "@outofbook/legions/audio";
+
 export type SoundName = "move" | "capture" | "check" | "checkmate" | "genericNotify" | "lowTime";
 
 const CDN = "https://lichess1.org/assets/sound";
 const SETS = ["standard", "piano", "nes", "sfx", "futuristic", "robot"];
-let ctx: AudioContext | null = null;
 const buffers = new Map<string, Promise<AudioBuffer | null>>();
-
-/** The page's one audio context (the Arena board's sounds use it too). */
-export function audioContext() {
-  ctx ??= new AudioContext();
-  return ctx;
-}
 
 const dir = (set: string) => (SETS.includes(set) ? set : "standard");
 const file = (name: SoundName) => name[0].toUpperCase() + name.slice(1);
@@ -22,8 +17,7 @@ function load(set: string, name: SoundName) {
   const url = `${CDN}/${dir(set)}/${file(name)}.mp3`;
   let b = buffers.get(url);
   if (!b) {
-    ctx ??= new AudioContext();
-    const c = ctx;
+    const c = audioContext();
     b = fetch(url)
       .then((r) => r.arrayBuffer())
       .then((a) => c.decodeAudioData(a))
@@ -44,7 +38,7 @@ export async function playSound(set: string, name: SoundName) {
   // Lichess's music and speech sets have no plain move sounds; it falls back to standard for the rest.
   if ((set === "music" || set === "speech") && ["move", "capture", "check", "checkmate"].includes(name)) return;
   try {
-    ctx ??= new AudioContext();
+    const ctx = audioContext();
     if (ctx.state === "suspended") await ctx.resume();
     const buf = await load(set, name);
     if (!buf) return;

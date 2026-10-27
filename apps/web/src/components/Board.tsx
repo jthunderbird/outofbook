@@ -160,7 +160,7 @@ const color = (s: Side) => (s === "w" ? "white" : "black");
 
 const NO_ARROWS: Arrow[] = [];
 
-const ArenaBoard = lazy(() => import("../arena/ArenaBoard"));
+const ArenaBoard = lazy(() => import("@outofbook/legions/ArenaBoard"));
 
 export function Board(props: BoardProps) {
   if (!props.arena) return <FlatBoard {...props} />;

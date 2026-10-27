@@ -1,4 +1,4 @@
-# Builds the Arena board's sound clips (apps/web/public/arena-sounds/) from CC0
+# Builds the Arena board's sound clips (packages/legions/sounds/) from CC0
 # recordings: Kenney's audio packs and sounds on Freesound (their MP3 previews).
 # Each clip is cut, faded, peak-normalized to -1 dBFS and saved as mono MP3;
 # CREDITS.md lists the source of every clip. Sources are cached in a work dir.
@@ -6,7 +6,7 @@
 # Needs ffmpeg. Every source is checked to be CC0 before it is used.
 import json, os, re, subprocess, sys, urllib.request, zipfile
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../apps/web/public/arena-sounds")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../packages/legions/sounds")
 WORK = sys.argv[1] if len(sys.argv) > 1 else "/tmp/arena-sounds-src"
 UA = {"User-Agent": "Mozilla/5.0"}
 KENNEY = {
