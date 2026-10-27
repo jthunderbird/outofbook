@@ -9,6 +9,12 @@ const SETS = ["standard", "piano", "nes", "sfx", "futuristic", "robot"];
 let ctx: AudioContext | null = null;
 const buffers = new Map<string, Promise<AudioBuffer | null>>();
 
+/** The page's one audio context (the Arena board's sounds use it too). */
+export function audioContext() {
+  ctx ??= new AudioContext();
+  return ctx;
+}
+
 const dir = (set: string) => (SETS.includes(set) ? set : "standard");
 const file = (name: SoundName) => name[0].toUpperCase() + name.slice(1);
 

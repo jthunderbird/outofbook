@@ -71,6 +71,9 @@ export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null, are
     premove: p.premove,
     multiPremove: p.premove && settings.multiPremove,
     soundSet: p.soundSet,
+    // The Arena board sounds its own fights instead of the move sounds.
+    moveSounds: arena ? "silent" : p.soundSet,
+    arenaSound: arena && p.soundSet !== "silent",
     tenths: p.clockTenths,
     lowTime: p.clockSound && p.soundSet !== "silent",
     confirm: p.confirmResign === 1,
@@ -420,7 +423,7 @@ export function LiveGame({
       const mover: Side = (n - 1) % 2 === 0 ? "w" : "b";
       if (mover !== myColorRef.current) {
         setGoneUntil(null);
-        playMoveSound(g.soundSet, fens.sans[n] ?? "");
+        playMoveSound(g.moveSounds, fens.sans[n] ?? "");
         if (g.vibrate) buzzMove(fens.sans[n] ?? "");
         // The next queued premove goes if it is legal now; if not, the whole queue does.
         const [next, ...rest] = queueRef.current;
@@ -439,7 +442,7 @@ export function LiveGame({
       api.current?.playPremove();
     }
     prevLen.current = n;
-  }, [serverMoves.length, g.soundSet, g.vibrate, fens.sans, fens.out]);
+  }, [serverMoves.length, g.moveSounds, g.vibrate, fens.sans, fens.out]);
 
   // Arrow keys browse.
   useEffect(() => {
@@ -542,7 +545,7 @@ export function LiveGame({
     sentAt.current = t;
     setSent({ uci, base: serverMoves.length });
     try {
-      playMoveSound(g.soundSet, new Chess(fens.out[fens.out.length - 1]).move(uciParams(uci)).san);
+      playMoveSound(g.moveSounds, new Chess(fens.out[fens.out.length - 1]).move(uciParams(uci)).san);
     } catch {
       /* illegal: Lichess will refuse it */
     }
@@ -734,6 +737,7 @@ export function LiveGame({
       premoveQueue={premoveQueue}
       onApi={(a) => (api.current = a)}
       arena={g.arena}
+      arenaSound={g.arenaSound}
       onArenaBusy={setArenaBusy}
     />
   );

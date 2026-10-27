@@ -150,7 +150,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   // Sound on or off, in the setup and during a game alike; remembered for the next game.
   const [sound, setSound] = useSavedSwitch("botSound", true);
   const feel = useMemo(() => gameFeel(LIVE_DEFAULTS, null, arena), [arena]);
-  const soundSet = sound ? feel.soundSet : "silent";
+  const soundSet = sound && !arena ? feel.soundSet : "silent";
   // Read when the bot's move lands, so a switch flipped while it thinks counts.
   const soundNow = useRef(soundSet);
   soundNow.current = soundSet;
@@ -460,6 +460,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
             onMove={onMove}
             feel={feel.feel}
             arena={feel.arena}
+            arenaSound={sound}
             onArenaBusy={setArenaBusy}
           />
           {viewPly !== null && (
@@ -551,12 +552,15 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
                     </Button>
                   </>
                 )}
-                <span className="min-w-0 flex-1 truncate text-sm text-muted">
+                <span className="min-w-[9rem] flex-1 truncate text-sm text-muted">
                   vs {engine === "maia" ? `Maia ${elo}` : `Stockfish ${elo}`}
                   {status ? ` · ${status}` : ""}
                 </span>
-                <Switch checked={sound} onChange={setSound} label="Sound" />
-                <Switch checked={showEval} onChange={setShowEval} label="Eval bar" />
+                {/* Together, so they wrap to their own line as one on a narrow screen. */}
+                <div className="flex items-center gap-3">
+                  <Switch checked={sound} onChange={setSound} label="Sound" />
+                  <Switch checked={showEval} onChange={setShowEval} label="Eval bar" />
+                </div>
               </div>
               <div className="grid grid-cols-4 gap-2">
                 <button className={navBtn} onClick={() => stepTo(0)} disabled={shownPly === 0} aria-label="First move">

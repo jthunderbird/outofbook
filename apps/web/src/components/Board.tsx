@@ -141,6 +141,8 @@ export interface BoardProps {
   arena?: boolean;
   /** Arena board: told when it starts and stops acting out moves. */
   onArenaBusy?: (busy: boolean) => void;
+  /** Arena board: play its fight sounds (in place of the move sounds). */
+  arenaSound?: boolean;
 }
 
 export interface BoardFeel {
@@ -162,13 +164,13 @@ const ArenaBoard = lazy(() => import("../arena/ArenaBoard"));
 
 export function Board(props: BoardProps) {
   if (!props.arena) return <FlatBoard {...props} />;
-  const { fen, orientation, lastMove, movable, onMove, hideEval, evalLine, bigEval, className, onArenaBusy } = props;
+  const { fen, orientation, lastMove, movable, onMove, hideEval, evalLine, bigEval, className, onArenaBusy, arenaSound } = props;
   return (
     <div className={`flex gap-1.5 ${className ?? ""}`}>
       {!hideEval && <EvalBar line={evalLine} orientation={orientation} big={bigEval} />}
       <div className="board-wrap min-w-0 flex-1">
         <Suspense fallback={null}>
-          <ArenaBoard fen={fen} orientation={orientation} lastMove={lastMove} movable={movable} onMove={onMove} onBusy={onArenaBusy} />
+          <ArenaBoard fen={fen} orientation={orientation} lastMove={lastMove} movable={movable} onMove={onMove} onBusy={onArenaBusy} sound={arenaSound} />
         </Suspense>
       </div>
     </div>

@@ -40,6 +40,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { Clock, FIRE_TIME, Particles, Portal, SPEED, flame, clip, clipAbove, ease, followClip, magicArc, ownMaterials, tween, wait } from "./fx";
 import { Pit, buildBoard } from "./board";
 import { MAGIC, makeFig, type Fig, type Role, type Side } from "./figures";
+import { ArenaSound } from "./sound";
 
 const FILES = "abcdefgh";
 export const squareAt = (sq: string) => new Vector3(FILES.indexOf(sq[0]) - 3.5, 0, 3.5 - (+sq[1] - 1));
@@ -79,9 +80,15 @@ export class Arena {
   private shake = 0;
   /** Lightning's flash, dark until a bolt strikes. */
   private flash = new PointLight(0xffffff, 0, 8, 1.5);
+  /** The red glow under a king in check (always in the scene, dark when not, so no shader recompiles). */
+  private checkLight = new PointLight(0xff2020, 0, 2.6, 1.5);
+  private checkGlow: Mesh[] = [];
+  private pulse = 0;
   private raf = 0;
   private ro: ResizeObserver;
   private down: [number, number] | null = null;
+  /** The fight's sounds; on when the game's sound is. */
+  readonly sound = new ArenaSound(() => this.hurry);
 
   constructor(
     private host: HTMLElement,
@@ -114,7 +121,7 @@ export class Arena {
     sun.shadow.bias = -0.0008;
     this.scene.add(sun);
     this.flash.position.set(0, 2, 0);
-    this.scene.add(this.flash);
+    this.scene.add(this.flash, this.checkLight);
 
     this.squares = buildBoard(this.scene);
     this.labels = new Mesh(new PlaneGeometry(9.4, 9.4).rotateX(-Math.PI / 2), new MeshBasicMaterial({ transparent: true, depthWrite: false }));
@@ -156,6 +163,13 @@ export class Arena {
     for (const f of this.live)
       if (f.root.parent) f.update(ms * SPEED);
       else this.live.delete(f);
+    if (this.checkGlow.length) {
+      this.pulse += frame / 1000;
+      const k = 0.5 + 0.5 * Math.sin(this.pulse * 4.5);
+      this.checkLight.intensity = 2.5 + 3 * k;
+      (this.checkGlow[0].material as MeshBasicMaterial).opacity = 0.35 + 0.25 * k;
+      (this.checkGlow[1].material as MeshBasicMaterial).opacity = 0.55 + 0.4 * k;
+    }
     this.controls.update();
     const cam = this.camera.position.clone();
     if (this.shake > 0) {
@@ -173,6 +187,7 @@ export class Arena {
 
   dispose() {
     this.disposed = true;
+    this.sound.stopAll();
     cancelAnimationFrame(this.raf);
     this.clock.clear();
     this.ro.disconnect();
@@ -250,6 +265,7 @@ export class Arena {
 
   private onDown = (e: PointerEvent) => {
     this.down = [e.clientX, e.clientY];
+    this.sound.unlock();
   };
 
   private onUp = (e: PointerEvent) => {
@@ -258,6 +274,7 @@ export class Arena {
     if (!d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 8) return;
     if (this.busy) {
       this.hurry = true;
+      this.sound.stopAll();
       return;
     }
     const sq = this.squareAtPointer(e);
@@ -314,6 +331,8 @@ export class Arena {
 
   private highlight() {
     this.marks.clear();
+    this.checkGlow = [];
+    this.checkLight.intensity = 0;
     const mark = (sq: string, color: number, opacity: number, geo: CircleGeometry | RingGeometry | PlaneGeometry) => {
       const m = new Mesh(geo, new MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
       m.position.copy(squareAt(sq)).setY(0.006);
@@ -328,7 +347,7 @@ export class Arena {
         .board()
         .flat()
         .find((p) => p?.type === "k" && p.color === c.turn());
-      if (k) mark(k.square, 0xff3030, 0.65, new CircleGeometry(0.46, 32).rotateX(-Math.PI / 2));
+      if (k) this.markCheck(k.square);
     }
     if (this.selected) {
       mark(this.selected, 0x6fd36f, 0.5, tile);
@@ -337,27 +356,51 @@ export class Arena {
     }
   }
 
+  /** A king in check: his square glows red and pulses, a red halo spills past it, and red light rises up the king. */
+  private markCheck(sq: string) {
+    const at = squareAt(sq);
+    const tile = new Mesh(new PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new MeshBasicMaterial({ color: 0xff2a2a, transparent: true, depthWrite: false, blending: AdditiveBlending }));
+    tile.position.copy(at).setY(0.007);
+    const halo = new Mesh(
+      new PlaneGeometry(2.2, 2.2).rotateX(-Math.PI / 2),
+      new MeshBasicMaterial({ map: haloTexture(), color: 0xff3020, transparent: true, depthWrite: false, blending: AdditiveBlending }),
+    );
+    halo.position.copy(at).setY(0.008);
+    tile.renderOrder = halo.renderOrder = 1;
+    this.marks.add(tile, halo);
+    this.checkGlow = [tile, halo];
+    this.checkLight.position.copy(at).setY(0.25);
+    this.pulse = 0;
+  }
+
   // ---------- Positions ----------
 
   private async pump() {
     if (this.busy) return;
     this.busy = true;
     this.onBusy?.(true);
+    // The war horn for check, the death knell for mate: heard even after a hurried fight.
+    let call: "horn" | "knell" | null = null;
     while (this.queue.length && !this.disposed) {
       const next = this.queue.shift()!;
+      let acted = false;
       // Far behind (a game loaded, moves flying in): catch up without acting.
       if (this.queue.length < 2) {
         try {
-          await this.act(next);
+          acted = await this.act(next);
         } catch (e) {
           console.error("arena", e);
         }
       }
       this.sync(next.fen);
-      if (!this.queue.length) await this.regicide(next).catch((e) => console.error("arena", e));
+      if (!this.queue.length) {
+        const mate = await this.regicide(next).catch((e) => console.error("arena", e));
+        call = mate ? "knell" : acted && this.game()?.inCheck() ? "horn" : null;
+      }
     }
     this.busy = false;
     this.hurry = false;
+    if (call && !this.disposed) this.sound.play(call, { gain: call === "horn" ? 0.7 : 0.8 });
     this.onBusy?.(false);
     this.highlight();
   }
@@ -394,18 +437,20 @@ export class Arena {
     this.shown = fen;
   }
 
+  /** Acts out the move that led to next; false if it could not (a jump), and the board will snap. */
   private async act(next: { fen: string; lastMove?: string }) {
-    if (!this.shown || !next.lastMove) return;
+    if (!this.shown || !next.lastMove) return false;
     const c = new Chess(this.shown);
     const u = next.lastMove;
     let m: Move;
     try {
       m = c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
     } catch {
-      return;
+      return false;
     }
-    if (boardOf(c.fen()) !== boardOf(next.fen)) return;
+    if (boardOf(c.fen()) !== boardOf(next.fen)) return false;
     await this.run(m);
+    return true;
   }
 
   private async run(m: Move) {
@@ -435,6 +480,7 @@ export class Arena {
     } else {
       if (king) await this.order(king, mover);
       await this.strike(mover, m.to, victim);
+      if (m.promotion) this.sound.play("order", { rate: 1.5 });
       if (m.promotion) this.fx.burst(squareAt(m.to).setY(0.6), MAGIC[side], 30, { glow: true, speed: 1.5, up: 2.5, gravity: 1 });
     }
     this.figs.set(m.to, mover);
@@ -449,34 +495,35 @@ export class Arena {
     return this.march(f, to, victim);
   }
 
-  /** Checkmate: the piece giving mate (the one that moved, if it does) kills the king. */
+  /** Checkmate: the piece giving mate (the one that moved, if it does) kills the king. True if it did. */
   private async regicide(next: { fen: string; lastMove?: string }) {
     let c: Chess;
     try {
       c = new Chess(next.fen);
     } catch {
-      return;
+      return false;
     }
-    if (!c.isCheckmate()) return;
+    if (!c.isCheckmate()) return false;
     const loser = c.turn();
     const winner = loser === "w" ? "b" : "w";
     const k = c
       .board()
       .flat()
       .find((p) => p?.type === "k" && p.color === loser);
-    if (!k) return;
+    if (!k) return false;
     const attackers: string[] = c.attackers(k.square, winner);
     const moved = next.lastMove?.slice(2, 4);
     const from = moved && attackers.includes(moved) ? moved : attackers[0];
     const a = from && this.figs.get(from);
     const v = this.figs.get(k.square);
-    if (!a || !v) return;
+    if (!a || !v) return false;
     const boss = [...this.figs.values()].find((f) => f.role === "k" && f.side === winner);
     this.figs.delete(from);
     this.figs.delete(k.square);
     if (boss) await this.order(boss, a);
     await this.strike(a, k.square, v);
     this.figs.set(k.square, a);
+    return true;
   }
 
   // ---------- The king ----------
@@ -484,6 +531,7 @@ export class Arena {
   /** The king sends a piece: a gesture and an arc of magic from his staff to it. */
   private async order(king: Fig, target: Fig) {
     void king.cast(this.clock, "order");
+    this.sound.play("order", { gain: 0.6 });
     await wait(this.clock, 200);
     await magicArc(this.clock, this.scene, king.staffTip(), target.middle(), MAGIC[king.side], 480);
   }
@@ -496,6 +544,7 @@ export class Arena {
     const dir = Math.atan2(b.x - a.x, b.z - a.z);
     const H = 0.35;
     k.floating = true;
+    const hum = this.sound.play("hum", { gain: 0.35, rate: 0.7, loop: true });
     let trail = 0;
     this.clock.add((ms) => {
       if ((trail += ms) > 45) {
@@ -526,6 +575,7 @@ export class Arena {
       const stop = Math.max(0, 1 - 0.8 / dist);
       await glide(0, stop);
       void k.cast(this.clock, "kill");
+      this.sound.play("order", { rate: 0.8 });
       await wait(this.clock, 150);
       void magicArc(this.clock, this.scene, k.staffTip(), victim.middle(), MAGIC[k.side], 400);
       await this.wither(victim);
@@ -541,11 +591,14 @@ export class Arena {
       ease.in,
     );
     k.floating = false;
+    hum.stop(250);
     this.fx.dust(b, 10, 0xd8cdb8);
   }
 
   /** The king's kill: the piece turns to ash and crumbles to the ground from the top down. */
   private async wither(v: Fig) {
+    this.die(v);
+    this.sound.play("rubble", { gain: 0.5, rate: 1.4, delay: 280 });
     const mats = v.mats.filter((m): m is MeshStandardMaterial => (m as MeshStandardMaterial).isMeshStandardMaterial);
     const from = mats.map((m) => m.color.clone());
     await tween(this.clock, 280, (t) =>
@@ -614,6 +667,7 @@ export class Arena {
     const stones = [...r.stones].sort((a, b) => b.userData.home.pos.y - a.userData.home.pos.y);
     const gone = new Set<Mesh>();
     const stop = this.coreTracksWall(r, (s) => !gone.has(s));
+    this.sound.play("grind", { gain: 0.5, rate: 1.2 });
     await Promise.all(
       stones.map(async (s, i) => {
         await wait(this.clock, i * 18);
@@ -622,6 +676,7 @@ export class Arena {
         const out = new Vector3(start.x, 0, start.z).normalize();
         const spin = (Math.random() - 0.5) * 5;
         if (i % 6 === 0) this.fx.dust(p, 5, 0x6a6470);
+        if (i % 10 === 0) this.stone(380, 0.35);
         await tween(
           this.clock,
           420,
@@ -653,12 +708,14 @@ export class Arena {
     r.core!.scale.y = 0.001;
     const landed = new Set<Mesh>();
     const stop = this.coreTracksWall(r, (s) => landed.has(s));
+    this.sound.play("grind", { gain: 0.45 });
     await Promise.all(
       stones.map(async (s, i) => {
         await wait(this.clock, i * 16);
         const home = s.userData.home.pos.y;
         if (i % 4 === 0) this.fx.burst(p.clone().setY(home), magic, 3, { glow: true, speed: 0.8, up: 0.8, gravity: 0, life: 500 });
         await tween(this.clock, 380, (t) => (s.position.y = -0.45 + (home + 0.45) * t), ease.back);
+        if (i % 10 === 0) this.stone(0, 0.3);
         landed.add(s);
       }),
     );
@@ -674,11 +731,13 @@ export class Arena {
     const b = squareAt(to);
     const magic = MAGIC[r.side];
     const below = new Portal(this.clock, this.scene, a.clone().setY(0.015), magic);
+    this.sound.play("portal", { gain: 0.7 });
     await below.open();
     await tween(this.clock, 520, (t) => (r.root.position.y = -(r.height + 0.3) * t), ease.in);
     const PY = 2.7;
     const above = new Portal(this.clock, this.scene, b.clone().setY(PY), magic);
     void below.close();
+    this.sound.play("portal", { gain: 0.7, rate: 0.8 });
     await above.open(280);
     await wait(this.clock, 120);
     r.root.position.set(b.x, PY, b.z);
@@ -697,6 +756,8 @@ export class Arena {
       ease.in,
     );
     if (!hit) void this.crush(v);
+    this.sound.play("boom", { gain: 0.9 });
+    this.sound.play("rubble", { gain: 0.6 });
     this.shake = 260;
     this.fx.dust(b, 24);
     await tween(this.clock, 240, (t) => (r.body.scale.y = 1 - 0.16 * Math.sin(t * Math.PI)));
@@ -706,6 +767,7 @@ export class Arena {
 
   /** Killed by a rook: flattened, bits flying, then gone into the board. */
   private async crush(v: Fig) {
+    this.die(v);
     const p = v.root.position.clone();
     this.fx.burst(p.clone().setY(0.25), BODY[v.side], 20, { speed: 2.6, size: 0.07, up: 2.4 });
     await tween(this.clock, 130, (t) => v.body.scale.set(1 + 0.45 * t, 1 - 0.88 * t, 1 + 0.45 * t), ease.out);
@@ -754,8 +816,14 @@ export class Arena {
     await this.turn(f, Math.atan2(b.x - a.x, b.z - a.z));
     let phase = 0;
     let walking = true;
+    let foot = 0;
     const stop = this.loop((ms) => {
       if (walking) phase += ms * 0.012;
+      // A footstep each time a leg passes under the body.
+      if (walking && Math.floor(phase / Math.PI) !== foot) {
+        foot = Math.floor(phase / Math.PI);
+        this.sound.play(`step${1 + (foot % 3)}` as "step1", { gain: 0.45 });
+      }
       const s = walking ? Math.sin(phase) : 0;
       f.legs[0].rotation.x = s * 0.6;
       f.legs[1].rotation.x = -s * 0.6;
@@ -766,7 +834,9 @@ export class Arena {
       const s = Math.max(0, 1 - 0.7 / dist);
       await this.line(f, this.along(a, b, s), s * dist * pace);
       walking = false;
+      this.sound.play("swing", { gain: 0.6, delay: 120 });
       await f.swing(this.clock, "chop");
+      this.sound.play("slash", { gain: 0.7 });
       void this.strikeDown(victim, b.clone().sub(a));
       await wait(this.clock, 300);
       walking = true;
@@ -793,6 +863,7 @@ export class Arena {
     const L = path.getLength();
     let phase = 0;
     let running = true;
+    const hooves = this.sound.play("gallop", { gain: 0.7, loop: true });
     const stop = this.loop((ms) => {
       if (!running) return;
       phase += ms * 0.02;
@@ -833,12 +904,15 @@ export class Arena {
         if (victim && !swung && t * ms >= hitAt * ms - 380) {
           swung = true;
           const across = new Vector3(tangent.z, 0, -tangent.x);
+          this.sound.play("swing", { gain: 0.6, delay: 150 });
           void f.swing(this.clock, "slash").then(() => this.slice(victim, across, true));
         }
       },
       ease.linear,
     );
     running = false;
+    hooves.stop(victim ? 300 : 150);
+    if (!victim) this.sound.play("land", { gain: 0.5 });
     f.rest();
     f.root.rotation.y = Math.atan2(tangent.x, tangent.z);
     if (victim) await this.rear(f);
@@ -851,6 +925,7 @@ export class Arena {
   /** The horse rears up on its hind legs, front hooves pawing, and comes down. */
   private async rear(f: Fig) {
     const [fl, fr, bl, br] = f.hooves;
+    this.sound.play("neigh", { gain: 0.6 });
     // Pitched about the hind hooves (z -0.2 on the ground), not the middle.
     const pitch = (k: number, paw = 0) => {
       const th = -0.7 * k;
@@ -869,6 +944,7 @@ export class Arena {
     await tween(this.clock, 300, (t) => pitch(t), ease.out);
     await tween(this.clock, 420, (t) => pitch(1, t * 12), ease.linear);
     await tween(this.clock, 260, (t) => pitch(1 - t), ease.in);
+    this.sound.play("land", { gain: 0.7 });
     this.shake = 120;
   }
 
@@ -882,6 +958,7 @@ export class Arena {
     const b = squareAt(to);
     const color = BOLT[f.side];
     const charge = this.electrify(f, color);
+    this.sound.play("charge", { gain: 0.6 });
     void f.cast(this.clock, victim ? "kill" : "order");
     const sparks = this.sparkle(f, color);
     await tween(this.clock, 380, (t) => charge(t), ease.in);
@@ -890,6 +967,7 @@ export class Arena {
     f.root.visible = false;
     this.fx.burst(from, color, 26, { glow: true, speed: 2.6, size: 0.035, life: 350, gravity: 0 });
     this.flashAt(from, color, 35);
+    this.sound.play("thunder", { gain: victim ? 0.6 : 0.8 });
     this.shake = 90;
     const end = victim ? victim.middle() : b.clone().setY(0.5);
     await this.trail(from, end, color);
@@ -960,6 +1038,7 @@ export class Arena {
     void this.char(v, 0.7, 600);
     const wrap = this.electrify(v, color);
     for (let i = 0; i < 12; i++) {
+      if (i % 3 === 0) this.sound.play("zap", { gain: 0.5, rate: 0.9 + Math.random() * 0.3 });
       wrap(0.4 + Math.random() * 0.5);
       const arcs = [this.bolt(on(), on(), color, 4, 0.12), this.bolt(on(), on(), color, 4, 0.12)];
       this.flash.intensity = 8 + Math.random() * 10;
@@ -971,6 +1050,8 @@ export class Arena {
     const top = v.middle().setY(v.height);
     const stroke = this.bolt(top.clone().setY(3.2), top, color, 7, 0.25);
     this.flashAt(top, color, 40);
+    this.sound.play("thunder", { gain: 0.9, rate: 1.15 });
+    this.die(v);
     this.shake = 200;
     this.fx.burst(top, color, 20, { glow: true, speed: 2.5, size: 0.04, life: 450 });
     void stroke.fade(300);
@@ -993,6 +1074,7 @@ export class Arena {
       );
     }
     await wait(this.clock, 200);
+    this.sound.play("zap", { gain: 0.4, rate: 0.7 });
     charge(1);
     clipAbove(f.mats, 0);
     f.root.visible = true;
@@ -1010,6 +1092,7 @@ export class Arena {
     const dist = a.distanceTo(b);
     const ms = Math.max(500, dist * 170);
     f.floating = true;
+    this.sound.play("whoosh", { gain: 0.5, rate: 0.8 });
     const lift = (s: number) => Math.sin(Math.PI * s) * 0.18;
     const path = (from: number, until: number, ms: number) =>
       tween(
@@ -1032,6 +1115,18 @@ export class Arena {
 
   // ---------- Dying ----------
 
+  /** The dying piece's cry: a horse's scream for a knight, a man's for the rest (lower for black). */
+  private die(v: Fig, delay = 0) {
+    const rate = v.side === "b" ? 0.85 : 1;
+    if (v.role === "n") this.sound.play("neigh", { gain: 0.6, rate: rate * 0.8, delay });
+    else this.sound.play(Math.random() < 0.5 ? "death1" : "death2", { gain: 0.55, rate: v.role === "k" ? rate * 0.85 : rate, delay });
+  }
+
+  /** A stone of a rook's wall knocking. */
+  private stone(delay: number, gain: number) {
+    this.sound.play(`stone${1 + Math.floor(Math.random() * 3)}` as "stone1", { gain, delay });
+  }
+
   private standard = (mats: Material[]) => mats.filter((m): m is MeshStandardMaterial => (m as MeshStandardMaterial).isMeshStandardMaterial);
 
   /** Darkens a figure toward char by amount, glowing like embers. */
@@ -1050,7 +1145,9 @@ export class Arena {
   /** Killed by a pawn: knocked over away from the blow, then sunk into the board. */
   private async strikeDown(v: Fig, dir: Vector3) {
     this.fx.burst(v.middle(), 0xfff2c0, 8, { glow: true, speed: 1.5, size: 0.04, life: 300 });
+    this.die(v);
     await this.topple(v, dir);
+    this.sound.play("fall", { gain: 0.5 });
     this.fx.dust(v.root.position, 10);
     await wait(this.clock, 300);
     await this.sink(v);
@@ -1084,6 +1181,8 @@ export class Arena {
    * square, so the bottom half sinks away at once.
    */
   private async slice(v: Fig, dir: Vector3, trampled = false) {
+    this.sound.play("slash", { gain: 0.7 });
+    this.die(v);
     const p = v.root.position.clone();
     const side = new Vector3(dir.z, 0, -dir.x).normalize();
     const n = new Vector3(0, 1, 0).addScaledVector(side, 0.35).normalize();
@@ -1209,6 +1308,8 @@ export class Arena {
     grow(0);
     void tween(this.clock, 450, (t) => (this.flash.intensity = 10 * t));
     void tween(this.clock, 600, grow, ease.out);
+    this.sound.play("fire", { gain: 0.7 });
+    this.die(v, 500);
     await pit.open(450);
     await tween(
       this.clock,
@@ -1224,6 +1325,7 @@ export class Arena {
     pillar.position.set(p.x, -1.15, p.z);
     fire.add(pillar);
     this.flash.intensity = 25;
+    this.sound.play("roar", { gain: 0.8 });
     this.shake = 140;
     void tween(this.clock, 260, (t) => (pillar.scale.y = Math.max(0.001, 2.3 * t)), ease.out).then(() => tween(this.clock, 640, (t) => (pillar.scale.y = Math.max(0.001, 2.3 * (1 - t))), ease.in));
     void this.char(v, 1, 200);
@@ -1231,10 +1333,28 @@ export class Arena {
     v.root.removeFromParent();
     void tween(this.clock, 400, (t) => (this.flash.intensity = 25 * (1 - t)));
     void tween(this.clock, 380, (t) => grow(1 - t), ease.in);
+    this.sound.play("slam", { gain: 0.6, delay: 300 });
     await pit.close(400);
     fire.removeFromParent();
     fire.children.forEach((m) => ((m as Mesh).material as Material).dispose());
   }
+}
+
+let halo: CanvasTexture | null = null;
+/** A soft round glow, bright in the middle and gone at the edge. */
+function haloTexture() {
+  if (halo) return halo;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, "rgba(255,255,255,1)");
+  r.addColorStop(0.35, "rgba(255,255,255,0.6)");
+  r.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = r;
+  g.fillRect(0, 0, 128, 128);
+  halo = new CanvasTexture(c);
+  return halo;
 }
 
 /** Lightning's color: white gold for white, violet for black. */
