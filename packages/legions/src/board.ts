@@ -18,9 +18,13 @@ import {
   SRGBColorSpace,
   Shape,
   ShapeGeometry,
+  Vector3,
   type Scene,
 } from "three";
 import { ease, tween, type Clock } from "./fx";
+
+/** The middle of a square (a1..h8) on the board, at floor height. */
+export const squareAt = (sq: string) => new Vector3("abcdefgh".indexOf(sq[0]) - 3.5, 0, 3.5 - (+sq[1] - 1));
 
 // ---------- Marble ----------
 
