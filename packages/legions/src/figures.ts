@@ -5,6 +5,11 @@
 // white's around.
 import {
   AdditiveBlending,
+  LoopOnce,
+  LoopRepeat,
+  type AnimationAction,
+  type AnimationClip,
+  type AnimationMixer,
   CanvasTexture,
   CapsuleGeometry,
   CatmullRomCurve3,
@@ -33,6 +38,7 @@ import {
 } from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { clipAbove, ease, flame, ownMaterials, tween, type Clock } from "./fx";
+import { modelFig } from "./models";
 
 export type Role = "k" | "q" | "r" | "b" | "n" | "p";
 export type Side = "w" | "b";
@@ -60,6 +66,8 @@ export class Fig {
   hooves: Group[] = [];
   /** Parts with a rest pose (userData.rest) to go back to. */
   private posed: Object3D[] = [];
+  /** Modelled, rigged figures (models.ts): their animation clips by name, the idle one looping. */
+  anim?: { mixer: AnimationMixer; clips: Map<string, AnimationClip>; idle: string; current?: AnimationAction; hand?: Object3D };
   /** Robes and gowns sway; floating figures bob. */
   robed = false;
   floating = false;
@@ -94,10 +102,41 @@ export class Fig {
     for (const r of this.runes) r.visible = false;
     this.floating = false;
     clipAbove(this.mats, null);
+    if (this.anim && this.anim.current?.getClip().name !== this.anim.idle) this.play(this.anim.idle, { loop: true, speed: 0.7 });
+  }
+
+  /**
+   * Rigged figures: plays a clip, cross-fading from the one before. A clip played
+   * once resolves when it ends, then the idle comes back (unless hold keeps the last pose).
+   */
+  play(name: string, o: { loop?: boolean; fade?: number; speed?: number; hold?: boolean } = {}): Promise<void> {
+    const a = this.anim;
+    const clip = a?.clips.get(name);
+    if (!a || !clip) return Promise.resolve();
+    const next = a.mixer.clipAction(clip);
+    next.reset();
+    next.setLoop(o.loop ? LoopRepeat : LoopOnce, Infinity);
+    next.clampWhenFinished = !!o.hold;
+    next.timeScale = o.speed ?? 1;
+    const fade = o.fade ?? 0.2;
+    if (a.current && a.current !== next) next.crossFadeFrom(a.current, fade, false);
+    next.play();
+    a.current = next;
+    if (o.loop) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = (e: { action: AnimationAction }) => {
+        if (e.action !== next) return;
+        a.mixer.removeEventListener("finished", done);
+        if (!o.hold && a.current === next) this.play(a.idle, { loop: true, fade: 0.3, speed: 0.7 });
+        resolve();
+      };
+      a.mixer.addEventListener("finished", done);
+    });
   }
 
   update(ms: number) {
     this.t += ms / 1000;
+    this.anim?.mixer.update(ms / 1000);
     if (this.orb) {
       const m = this.orb.material as MeshStandardMaterial;
       m.emissiveIntensity = Math.max(1.6 + Math.sin(this.t * 3) * 0.5, m.emissiveIntensity * 0.96);
@@ -108,6 +147,12 @@ export class Fig {
 
   /** Staff holders: raise the staff, the orb flaring (a bigger flare to kill). */
   async cast(clock: Clock, kind: "order" | "kill") {
+    if (this.anim?.clips.has("Charged_Spell_Cast")) {
+      // The modelled caster: its spell clip, the magic leaving as the staff comes forward.
+      void this.play("Charged_Spell_Cast", { speed: kind === "kill" ? 1.3 : 1.6 });
+      await tween(clock, 420, () => {});
+      return;
+    }
     if (!this.arm || !this.orb) return;
     const orb = this.orb.material as MeshStandardMaterial;
     const flare = kind === "kill" ? 8 : 5;
@@ -152,6 +197,8 @@ export class Fig {
   /** Where a staff's magic leaves from. */
   staffTip(): Vector3 {
     if (this.orb) return this.orb.getWorldPosition(new Vector3());
+    // A modelled staff: its head stands well above the hand holding it.
+    if (this.anim?.hand) return this.anim.hand.getWorldPosition(new Vector3()).add(new Vector3(0, this.height * 0.35, 0));
     return this.root.position.clone().add(new Vector3(0, this.height * 1.05, 0));
   }
 
@@ -991,7 +1038,7 @@ export function makeFig(role: Role, side: Side): Fig {
           : role === "b"
             ? side === "w"
               ? nobleBishop()
-              : darkSorcerer()
+              : (modelFig("stormcourt-bishop-dark", "b", "b", 1.5) ?? darkSorcerer())
             : role === "n"
               ? knight(side)
               : soldier(side);

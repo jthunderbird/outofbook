@@ -33,6 +33,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { Clock, FIRE_TIME, Particles, SPEED } from "./fx";
 import { backgroundTexture } from "./backgrounds";
+import { modelsReady } from "./models";
 import { buildBoard } from "./board";
 import { squareAt } from "./board";
 import { type Fig, type Role, type Side } from "./figures";
@@ -72,6 +73,7 @@ export class Arena {
   private input: ArenaInput = {};
   private selected: string | null = null;
   private hint: string | null = null;
+  private rebuildAfter = false;
   private shake = 0;
   /** Lightning's flash, dark until a bolt strikes. */
   private flash = new PointLight(0xffffff, 0, 8, 1.5);
@@ -165,6 +167,8 @@ export class Arena {
       if (!this.manual) this.step(ms);
     };
     this.raf = requestAnimationFrame(frame);
+    // Modelled figures replace code-built ones as soon as their models have loaded.
+    void modelsReady.then(() => !this.disposed && this.rebuild());
   }
 
   /** Dev (recording): time stands still and moves only by step(). */
@@ -228,6 +232,15 @@ export class Arena {
   setTribes(t: Record<Side, Tribe>) {
     if (t.w === this.tribes.w && t.b === this.tribes.b) return;
     this.tribes = t;
+    this.rebuild();
+  }
+
+  /** Builds every figure on the board again (new tribes, or models that have loaded). */
+  private rebuild() {
+    if (this.busy) {
+      this.rebuildAfter = true;
+      return;
+    }
     for (const f of this.figs.values()) f.root.removeFromParent();
     this.figs.clear();
     if (this.shown) {
@@ -448,6 +461,10 @@ export class Arena {
     }
     this.busy = false;
     this.hurry = false;
+    if (this.rebuildAfter) {
+      this.rebuildAfter = false;
+      this.rebuild();
+    }
     if (call && !this.disposed) this.sound.play(call, { gain: call === "horn" ? 0.7 : 0.8 });
     this.onBusy?.(false);
     this.highlight();

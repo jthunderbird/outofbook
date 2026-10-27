@@ -666,6 +666,7 @@ class Acts {
 
   /** The dying piece's cry: a horse's scream for a knight, a man's for the rest (lower for black). */
   private die(v: Fig, delay = 0) {
+    void v.play("Hit_Reaction", { speed: 1.4, hold: true });
     const rate = v.side === "b" ? 0.85 : 1;
     if (v.role === "n") this.sound.play("neigh", { gain: 0.6, rate: rate * 0.8, delay });
     else this.sound.play(Math.random() < 0.5 ? "death1" : "death2", { gain: 0.55, rate: v.role === "k" ? rate * 0.85 : rate, delay });
