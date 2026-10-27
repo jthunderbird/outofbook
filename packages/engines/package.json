@@ -1,0 +1,18 @@
+{
+  "name": "@outofbook/engines",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Stockfish (pool, live engine, bot) and Maia 3 in the browser, shared by OutOfBook and Chess Legions. The engine and model files are served by the app from /engines, /maia3, /ort and /maia-worker.js (scripts/fetch-assets.mjs).",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@outofbook/core": "*",
+    "chess.js": "1.4.0"
+  }
+}

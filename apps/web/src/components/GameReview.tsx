@@ -11,7 +11,7 @@ import { bookChildren } from "@outofbook/core/book";
 import { classify } from "@outofbook/core/classify";
 import { fmtEval, lineWinPct, plyLabel, posKey, pvToSan, uciParams, uciToSan } from "@outofbook/core/chess";
 import { moveNotes, usualMove, type MoveNote, type MoveNotes } from "@outofbook/core/moveNotes";
-import { ENGINE_BUILDS, EnginePool, LiveEngine, defaultPoolSize, preloadBuild, type EngineBuild } from "../lib/engine";
+import { ENGINE_BUILDS, EnginePool, LiveEngine, defaultPoolSize, preloadBuild, type EngineBuild } from "@outofbook/engines/engine";
 import { cloudEval, evalNow, getEval, putEval } from "../lib/evalCache";
 import { hasAuth, shareEval } from "../lib/server";
 import { trackLine } from "@outofbook/core/lineTracker";

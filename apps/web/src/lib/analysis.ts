@@ -5,7 +5,7 @@
 import { Chess } from "chess.js";
 import { cloudEval, getEvals, putEval, putEvals } from "./evalCache";
 import { serverEvals, shareEval } from "./server";
-import { EnginePool, type EngineBuild } from "./engine";
+import { EnginePool, type EngineBuild } from "@outofbook/engines/engine";
 import type { MoveStat, PosEval } from "@outofbook/core/types";
 
 export interface AnalysisOptions {

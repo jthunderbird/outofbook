@@ -1,5 +1,5 @@
 import type { Verdict } from "@outofbook/core/types";
-import type { EngineBuild } from "./engine";
+import type { EngineBuild } from "@outofbook/engines/engine";
 import { IS_CAPACITOR } from "./platform";
 
 export interface Settings {

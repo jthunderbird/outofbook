@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-r
 import { Alert, Badge, Button, Dialog } from "./ui";
 import { BOOK, bookChildren, bookMainLine, bookName, type Step } from "@outofbook/core/book";
 import { fmtEval, lineWinPct, posKey, uciParams, uciToSan } from "@outofbook/core/chess";
-import { EnginePool, type EngineBuild } from "../lib/engine";
+import { EnginePool, type EngineBuild } from "@outofbook/engines/engine";
 import { evalNow } from "../lib/evalCache";
 import type { PosEval, RepNode, Side } from "@outofbook/core/types";
 import { uciArrow } from "./Board";

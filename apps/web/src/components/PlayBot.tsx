@@ -5,7 +5,7 @@ import { allNamedLines, applyMoves, Bot, searchLines, type BookMode, type NamedL
 import { bookChildren } from "@outofbook/core/book";
 import { posKey, uciParams, uciToSan } from "@outofbook/core/chess";
 import { classify } from "@outofbook/core/classify";
-import { EnginePool } from "../lib/engine";
+import { EnginePool } from "@outofbook/engines/engine";
 import { evalNow } from "../lib/evalCache";
 import { buzz, buzzMove, playMoveSound, preloadSounds } from "../lib/gameFeel";
 import { trackLine } from "@outofbook/core/lineTracker";

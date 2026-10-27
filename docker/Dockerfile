@@ -8,6 +8,7 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/legions/package.json packages/legions/
+COPY packages/engines/package.json packages/engines/
 COPY apps/web/package.json apps/web/
 COPY apps/api/package.json apps/api/
 RUN npm ci --no-audit --no-fund

@@ -4,8 +4,8 @@
 import { Chess } from "chess.js";
 import { BOOK, bookChildren } from "@outofbook/core/book";
 import { posKey, START_FEN, uciParams } from "@outofbook/core/chess";
-import { StockfishBot } from "./engine";
-import { Maia } from "./maia";
+import { StockfishBot } from "@outofbook/engines/engine";
+import { Maia } from "@outofbook/engines/maia";
 import type { RepNode } from "@outofbook/core/types";
 
 export type BookMode = "free" | "book" | "opponents" | "line";

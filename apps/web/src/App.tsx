@@ -28,7 +28,7 @@ import { classify } from "@outofbook/core/classify";
 import { askRepertoire } from "./lib/claude";
 import { IN_APP } from "./lib/platform";
 import { posKey, START_FEN, uciToSan } from "@outofbook/core/chess";
-import { defaultPoolSize } from "./lib/engine";
+import { defaultPoolSize } from "@outofbook/engines/engine";
 import { kvDel, kvGet, kvSet } from "./lib/evalCache";
 import { findPath } from "@outofbook/core/repertoire";
 import { loadSettings, saveSettings, type Settings } from "./lib/settings";

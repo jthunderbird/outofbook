@@ -17,6 +17,8 @@
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@outofbook/core": "*",
+    "@outofbook/engines": "*",
+    "@outofbook/legions": "*",
     "@tailwindcss/vite": "^4.3.3",
     "chess.js": "1.4.0",
     "chessground": "^9.2.1",
@@ -29,8 +31,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "tailwind-merge": "^3.7.0",
-    "tailwindcss": "^4.3.3",
-    "@outofbook/legions": "*"
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

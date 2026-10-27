@@ -2,7 +2,7 @@
 // Pre/post-processing ported from CSSLab/maia-platform-frontend (GPL-3.0),
 // src/lib/engine/{maia.ts,tensor.ts}; the worker and model are theirs too.
 import { Chess } from "chess.js";
-import movesData from "../data/maia/all_moves_maia3.json";
+import movesData from "./data/all_moves_maia3.json";
 
 const MOVES = movesData as Record<string, number>;
 const REVERSED: string[] = [];

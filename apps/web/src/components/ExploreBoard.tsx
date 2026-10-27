@@ -8,7 +8,7 @@ import { Chess } from "chess.js";
 import { ChevronLeft, ChevronRight, Undo2 } from "lucide-react";
 import { fmtEval, plyLabel, posKey, uciParams, uciToSan } from "@outofbook/core/chess";
 import type { Line, PosEval, RepNode, Side } from "@outofbook/core/types";
-import { LiveEngine, type EngineBuild } from "../lib/engine";
+import { LiveEngine, type EngineBuild } from "@outofbook/engines/engine";
 import { getEval } from "../lib/evalCache";
 import { Board, uciArrow, type Arrow } from "./Board";
 import { Button, cx } from "./ui";
