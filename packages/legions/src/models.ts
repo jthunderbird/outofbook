@@ -4,7 +4,7 @@
 // shader (dark cloth to ivory, gold kept). Each stands centered on its square.
 // Until a model has loaded, its tribe draws the code-built figure instead;
 // modelsReady tells the arena when to rebuild with the models.
-import { AnimationMixer, Box3, Vector3, type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D, type SkinnedMesh } from "three";
+import { AnimationMixer, Box3, Quaternion, Vector3, type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D, type SkinnedMesh } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { ownMaterials } from "./fx";
@@ -26,12 +26,35 @@ function inPlace(clip: AnimationClip) {
   return clip;
 }
 
+/**
+ * Idles calmed: every bone moves only a quarter as far from the clip's first pose,
+ * and more slowly, so a figure breathes and shifts without looking around.
+ */
+function calm(clip: AnimationClip, k = 0.25, slower = 1.6) {
+  const q0 = new Quaternion();
+  const q = new Quaternion();
+  for (const t of clip.tracks) {
+    const v = t.values;
+    const n = t.getValueSize();
+    if (n === 4)
+      for (let i = 0; i < v.length; i += 4) {
+        q0.fromArray(v, 0);
+        q.fromArray(v, i);
+        q0.slerp(q, k).toArray(v, i);
+      }
+    else for (let i = n; i < v.length; i++) v[i] = v[i % n] + (v[i] - v[i % n]) * k;
+    for (let i = 0; i < t.times.length; i++) t.times[i] *= slower;
+  }
+  clip.resetDuration();
+  return clip;
+}
+
 async function load(name: string) {
   const url = URLS[`../models/${name}.glb`];
   if (!url) return;
   const gltf = await new GLTFLoader().loadAsync(url);
   const box = new Box3().setFromObject(gltf.scene);
-  loaded.set(name, { gltf, clips: new Map(gltf.animations.map((c) => [c.name, inPlace(c)])), height: box.getSize(new Vector3()).y });
+  loaded.set(name, { gltf, clips: new Map(gltf.animations.map((c) => [c.name, /idle/i.test(c.name) ? calm(inPlace(c)) : inPlace(c)])), height: box.getSize(new Vector3()).y });
 }
 
 /** Every model, loaded; resolves even if one fails (its piece stays code-built). */

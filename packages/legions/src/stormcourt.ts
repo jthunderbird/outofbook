@@ -211,7 +211,22 @@ class Acts {
     });
   }
 
+  /** The rook's gold bands flare and melt away into sparks (out), or gather back out of sparks (in). */
+  private async trim(r: Fig, out: boolean) {
+    const magic = MAGIC[r.side];
+    for (const t of r.trim) {
+      t.visible = true;
+      this.fx.burst(r.root.position.clone().setY(t.position.y), magic, 6, { glow: true, speed: 0.5, up: 0.4, gravity: 0, life: 450 });
+    }
+    await tween(this.clock, 260, (t) => {
+      const k = out ? t : 1 - t;
+      for (const b of r.trim) b.scale.setScalar(Math.max(0.001, 1 - k + 0.25 * Math.sin(k * Math.PI)));
+    });
+    for (const b of r.trim) b.visible = !out;
+  }
+
   private async tearDown(r: Fig) {
+    await this.trim(r, true);
     const p = r.root.position.clone();
     const stones = [...r.stones].sort((a, b) => b.userData.home.pos.y - a.userData.home.pos.y);
     const gone = new Set<Mesh>();
@@ -250,6 +265,7 @@ class Acts {
       s.position.copy(s.userData.home.pos).setY(-0.45);
       s.rotation.set(0, s.userData.home.rot, 0);
     }
+    for (const t of r.trim) t.visible = false;
     for (const rune of r.runes) {
       rune.visible = true;
       (rune.material as MeshStandardMaterial).emissiveIntensity = 3;
@@ -270,6 +286,7 @@ class Acts {
     );
     stop();
     r.core!.scale.y = 1;
+    await this.trim(r, false);
     await tween(this.clock, 400, (t) => r.runes.forEach((rune) => ((rune.material as MeshStandardMaterial).emissiveIntensity = 3 * (1 - t))));
     for (const rune of r.runes) rune.visible = false;
   }

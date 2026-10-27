@@ -66,6 +66,8 @@ export class Fig {
   /** Soldiers' legs (they walk); the horse's legs FL, FR, BL, BR, each with its knee as userData.knee. */
   legs: Group[] = [];
   hooves: Group[] = [];
+  /** A rook's gold bands: they go first when it tears down and come back last. */
+  trim: Mesh[] = [];
   /** Parts with a rest pose (userData.rest) to go back to. */
   private posed: Object3D[] = [];
   /** Modelled, rigged figures (models.ts): their animation clips by name, the idle one looping. */
@@ -101,6 +103,10 @@ export class Fig {
       s.rotation.set(0, s.userData.home.rot, 0);
     }
     this.core?.scale.set(1, 1, 1);
+    for (const t of this.trim) {
+      t.visible = true;
+      t.scale.set(1, 1, 1);
+    }
     for (const r of this.runes) r.visible = false;
     this.floating = false;
     clipAbove(this.mats, null);
@@ -1103,6 +1109,7 @@ function stoneTower(side: Side): Fig {
   for (const y of [0.79, 0.015]) {
     const band = mesh(new TorusGeometry(R + 0.07, 0.016, 8, 40), gold, 0, y, 0);
     band.rotation.x = Math.PI / 2;
+    f.trim.push(band);
     f.body.add(band);
   }
   f.core = new Group();
@@ -1126,9 +1133,9 @@ export function makeFig(role: Role, side: Side): Fig {
   // Modelled figures (one model for both sides, light recolored), once loaded.
   const modelled =
     role === "k"
-      ? modelFig("stormcourt-king", "k", side, 1.6)
+      ? modelFig("stormcourt-king", "k", side, 1.85)
       : role === "q"
-        ? modelFig("stormcourt-queen", "q", side, 1.45)
+        ? modelFig("stormcourt-queen", "q", side, 1.65)
         : role === "b"
           ? modelFig("stormcourt-bishop", "b", side, 1.4)
           : role === "n"
