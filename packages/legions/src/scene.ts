@@ -9,7 +9,6 @@ import {
   AdditiveBlending,
   CanvasTexture,
   CircleGeometry,
-  Color,
   DirectionalLight,
   Group,
   HemisphereLight,
@@ -33,6 +32,7 @@ import {
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { Clock, FIRE_TIME, Particles, SPEED } from "./fx";
+import { backgroundTexture } from "./backgrounds";
 import { buildBoard } from "./board";
 import { squareAt } from "./board";
 import { type Fig, type Role, type Side } from "./figures";
@@ -71,6 +71,7 @@ export class Arena {
   private orientation: Side = "w";
   private input: ArenaInput = {};
   private selected: string | null = null;
+  private hint: string | null = null;
   private shake = 0;
   /** Lightning's flash, dark until a bolt strikes. */
   private flash = new PointLight(0xffffff, 0, 8, 1.5);
@@ -123,7 +124,7 @@ export class Arena {
     r.domElement.style.cssText = "width:100%;height:100%;display:block;touch-action:none;border-radius:var(--board-radius,4px)";
     host.appendChild(r.domElement);
     this.fx = new Particles(this.scene);
-    this.scene.background = new Color(0x0d111a);
+    this.scene.background = backgroundTexture("night");
     // A soft studio environment for metal and marble to reflect.
     const pmrem = new PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -223,6 +224,30 @@ export class Arena {
     this.drawLabels();
   }
 
+  /** Each side's tribe; the figures on the board are rebuilt in the new tribes. */
+  setTribes(t: Record<Side, Tribe>) {
+    if (t.w === this.tribes.w && t.b === this.tribes.b) return;
+    this.tribes = t;
+    for (const f of this.figs.values()) f.root.removeFromParent();
+    this.figs.clear();
+    if (this.shown) {
+      const fen = this.shown;
+      this.shown = "";
+      this.sync(fen);
+    }
+  }
+
+  /** The scene behind the board (backgrounds.ts). */
+  setBackground(id: string) {
+    this.scene.background = backgroundTexture(id);
+  }
+
+  /** A suggested move (uci) to show on the board, or null. */
+  setHint(uci: string | null) {
+    this.hint = uci;
+    this.highlight();
+  }
+
   setInput(i: ArenaInput) {
     this.input = i;
     this.highlight();
@@ -233,6 +258,7 @@ export class Arena {
     this.target = fen;
     this.lastMove = lastMove;
     this.selected = null;
+    this.hint = null;
     this.queue.push({ fen, lastMove });
     void this.pump();
   }
@@ -366,6 +392,10 @@ export class Arena {
         .flat()
         .find((p) => p?.type === "k" && p.color === c.turn());
       if (k) this.markCheck(k.square);
+    }
+    if (this.hint) {
+      mark(this.hint.slice(0, 2), 0x3fd17a, 0.55, tile);
+      mark(this.hint.slice(2, 4), 0x3fd17a, 0.8, new RingGeometry(0.3, 0.47, 32).rotateX(-Math.PI / 2));
     }
     if (this.selected) {
       mark(this.selected, 0x6fd36f, 0.5, tile);

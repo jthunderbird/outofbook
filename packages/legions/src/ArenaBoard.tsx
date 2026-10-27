@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Side } from "@outofbook/core/types";
 import { Arena } from "./scene";
+import { tribe } from "./tribes";
 
 export interface ArenaBoardProps {
   fen: string;
@@ -14,9 +15,15 @@ export interface ArenaBoardProps {
   onBusy?: (busy: boolean) => void;
   /** Play the fight sounds. */
   sound?: boolean;
+  /** Each side's tribe id (tribes.ts); the Stormcourt when not given. */
+  tribes?: { w: string; b: string };
+  /** The scene behind the board (backgrounds.ts). */
+  background?: string;
+  /** A suggested move to show, as uci. */
+  hint?: string | null;
 }
 
-export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false }: ArenaBoardProps) {
+export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, background = "night", hint = null }: ArenaBoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const arena = useRef<Arena | null>(null);
   const busy = useRef(onBusy);
@@ -33,6 +40,11 @@ export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove
     };
   }, []);
   useEffect(() => arena.current?.setOrientation(orientation), [orientation]);
+  const tw = tribes?.w ?? "stormcourt";
+  const tb = tribes?.b ?? "stormcourt";
+  // Before the position, so the first figures are already the right tribe.
+  useLayoutEffect(() => arena.current?.setTribes({ w: tribe(tw), b: tribe(tb) }), [tw, tb]);
+  useEffect(() => arena.current?.setBackground(background), [background]);
   useEffect(() => {
     const a = arena.current;
     if (!a) return;
@@ -43,6 +55,7 @@ export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove
   // Before paint, so a game over shown with the final move waits for its acting out.
   useLayoutEffect(() => arena.current?.setPosition(fen, lastMove), [fen, lastMove]);
   useEffect(() => arena.current?.setInput({ movable, onMove }), [movable, onMove]);
+  useEffect(() => arena.current?.setHint(hint), [hint]);
 
-  return <div ref={el} className="h-full w-full" data-testid="arena" />;
+  return <div ref={el} style={{ width: "100%", height: "100%" }} data-testid="arena" />;
 }

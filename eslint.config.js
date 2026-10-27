@@ -13,6 +13,7 @@ export default tseslint.config(
       "**/node_modules/",
       "**/dist/",
       "apps/web/public/",
+      "apps/legions/public/",
       "apps/android-capacitor/android/",
       "apps/android-capacitor/www/",
       "apps/android-twa/",

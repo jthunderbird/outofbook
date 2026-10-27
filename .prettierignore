@@ -5,6 +5,7 @@ package-lock.json
 packages/core/src/data/
 packages/core/scripts/openings/
 apps/web/public/
+apps/legions/public/
 test-results/
 playwright-report/
 # Generated Android projects and their bundled web copy.

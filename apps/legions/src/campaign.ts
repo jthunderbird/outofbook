@@ -1,0 +1,54 @@
+// The campaign: a ladder of tribes, each fought in battles against ever
+// stronger Maia opponents; beating a tribe's last battle (its boss) unlocks it.
+// The Stormcourt comes first, rated very low: it is the game's introduction.
+import type { Side } from "@outofbook/legions/figures";
+import type { ItemId } from "./profile";
+
+export interface Battle {
+  id: string;
+  name: string;
+  /** Maia's rating for the opponent. */
+  elo: number;
+  /** The side the player plays. */
+  side: Side;
+  boss?: boolean;
+}
+
+export interface Chapter {
+  tribe: string;
+  name: string;
+  story: string;
+  /** XP for a win is 100 times the tier. */
+  tier: number;
+  battles: Battle[];
+  /** What beating the boss unlocks. */
+  reward: ItemId[];
+}
+
+export const CHAPTERS: Chapter[] = [
+  {
+    tribe: "stormcourt",
+    name: "The Stormcourt",
+    story: "A court of storm and stone. Its king rules by magic, its bishops ride the lightning. Their soldiers are green: show them how chess is played.",
+    tier: 1,
+    battles: [
+      { id: "storm-1", name: "Skirmish at the gate", elo: 600, side: "w" },
+      { id: "storm-2", name: "The thunder bishops", elo: 700, side: "b" },
+      { id: "storm-3", name: "The Storm King", elo: 850, side: "w", boss: true },
+    ],
+    reward: ["tribe:stormcourt"],
+  },
+];
+
+/** A chapter opens when the one before it is beaten. */
+export const chapterOpen = (i: number, won: string[]) => i === 0 || CHAPTERS[i - 1].battles.every((b) => won.includes(b.id));
+/** A battle opens when the one before it in its chapter is won. */
+export const battleOpen = (c: Chapter, j: number, won: string[]) => j === 0 || won.includes(c.battles[j - 1].id);
+
+export function findBattle(id: string) {
+  for (const c of CHAPTERS) {
+    const b = c.battles.find((x) => x.id === id);
+    if (b) return { chapter: c, battle: b };
+  }
+  return null;
+}

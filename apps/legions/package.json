@@ -1,0 +1,29 @@
+{
+  "name": "@outofbook/chess-legions",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Chess Legions: chess where tribes of pieces fight it out. A campaign against ever stronger Maia opponents, XP, unlockable tribes and backgrounds.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@outofbook/core": "*",
+    "@outofbook/engines": "*",
+    "@outofbook/legions": "*",
+    "chess.js": "1.4.0",
+    "lucide-react": "^1.59.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-basic-ssl": "2.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "vite": "8.3.4"
+  }
+}

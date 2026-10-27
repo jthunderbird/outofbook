@@ -1,0 +1,13 @@
+{
+  "name": "Chess Legions",
+  "short_name": "Chess Legions",
+  "description": "Chess where tribes of pieces fight it out.",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }],
+  "theme_color": "#120d22",
+  "background_color": "#120d22",
+  "display": "fullscreen",
+  "orientation": "any",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/"
+}

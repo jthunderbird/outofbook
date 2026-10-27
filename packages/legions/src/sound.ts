@@ -36,6 +36,9 @@ export const SOUNDS = [
   "fall",
   "horn",
   "knell",
+  "wood1",
+  "wood2",
+  "knock",
 ] as const;
 export type SoundName = (typeof SOUNDS)[number];
 

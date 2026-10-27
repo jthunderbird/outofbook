@@ -1,4 +1,4 @@
-# Builds the Arena board's sound clips (packages/legions/sounds/) from CC0
+# Builds the Chess Legions sound clips (packages/legions/sounds/) from CC0
 # recordings: Kenney's audio packs and sounds on Freesound (their MP3 previews).
 # Each clip is cut, faded, peak-normalized to -1 dBFS and saved as mono MP3;
 # CREDITS.md lists the source of every clip. Sources are cached in a work dir.
@@ -47,6 +47,10 @@ CLIPS = {
     "fall": ("fs:417994", 0, None, 0.2),  # body fall
     "horn": ("fs:539956", 0, 3.2, 1.2),  # war horn: check
     "knell": ("fs:165331", 0, None, 1.0),  # death bell: checkmate
+    # The Staunton tribe: wooden pieces.
+    "wood1": ("kenney:impact:impactWood_light_000.ogg", 0, None, 0.05),
+    "wood2": ("kenney:impact:impactWood_light_003.ogg", 0, None, 0.05),
+    "knock": ("kenney:impact:impactWood_medium_002.ogg", 0, None, 0.1),
 }
 
 

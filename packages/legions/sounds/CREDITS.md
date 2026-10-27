@@ -32,3 +32,6 @@ Sound effects for the Arena board, cut from CC0 (public domain) recordings by
 - `fall.mp3`: [Body fall.wav](https://freesound.org/people/DylanTheFish/sounds/417994/) by DylanTheFish (Freesound, CC0)
 - `horn.mp3`: [war horn.wav](https://freesound.org/people/adharca/sounds/539956/) by adharca (Freesound, CC0)
 - `knell.mp3`: [Tubular Bell of Death](https://freesound.org/people/ani_music/sounds/165331/) by ani_music (Freesound, CC0)
+- `wood1.mp3`: impactWood_light_000.ogg from [Kenney impact pack](https://kenney.nl/) (CC0)
+- `wood2.mp3`: impactWood_light_003.ogg from [Kenney impact pack](https://kenney.nl/) (CC0)
+- `knock.mp3`: impactWood_medium_002.ogg from [Kenney impact pack](https://kenney.nl/) (CC0)
