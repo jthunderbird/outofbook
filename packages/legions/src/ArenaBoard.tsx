@@ -17,13 +17,15 @@ export interface ArenaBoardProps {
   sound?: boolean;
   /** Each side's tribe id (tribes.ts); the Stormcourt when not given. */
   tribes?: { w: string; b: string };
-  /** The scene behind the board (backgrounds.ts). */
-  background?: string;
+  /** The court: the board and the scenery round it (courts.ts). */
+  court?: string;
+  /** Glow on bright light, lightning and fire (bloom). */
+  glow?: boolean;
   /** A suggested move to show, as uci. */
   hint?: string | null;
 }
 
-export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, background = "night", hint = null }: ArenaBoardProps) {
+export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, court = "night", glow = false, hint = null }: ArenaBoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const arena = useRef<Arena | null>(null);
   const busy = useRef(onBusy);
@@ -44,7 +46,8 @@ export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove
   const tb = tribes?.b ?? "stormcourt";
   // Before the position, so the first figures are already the right tribe.
   useLayoutEffect(() => arena.current?.setTribes({ w: tribe(tw), b: tribe(tb) }), [tw, tb]);
-  useEffect(() => arena.current?.setBackground(background), [background]);
+  useEffect(() => arena.current?.setCourt(court), [court]);
+  useEffect(() => arena.current?.setGlow(glow), [glow]);
   useEffect(() => {
     const a = arena.current;
     if (!a) return;

@@ -63,7 +63,7 @@ export function Home({ go }: { go: (s: Screen) => void }) {
           </span>
           <span>
             Collection
-            <small>Tribes and backgrounds</small>
+            <small>Tribes and courts</small>
           </span>
         </button>
         <div className="row-btns" style={{ marginTop: 0 }}>

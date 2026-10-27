@@ -21,9 +21,18 @@ export function Settings({ go }: { go: (s: Screen) => void }) {
         </div>
         <div className="toggle">
           <span>
+            Glow effects
+            <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>
+              Lightning, fire and magic glow. Turn off if the game runs slowly.
+            </div>
+          </span>
+          <button className={`switch${p.glow ? " on" : ""}`} aria-label="Glow effects" aria-pressed={p.glow} onClick={() => update((q) => ({ ...q, glow: !q.glow }))} />
+        </div>
+        <div className="toggle">
+          <span>
             Lichess account
             <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>
-              Optional. Logging in lets OutOfBook, our chess app, use your progress here: your tribes and backgrounds in its Legion mode.
+              Optional. Logging in lets OutOfBook, our chess app, use your progress here: your tribes and courts in its Legion mode.
             </div>
           </span>
           <button className="btn dark small" disabled>
@@ -41,7 +50,7 @@ export function Settings({ go }: { go: (s: Screen) => void }) {
         <div className="overlay" onClick={() => setReset(false)}>
           <div className="panel" onClick={(e) => e.stopPropagation()}>
             <h2>Start over?</h2>
-            <p className="muted">Your XP, unlocked tribes and backgrounds, and campaign wins on this device are erased.</p>
+            <p className="muted">Your XP, unlocked tribes and courts, and campaign wins on this device are erased.</p>
             <div className="row-btns">
               <button className="btn dark small" onClick={() => setReset(false)}>
                 Keep

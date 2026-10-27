@@ -10,6 +10,7 @@ import {
   Color,
   CylinderGeometry,
   Float32BufferAttribute,
+  Group,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -96,8 +97,19 @@ function marble(base: string, vein: string, seed: number, strength = 1, size = 5
 
 let textures: { light: CanvasTexture; dark: CanvasTexture } | null = null;
 
-/** Builds the plinth and the 64 squares; returns the squares by name (a1..h8). */
-export function buildBoard(scene: Scene) {
+export interface Board {
+  /** Everything of the board, to add to the scene (and take out for another court). */
+  group: Group;
+  /** The 64 squares by name (a1..h8). */
+  squares: Map<string, Mesh>;
+  /** The plinth's four walls, and its two kinds of squares' materials, for a court to dress. */
+  walls: Mesh[];
+}
+
+/** Builds the plinth and the 64 squares. */
+export function buildBoard(): Board {
+  const group = new Group();
+  const walls: Mesh[] = [];
   textures ??= { light: marble("#d3dcec", "#8a9cc0", 7), dark: marble("#1f2d58", "#4a63a0", 21, 0.6) };
   const stone = new MeshStandardMaterial({ color: 0x0e1426, roughness: 0.35, metalness: 0.1 });
   // A hollow plinth: four sides and a floor; the squares are its top.
@@ -105,12 +117,11 @@ export function buildBoard(scene: Scene) {
     const o = new Mesh(new BoxGeometry(w, h, d), m);
     o.position.set(x, y, z);
     o.receiveShadow = true;
-    scene.add(o);
+    group.add(o);
     return o;
   };
   for (const s of [-1, 1]) {
-    add(9.4, 1.4, 0.7, 0, -0.71, s * 4.35);
-    add(0.7, 1.4, 8, s * 4.35, -0.71, 0);
+    walls.push(add(9.4, 1.4, 0.7, 0, -0.71, s * 4.35), add(0.7, 1.4, 8, s * 4.35, -0.71, 0));
   }
   add(8, 0.05, 8, 0, -1.38, 0);
   // A thin gold line around the squares.
@@ -130,10 +141,11 @@ export function buildBoard(scene: Scene) {
       const m = new Mesh(geo, new MeshStandardMaterial({ map: t, roughness: 0.18, metalness: 0.05 }));
       m.position.set(f - 3.5, -0.05, 3.5 - k);
       m.receiveShadow = true;
-      scene.add(m);
+      m.userData.light = (f + k) % 2 === 1;
+      group.add(m);
       squares.set("abcdefgh"[f] + (k + 1), m);
     }
-  return squares;
+  return { group, squares, walls };
 }
 
 // ---------- The pit to hell ----------

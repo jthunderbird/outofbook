@@ -1,4 +1,4 @@
-import { BACKGROUNDS } from "@outofbook/legions/backgrounds";
+import { COURTS } from "@outofbook/legions/courts";
 import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { LEVEL_UNLOCKS, owns, update, useProfile, type ItemId } from "../profile";
@@ -13,7 +13,7 @@ const ABOUT: Record<string, string> = {
 function howToGet(id: ItemId) {
   const level = Object.entries(LEVEL_UNLOCKS).find(([, items]) => items.includes(id))?.[0];
   if (level) return `Reach level ${level}`;
-  if (id === "tribe:stormcourt") return "Beat the Storm King in the campaign";
+  if (id === "tribe:stormcourt" || id === "court:stormcourt") return "Beat the Storm King in the campaign";
   return "Coming soon";
 }
 
@@ -59,21 +59,22 @@ export function Collection({ go }: { go: (s: Screen) => void }) {
           );
         })}
       </div>
-      <h3 style={{ margin: "22px 0 10px" }}>Backgrounds</h3>
+      <h3 style={{ margin: "22px 0 10px" }}>Courts</h3>
       <div className="grid">
-        {BACKGROUNDS.map((b, i) => {
-          const id: ItemId = `background:${b.id}`;
+        {COURTS.map((b, i) => {
+          const id: ItemId = `court:${b.id}`;
           const have = owns(p, id);
-          const on = p.equipped.background === b.id;
+          const on = p.equipped.court === b.id;
           return (
             <div key={b.id} className={`card${on ? " equipped" : ""}${have ? "" : " locked"}`} style={{ ["--i" as string]: i }}>
-              <div className="swatch" style={{ background: `linear-gradient(180deg, ${b.top}, ${b.bottom})` }} />
+              <div className="swatch" style={{ background: b.preview ? `center / cover url(${b.preview})` : `linear-gradient(180deg, ${b.top}, ${b.bottom})` }} />
               <h3>{b.name}</h3>
+              {b.tribe && <div className="muted">Home of {TRIBES[b.tribe]?.name}</div>}
               <button
                 className={`btn small ${on ? "gold" : have ? "" : "dark"}`}
                 style={{ width: "100%" }}
                 disabled={!have}
-                onClick={() => !on && update((q) => ({ ...q, equipped: { ...q.equipped, background: b.id } }))}
+                onClick={() => !on && update((q) => ({ ...q, equipped: { ...q.equipped, court: b.id } }))}
               >
                 {on ? (
                   "In use"
@@ -90,7 +91,7 @@ export function Collection({ go }: { go: (s: Screen) => void }) {
         })}
       </div>
       <p className="muted" style={{ textAlign: "center", marginTop: 22 }}>
-        Boards, piece colors and overlays are coming.
+        Piece colors and overlays are coming.
       </p>
     </div>
   );

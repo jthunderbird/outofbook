@@ -18,6 +18,8 @@ export interface Chapter {
   tribe: string;
   name: string;
   story: string;
+  /** Where its battles are fought: the tribe's home court. */
+  court: string;
   /** XP for a win is 100 times the tier. */
   tier: number;
   battles: Battle[];
@@ -29,6 +31,7 @@ export const CHAPTERS: Chapter[] = [
   {
     tribe: "stormcourt",
     name: "The Stormcourt",
+    court: "stormcourt",
     story: "A court of storm and stone. Its king rules by magic, its bishops ride the lightning. Their soldiers are green: show them how chess is played.",
     tier: 1,
     battles: [
@@ -36,7 +39,7 @@ export const CHAPTERS: Chapter[] = [
       { id: "storm-2", name: "The thunder bishops", elo: 700, side: "b" },
       { id: "storm-3", name: "The Storm King", elo: 850, side: "w", boss: true },
     ],
-    reward: ["tribe:stormcourt"],
+    reward: ["tribe:stormcourt", "court:stormcourt"],
   },
 ];
 

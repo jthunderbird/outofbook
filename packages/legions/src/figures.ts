@@ -284,7 +284,8 @@ function limb(len: number, r: number, m: Material, x: number, y: number, z = 0) 
 const tube = (pts: [number, number, number][], r: number, m: Material) => mesh(new TubeGeometry(new CatmullRomCurve3(pts.map(([x, y, z]) => new Vector3(x, y, z))), 16, r, 7), m);
 
 let glowTexture: CanvasTexture | null = null;
-function glowMap() {
+/** A soft white dot for glows and halos. */
+export function glowMap() {
   if (glowTexture) return glowTexture;
   const c = document.createElement("canvas");
   c.width = c.height = 64;

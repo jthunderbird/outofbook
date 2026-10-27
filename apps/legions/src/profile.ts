@@ -3,19 +3,21 @@
 // whatever unlocked them (a level, a campaign win, later a purchase).
 import { useSyncExternalStore } from "react";
 
-export type ItemKind = "tribe" | "background";
-/** "tribe:staunton", "background:night", ... */
+export type ItemKind = "tribe" | "court";
+/** "tribe:staunton", "court:night", ... (a court is a board with its scenery). */
 export type ItemId = `${ItemKind}:${string}`;
 
 export interface Profile {
   xp: number;
   owned: ItemId[];
-  equipped: { tribe: string; background: string };
+  equipped: { tribe: string; court: string };
   /** Charges left: show the best move, take a move back. */
   perks: { hint: number; takeback: number };
   /** Campaign battles won (ids from campaign.ts). */
   won: string[];
   sound: boolean;
+  /** Glow on lightning, fire and bright light (bloom); off for slower phones. */
+  glow: boolean;
   /** Levels already rewarded (perk charges are given once per level). */
   rewardedLevel: number;
 }
@@ -23,11 +25,12 @@ export interface Profile {
 const KEY = "legions.profile";
 const FRESH: Profile = {
   xp: 0,
-  owned: ["tribe:staunton", "background:night"],
-  equipped: { tribe: "staunton", background: "night" },
+  owned: ["tribe:staunton", "court:night"],
+  equipped: { tribe: "staunton", court: "night" },
   perks: { hint: 3, takeback: 3 },
   won: [],
   sound: true,
+  glow: true,
   rewardedLevel: 1,
 };
 
@@ -36,15 +39,21 @@ export const levelOf = (xp: number) => 1 + Math.floor(xp / XP_PER_LEVEL);
 
 /** Items that unlock on reaching a level. */
 export const LEVEL_UNLOCKS: Record<number, ItemId[]> = {
-  2: ["background:dusk"],
-  3: ["background:storm"],
-  4: ["background:ember"],
-  5: ["background:forest"],
+  2: ["court:dusk"],
+  3: ["court:storm"],
+  4: ["court:ember"],
+  5: ["court:forest"],
 };
 
 function load(): Profile {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null");
+    // Backgrounds became courts (a board with its scenery).
+    if (saved?.owned) saved.owned = saved.owned.map((i: string) => i.replace(/^background:/, "court:"));
+    if (saved?.equipped?.background) {
+      saved.equipped.court ??= saved.equipped.background;
+      delete saved.equipped.background;
+    }
     if (saved) return { ...FRESH, ...saved, equipped: { ...FRESH.equipped, ...saved.equipped }, perks: { ...FRESH.perks, ...saved.perks } };
   } catch {
     /* private mode or bad data: start fresh */

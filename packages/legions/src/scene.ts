@@ -31,11 +31,14 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { Clock, FIRE_TIME, Particles, SPEED } from "./fx";
-import { backgroundTexture } from "./backgrounds";
+import { court, courtBackground, type CourtSet } from "./courts";
 import { modelsReady } from "./models";
-import { buildBoard } from "./board";
-import { squareAt } from "./board";
+import { buildBoard, squareAt, type Board } from "./board";
 import { type Fig, type Role, type Side } from "./figures";
 import { stormcourt } from "./stormcourt";
 import type { Stage, Tribe } from "./tribe";
@@ -57,7 +60,16 @@ export class Arena {
   private clock = new Clock();
   private fx: Particles;
   private figs = new Map<string, Fig>();
-  private squares: Map<string, Mesh>;
+  private board: Board;
+  private get squares() {
+    return this.board.squares;
+  }
+  /** The court: the board's dress and the scenery round it (courts.ts). */
+  private courtId = "night";
+  private court: CourtSet | null = null;
+  private courtAfter = false;
+  /** Glow (bloom) on bright light, lightning and fire; off by default (it costs frame time). */
+  private composer: EffectComposer | null = null;
   /** Every figure in the scene, on a square or on its way to one. */
   private live = new Set<Fig>();
   private marks = new Group();
@@ -126,7 +138,7 @@ export class Arena {
     r.domElement.style.cssText = "width:100%;height:100%;display:block;touch-action:none;border-radius:var(--board-radius,4px)";
     host.appendChild(r.domElement);
     this.fx = new Particles(this.scene);
-    this.scene.background = backgroundTexture("night");
+    this.scene.background = courtBackground("night");
     // A soft studio environment for metal and marble to reflect.
     const pmrem = new PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -144,7 +156,8 @@ export class Arena {
     this.flash.position.set(0, 2, 0);
     this.scene.add(this.flash, this.checkLight);
 
-    this.squares = buildBoard(this.scene);
+    this.board = buildBoard();
+    this.scene.add(this.board.group);
     this.labels = new Mesh(new PlaneGeometry(9.4, 9.4).rotateX(-Math.PI / 2), new MeshBasicMaterial({ transparent: true, depthWrite: false }));
     this.labels.position.y = 0.001;
     this.scene.add(this.labels, this.marks);
@@ -186,6 +199,7 @@ export class Arena {
     for (const f of this.live)
       if (f.root.parent) f.update(ms * SPEED);
       else this.live.delete(f);
+    this.court?.update(frame);
     if (this.checkGlow.length) {
       this.pulse += frame / 1000;
       const k = 0.5 + 0.5 * Math.sin(this.pulse * 4.5);
@@ -199,7 +213,8 @@ export class Arena {
       this.shake -= frame;
       this.camera.position.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12));
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
     this.camera.position.copy(cam);
   }
 
@@ -215,6 +230,8 @@ export class Arena {
     this.clock.clear();
     this.ro.disconnect();
     this.controls.dispose();
+    this.court?.dispose();
+    this.composer?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -250,9 +267,42 @@ export class Arena {
     }
   }
 
-  /** The scene behind the board (backgrounds.ts). */
-  setBackground(id: string) {
-    this.scene.background = backgroundTexture(id);
+  /** The court: the board and the scenery round it (courts.ts). Changed between moves. */
+  setCourt(id: string) {
+    if (id === this.courtId && !this.courtAfter) return;
+    this.courtId = id;
+    if (this.busy) {
+      this.courtAfter = true;
+      return;
+    }
+    this.courtAfter = false;
+    this.court?.dispose();
+    this.court = null;
+    this.scene.remove(this.board.group);
+    this.board = buildBoard();
+    this.scene.add(this.board.group);
+    this.scene.background = courtBackground(id);
+    const c = court(id);
+    if (c.dress) this.court = c.dress(this.scene, this.board);
+    this.highlight();
+  }
+
+  /**
+   * Glow on bright light, lightning and fire (bloom); costs frame time on phones.
+   * Only what is brighter than lit white glows: emissive and unlit effects pushed past 1.
+   */
+  setGlow(on: boolean) {
+    if (on === !!this.composer) return;
+    if (!on) {
+      this.composer!.dispose();
+      this.composer = null;
+      return;
+    }
+    const c = (this.composer = new EffectComposer(this.renderer));
+    c.addPass(new RenderPass(this.scene, this.camera));
+    c.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.7, 0.35, 1.5));
+    c.addPass(new OutputPass());
+    this.resize();
   }
 
   /** A suggested move (uci) to show on the board, or null. */
@@ -281,6 +331,8 @@ export class Arena {
     const h = this.host.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -465,6 +517,7 @@ export class Arena {
       this.rebuildAfter = false;
       this.rebuild();
     }
+    if (this.courtAfter) this.setCourt(this.courtId);
     if (call && !this.disposed) this.sound.play(call, { gain: call === "horn" ? 0.7 : 0.8 });
     this.onBusy?.(false);
     this.highlight();

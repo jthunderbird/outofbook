@@ -1,7 +1,7 @@
 // Chess Legions: one screen at a time over a moving background (the equipped
 // one's colors). The game screen has the 3D scene's own background.
 import { useState } from "react";
-import { BACKGROUNDS } from "@outofbook/legions/backgrounds";
+import { court } from "@outofbook/legions/courts";
 import { useProfile } from "./profile";
 import { Home } from "./screens/Home";
 import { Campaign } from "./screens/Campaign";
@@ -15,7 +15,7 @@ export type Screen = { name: "home" } | { name: "campaign" } | { name: "quick" }
 export function App() {
   const [screen, go] = useState<Screen>({ name: "home" });
   const p = useProfile();
-  const bg = BACKGROUNDS.find((b) => b.id === p.equipped.background) ?? BACKGROUNDS[0];
+  const bg = court(p.equipped.court);
   return (
     <>
       <div className="scene" style={{ ["--bg-top" as string]: bg.top, ["--bg-bottom" as string]: bg.bottom }} />

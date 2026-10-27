@@ -12,7 +12,7 @@ export interface Background {
 export const BACKGROUNDS: Background[] = [
   { id: "night", name: "Night", top: "#1a2440", bottom: "#0d111a" },
   { id: "dusk", name: "Dusk", top: "#5b2a4a", bottom: "#140c1c" },
-  { id: "storm", name: "Storm", top: "#33475b", bottom: "#06080d" },
+  { id: "storm", name: "Squall", top: "#33475b", bottom: "#06080d" },
   { id: "ember", name: "Ember", top: "#5a2410", bottom: "#100604" },
   { id: "forest", name: "Forest", top: "#1f4630", bottom: "#07110b" },
 ];

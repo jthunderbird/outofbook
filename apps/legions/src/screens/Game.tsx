@@ -7,6 +7,7 @@ import { Chess } from "chess.js";
 import ArenaBoard from "@outofbook/legions/ArenaBoard";
 import type { Side } from "@outofbook/legions/figures";
 import { TRIBES } from "@outofbook/legions/tribes";
+import { court } from "@outofbook/legions/courts";
 import type { Screen } from "../App";
 import { findBattle } from "../campaign";
 import { bestMove, getMaia, maiaMove, unwatchMaia, type MaiaStatus } from "../opponent";
@@ -26,10 +27,10 @@ export interface GameSetup {
 
 type Outcome = { result: "win" | "loss" | "draw"; why: string };
 
-const ITEM_NAMES: Record<string, string> = { tribe: "Tribe", background: "Background" };
+const ITEM_NAMES: Record<string, string> = { tribe: "Tribe", court: "Court" };
 const itemName = (id: ItemId) => {
   const [kind, name] = id.split(":");
-  const t = kind === "tribe" ? TRIBES[name]?.name : name[0].toUpperCase() + name.slice(1);
+  const t = kind === "tribe" ? TRIBES[name]?.name : court(name).name;
   return `${ITEM_NAMES[kind] ?? kind}: ${t ?? name}`;
 };
 
@@ -134,6 +135,9 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
   const tribes = me === "w" ? { w: meTribe, b: setup.opponentTribe } : { w: setup.opponentTribe, b: meTribe };
   const oppName = TRIBES[setup.opponentTribe]?.name ?? setup.opponentTribe;
   const showResult = outcome && !busy;
+  // A campaign battle is fought on the opponent's home court; quick play on yours.
+  const found = setup.battle ? findBattle(setup.battle) : null;
+  const courtId = found ? found.chapter.court : p.equipped.court;
 
   return (
     <div className="game" data-testid="game">
@@ -147,7 +151,8 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
           onBusy={setBusy}
           sound={p.sound}
           tribes={tribes}
-          background={p.equipped.background}
+          court={courtId}
+          glow={p.glow}
           hint={hint}
         />
       </div>
