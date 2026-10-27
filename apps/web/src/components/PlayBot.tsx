@@ -17,6 +17,27 @@ import { Board, uciArrow, type Arrow } from "./Board";
 import { gameFeel, LIVE_DEFAULTS } from "./LiveGame";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Progress, Seg, Select, Switch } from "./ui";
 
+/** A switch remembered in localStorage (private mode: for this visit only). */
+function useSavedSwitch(key: string, initial: boolean) {
+  const [on, setOn] = useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? initial : v === "1";
+    } catch {
+      return initial;
+    }
+  });
+  const set = (v: boolean) => {
+    setOn(v);
+    try {
+      localStorage.setItem(key, v ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
+  return [on, set] as const;
+}
+
 type TopMoves = { fen: string; ev: PosEval; extra: Record<string, Line> };
 
 export interface BotStart {
@@ -125,15 +146,15 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
   };
 
   // OutOfBook's own board feel (the Lichess settings are for Lichess games only), on the Arena board if chosen.
-  const [arena, setArena] = useState(() => {
-    try {
-      return localStorage.getItem("botArena") === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [arena, setArena] = useSavedSwitch("botArena", false);
+  // Sound on or off, in the setup and during a game alike; remembered for the next game.
+  const [sound, setSound] = useSavedSwitch("botSound", true);
   const feel = useMemo(() => gameFeel(LIVE_DEFAULTS, null, arena), [arena]);
-  useEffect(() => preloadSounds(feel.soundSet), [feel.soundSet]);
+  const soundSet = sound ? feel.soundSet : "silent";
+  // Read when the bot's move lands, so a switch flipped while it thinks counts.
+  const soundNow = useRef(soundSet);
+  soundNow.current = soundSet;
+  useEffect(() => preloadSounds(soundSet), [soundSet]);
   const [hideEnd, setHideEnd] = useState(false);
   // The arena board acts out the last move (a checkmate: the king's death) before the result shows.
   const [arenaBusy, setArenaBusy] = useState(false);
@@ -222,7 +243,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
       .then(([uci, why]) => {
         const m = game.chess.move(uciParams(uci));
         game.history.push(uci);
-        playMoveSound(feel.soundSet, m.san);
+        playMoveSound(soundNow.current, m.san);
         if (feel.vibrate) buzzMove(m.san);
         setBotWhy(why);
         finishIfOver(game);
@@ -300,7 +321,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
     if (!game || over || thinking || game.chess.turn() !== game.color) return;
     const fenBefore = game.chess.fen();
     try {
-      playMoveSound(feel.soundSet, game.chess.move(uciParams(uci)).san);
+      playMoveSound(soundSet, game.chess.move(uciParams(uci)).san);
     } catch {
       force((x) => x + 1);
       return;
@@ -534,6 +555,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
                   vs {engine === "maia" ? `Maia ${elo}` : `Stockfish ${elo}`}
                   {status ? ` · ${status}` : ""}
                 </span>
+                <Switch checked={sound} onChange={setSound} label="Sound" />
                 <Switch checked={showEval} onChange={setShowEval} label="Eval bar" />
               </div>
               <div className="grid grid-cols-4 gap-2">
@@ -744,19 +766,8 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
                 label="Drill"
                 hint="After each move: engine verdict, your usual move and the line; a banner with take-back on mistakes or when you leave your repertoire."
               />
-              <Switch
-                checked={arena}
-                onChange={(v) => {
-                  setArena(v);
-                  try {
-                    localStorage.setItem("botArena", v ? "1" : "0");
-                  } catch {
-                    /* private mode */
-                  }
-                }}
-                label="Arena mode"
-                hint="Play on a 3D board where the pieces fight it out: every piece kills its own way."
-              />
+              <Switch checked={arena} onChange={setArena} label="Arena mode" hint="Play on a 3D board where the pieces fight it out: every piece kills its own way." />
+              <Switch checked={sound} onChange={setSound} label="Sound" />
               <Switch checked={showEval} onChange={setShowEval} label="Show eval bar during the game" />
               <Button variant="primary" size="lg" onClick={newGame}>
                 <Play size={16} /> {over ? "New game" : "Start game"}

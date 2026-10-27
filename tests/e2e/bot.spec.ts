@@ -23,6 +23,11 @@ test("Stockfish game: move, reply, top moves, eval bar, browsing, resign", async
   await controls.getByText("Eval bar").click();
   await expect(page.getByTestId("eval-bar")).toBeVisible();
 
+  // Sound can be switched off during the game; that is remembered for the next one.
+  await expect(controls.getByRole("switch", { name: "Sound" })).toBeChecked();
+  await controls.getByText("Sound").click();
+  await expect(controls.getByRole("switch", { name: "Sound" })).not.toBeChecked();
+
   // Arrows under the board browse the game; the last arrow returns to it.
   await controls.getByRole("button", { name: "Previous move" }).click();
   await expect(page.getByText(/Move 1\/2/)).toBeVisible();
@@ -31,6 +36,9 @@ test("Stockfish game: move, reply, top moves, eval bar, browsing, resign", async
 
   await controls.getByRole("button", { name: "Resign" }).click();
   await expect(page.getByTestId("bot-result")).toContainText("You lost");
+  await page.reload();
+  await nav(page, "play");
+  await expect(page.getByRole("switch", { name: "Sound" })).not.toBeChecked();
   expect(errors).toEqual([]);
 });
 

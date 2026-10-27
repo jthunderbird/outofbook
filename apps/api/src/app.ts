@@ -42,6 +42,11 @@ export async function buildApp(o: AppOptions): Promise<FastifyInstance> {
   // gzip at a low level: 2,000 evals (678 KB) shrink to about 150 KB in a few ms;
   // higher levels and brotli cost more server time than they save on the wire.
   await app.register(compress, { threshold: 1024, encodings: ["gzip"], zlibOptions: { level: 1 } });
+  // The Maia model is left alone: it shrinks by under 10%, and a gzipped stream has
+  // no Content-Length, so the download progress bar would sit at 0%.
+  app.addHook("onRequest", async (req) => {
+    if (/\.onnx(\?|$)/.test(req.url)) req.headers["x-no-compression"] = "1";
+  });
   if (o.corsOrigins?.length) await app.register(cors, { origin: o.corsOrigins, methods: ["GET", "POST", "PUT", "DELETE"], maxAge: 86400 });
   app.addContentTypeParser("application/gzip", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
 
