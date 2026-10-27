@@ -130,17 +130,89 @@ function bolt(color: Color) {
   return { mesh: m, at: end };
 }
 
+/**
+ * The squares' veins carry the storm: light flows along them in slow waves, and
+ * a strike sends a surge rippling out across the board from where it lands.
+ * One set of uniforms drives every square.
+ */
+function veinShader(m: MeshStandardMaterial, u: VeinUniforms) {
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWorld;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWorld;\nuniform float veinTime;\nuniform vec3 surge;\nuniform float veinFlash;").replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>
+        {
+          vec2 p = vWorld.xz;
+          // Slow waves of light running along the veins, two directions crossing.
+          float a = pow(0.5 + 0.5 * sin(dot(p, vec2(0.8, 0.6)) * 1.1 - veinTime * 2.2), 6.0);
+          float b = pow(0.5 + 0.5 * sin(dot(p, vec2(-0.5, 0.85)) * 0.9 - veinTime * 1.6 + 2.0), 8.0);
+          // The surge: a ring racing out from the strike (surge.xy), fading as it goes (surge.z: its radius).
+          float d = distance(p, surge.xy);
+          float ring = surge.z > 0.0 ? exp(-pow((d - surge.z) / 0.7, 2.0)) * smoothstep(13.0, 3.0, surge.z) : 0.0;
+          totalEmissiveRadiance *= 1.3 + 4.5 * (a + b) + 9.0 * ring + 4.0 * veinFlash;
+        }`,
+    );
+  };
+  m.customProgramCacheKey = () => "storm-veins";
+}
+
+interface VeinUniforms {
+  veinTime: { value: number };
+  surge: { value: Vector3 };
+  veinFlash: { value: number };
+  [k: string]: { value: unknown };
+}
+
+/** A small arc crawling over the board's surface, between two points a square or three apart. */
+function crawler(color: Color, from?: Vector3) {
+  const a = from ?? new Vector3((Math.random() - 0.5) * 7.6, 0, (Math.random() - 0.5) * 7.6);
+  const ang = Math.random() * Math.PI * 2;
+  const len = 1.2 + Math.random() * 2.2;
+  const b = a.clone().add(new Vector3(Math.cos(ang) * len, 0, Math.sin(ang) * len));
+  b.x = Math.max(-3.9, Math.min(3.9, b.x));
+  b.z = Math.max(-3.9, Math.min(3.9, b.z));
+  const N = 14;
+  const side = new Vector3(-(b.z - a.z), 0, b.x - a.x).normalize();
+  const pts: Vector3[] = [];
+  for (let i = 0; i <= N; i++) {
+    const p = a.clone().lerp(b, i / N);
+    if (i > 0 && i < N) p.addScaledVector(side, (Math.random() - 0.5) * 0.35);
+    p.y = 0.012;
+    pts.push(p);
+  }
+  // Flat on the board: widened across the board's plane.
+  const pos: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const [p, q] = [pts[i], pts[i + 1]];
+    const dir = q.clone().sub(p);
+    const n = new Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(0.05);
+    const [pa, pb, qa, qb] = [p.clone().sub(n), p.clone().add(n), q.clone().sub(n), q.clone().add(n)];
+    pos.push(...pa.toArray(), ...pb.toArray(), ...qa.toArray(), ...pb.toArray(), ...qb.toArray(), ...qa.toArray());
+  }
+  const g = new BufferGeometry();
+  g.setAttribute("position", new Float32BufferAttribute(pos, 3));
+  return new Mesh(g, new MeshBasicMaterial({ color: color.clone().multiplyScalar(3.5), transparent: true, blending: AdditiveBlending, depthWrite: false, side: 2, toneMapped: false }));
+}
+
 function stormKeep(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
-  const veins: MeshStandardMaterial[] = [];
+  const vu: VeinUniforms = { veinTime: { value: 0 }, surge: { value: new Vector3(0, 0, -1) }, veinFlash: { value: 0 } };
   const crystals: Sprite[] = [];
   const BOLT = new Color(0xb8a8ff);
 
   // The squares: storm slate with lightning veins, and veined marble.
-  void Promise.all([texture(art("stormcourt", "slate.webp")), texture(art("stormcourt", "marble.webp")), texture(art("stormcourt", "slate-veins.webp"), false)]).then(([slate, marble, glow]) => {
+  void Promise.all([
+    texture(art("stormcourt", "slate.webp")),
+    texture(art("stormcourt", "marble.webp")),
+    texture(art("stormcourt", "slate-veins.webp"), false),
+    texture(art("stormcourt", "marble-veins.webp"), false),
+  ]).then(([slate, marble, glow, marbleGlow]) => {
     if (!group.parent) return;
-    for (const t of [slate, marble, glow]) t.wrapS = t.wrapT = RepeatWrapping;
+    for (const t of [slate, marble, glow, marbleGlow]) t.wrapS = t.wrapT = RepeatWrapping;
     for (const sq of board.squares.values()) {
       const light = sq.userData.light as boolean;
       // Each square a different part of the stone, so no two look alike.
@@ -156,12 +228,13 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
         return c;
       };
       const m = new MeshStandardMaterial({ map: cut(light ? marble : slate), roughness: light ? 0.22 : 0.3, metalness: 0.05 });
-      if (!light) {
-        m.emissive = new Color(0x5a8cff);
-        m.emissiveMap = cut(glow);
-        m.emissiveIntensity = 0.5;
-        veins.push(m);
-      }
+      // Electric blue in the slate, a paler silver-blue in the marble.
+      m.emissive = new Color(light ? 0x3f86ff : 0x4f8cff);
+      // A touch off white, so the marble's blue veins can show.
+      if (light) m.color.setHex(0xd4d9e4);
+      m.emissiveMap = cut(light ? marbleGlow : glow);
+      m.emissiveIntensity = light ? 1.6 : 1;
+      veinShader(m, vu);
       (sq.material as MeshStandardMaterial).dispose();
       sq.material = m;
     }
@@ -235,6 +308,14 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
   let next = 2500;
   let flash = 0;
   let bolts: { mesh: Mesh; life: number }[] = [];
+  let crawl = 1500;
+  /** Where the last strike's surge started, and how far it has run. */
+  const surge = vu.surge.value;
+  const spark = (from?: Vector3) => {
+    const m = crawler(BOLT, from);
+    group.add(m);
+    bolts.push({ mesh: m, life: 140 + Math.random() * 120 });
+  };
   const seaU = (sea.material as ShaderMaterial).uniforms;
   return {
     update(ms) {
@@ -249,6 +330,24 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
         bolts.push({ mesh: b.mesh, life: 260 });
         seaU.flashAt.value.copy(b.at);
         flash = 1;
+        // The surge comes in from the board's edge nearest the strike, with arcs where it lands.
+        const edge = b.at.clone().setY(0).normalize().multiplyScalar(4);
+        surge.set(edge.x, edge.z, 0);
+        for (let i = 0; i < 3; i++) spark(edge.clone().multiplyScalar(0.95));
+      }
+      // Now and then a small arc crawls over the board on its own.
+      crawl -= ms;
+      if (crawl <= 0) {
+        crawl = 700 + Math.random() * 1600;
+        spark();
+        if (Math.random() < 0.4) spark();
+      }
+      if (surge.z >= 0) surge.z = surge.z > 14 ? -1 : surge.z + ms * 0.009;
+      // Arcs follow the surge's front now and then.
+      if (surge.z > 1 && surge.z < 9 && Math.random() < ms / 120) {
+        const a = Math.random() * Math.PI * 2;
+        const p = new Vector3(surge.x + Math.cos(a) * surge.z, 0, surge.y + Math.sin(a) * surge.z);
+        if (Math.abs(p.x) < 3.9 && Math.abs(p.z) < 3.9) spark(p);
       }
       for (const b of bolts) {
         b.life -= ms;
@@ -267,8 +366,8 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
       seaU.flash.value = f;
       sky.color.setHex(0x9098a8).multiplyScalar(1 + f * 0.9);
       strikeLight.intensity = f * 1.4;
-      const breathe = 0.5 + 0.15 * Math.sin(t / 900);
-      for (const v of veins) v.emissiveIntensity = breathe + f * 2.2;
+      vu.veinTime.value = t / 1000;
+      vu.veinFlash.value = f;
       for (const c of crystals) c.material.opacity = 0.55 + 0.2 * Math.sin(t / 300 + c.position.x) + f * 0.45;
     },
     dispose() {
