@@ -1,8 +1,10 @@
-// Modelled, rigged figures (glTF made with Meshy AI, packed by
-// scripts/pack-model.mjs): loaded once, cloned per piece, each with its own
-// animation mixer. Until a model has loaded, its tribe draws the code-built
-// figure instead; modelsReady tells the arena when to rebuild with the models.
-import { AnimationMixer, Box3, Vector3, type AnimationClip, type Mesh, type Object3D, type SkinnedMesh } from "three";
+// Modelled figures (glTF made with Meshy AI, packed by scripts/pack-model.mjs):
+// loaded once, cloned per piece. Rigged ones get their own animation mixer and
+// idle in place. One model serves both sides: light pieces are recolored in the
+// shader (dark cloth to ivory, gold kept). Each stands centered on its square.
+// Until a model has loaded, its tribe draws the code-built figure instead;
+// modelsReady tells the arena when to rebuild with the models.
+import { AnimationMixer, Box3, Vector3, type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D, type SkinnedMesh } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { ownMaterials } from "./fx";
@@ -35,27 +37,71 @@ async function load(name: string) {
 /** Every model, loaded; resolves even if one fails (its piece stays code-built). */
 export const modelsReady: Promise<void> = Promise.all(Object.keys(URLS).map((u) => load(u.replace(/^.*\/(.*)\.glb$/, "$1")).catch((e) => console.error("model", u, e)))).then(() => {});
 
-/** A figure from a loaded model, height tall, idling; null until the model has loaded. */
-export function modelFig(name: string, role: Role, side: Side, height: number): Fig | null {
+/**
+ * Light side: dark cloth and metal become ivory and silver, keeping their shading;
+ * warm saturated colors (gold trim, fire) stay as they are.
+ */
+function lighten(m: Material) {
+  const s = m as MeshStandardMaterial;
+  if (!s.isMeshStandardMaterial) return;
+  s.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      "#include <map_fragment>",
+      `#include <map_fragment>
+      {
+        vec3 c = diffuseColor.rgb;
+        float l = dot(c, vec3(0.299, 0.587, 0.114));
+        float mx = max(c.r, max(c.g, c.b));
+        float sat = mx > 0.0 ? (mx - min(c.r, min(c.g, c.b))) / mx : 0.0;
+        float warm = smoothstep(0.3, 0.55, sat) * step(c.b, c.g) * step(c.g, c.r * 1.05);
+        vec3 ivory = vec3(0.93, 0.89, 0.8) * (0.42 + 0.95 * sqrt(l));
+        diffuseColor.rgb = mix(ivory, c, warm);
+      }`,
+    );
+  };
+  s.customProgramCacheKey = () => "legions-light";
+}
+
+export interface ModelOptions {
+  /** Turns a model that does not face +z. */
+  turn?: number;
+  /** The idle clip, if not "Idle". */
+  idle?: string;
+}
+
+/** A figure from a loaded model, height tall, centered and idling; null until the model has loaded. */
+export function modelFig(name: string, role: Role, side: Side, height: number, o: ModelOptions = {}): Fig | null {
   const m = loaded.get(name);
   if (!m) return null;
   const f = new Fig(role, side, height);
-  const body = clone(m.gltf.scene) as Object3D;
-  body.scale.setScalar(height / m.height);
-  body.traverse((o) => {
-    const mesh = o as Mesh;
+  const model = clone(m.gltf.scene) as Object3D;
+  model.scale.setScalar(height / m.height);
+  model.rotation.y = o.turn ?? 0;
+  model.updateMatrixWorld(true);
+  // Centered on the square: on the hips for a rigged figure (a held staff or sword
+  // does not pull it aside), on its footprint otherwise.
+  const box = new Box3().setFromObject(model);
+  const hips = model.getObjectByName("Hips");
+  const c = hips ? hips.getWorldPosition(new Vector3()) : box.getCenter(new Vector3());
+  // Feet on the board, whatever the model's origin.
+  model.position.set(-c.x, -box.min.y, -c.z);
+  model.traverse((x) => {
+    const mesh = x as Mesh;
     if (!mesh.isMesh) return;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     // Animated skins move outside their rest-pose bounds.
-    if ((o as SkinnedMesh).isSkinnedMesh) o.frustumCulled = false;
+    if ((x as SkinnedMesh).isSkinnedMesh) x.frustumCulled = false;
   });
-  f.body.add(body);
+  f.body.add(model);
   f.mats = ownMaterials(f.body);
-  const idle = m.clips.has("Combat_Stance") ? "Combat_Stance" : [...m.clips.keys()][0];
-  f.anim = { mixer: new AnimationMixer(body), clips: m.clips, idle, hand: body.getObjectByName("RightHand") ?? undefined };
-  f.play(idle, { loop: true, fade: 0, speed: 0.7 });
-  // Not all in step.
-  f.anim.mixer.update(Math.random() * 2);
+  if (side === "w") f.mats.forEach(lighten);
+  if (m.clips.size) {
+    const idle = o.idle && m.clips.has(o.idle) ? o.idle : m.clips.has("Idle") ? "Idle" : [...m.clips.keys()][0];
+    f.anim = { mixer: new AnimationMixer(model), clips: m.clips, idle, hand: model.getObjectByName("RightHand") ?? undefined };
+    f.play(idle, { loop: true, fade: 0 });
+    // Not all in step.
+    f.anim.mixer.update(Math.random() * 2);
+  }
   return f;
 }

@@ -366,12 +366,21 @@ class Acts {
     let phase = 0;
     let walking = true;
     let foot = 0;
+    // A modelled soldier walks with its walk clip; a built one swings its legs.
+    let clip = false;
     const stop = this.loop((ms) => {
       if (walking) phase += ms * 0.012;
       // A footstep each time a leg passes under the body.
       if (walking && Math.floor(phase / Math.PI) !== foot) {
         foot = Math.floor(phase / Math.PI);
         this.sound.play(`step${1 + (foot % 3)}` as "step1", { gain: 0.45 });
+      }
+      if (f.anim) {
+        if (walking !== clip) {
+          clip = walking;
+          if (walking) void f.play("Walking", { loop: true, speed: 1.2 });
+        }
+        return;
       }
       const s = walking ? Math.sin(phase) : 0;
       f.legs[0].rotation.x = s * 0.6;
@@ -418,6 +427,21 @@ class Acts {
       phase += ms * 0.02;
       const s = Math.sin(phase);
       const c = Math.sin(phase + 0.6);
+      if (!f.hooves.length) {
+        // A modelled horse (no legs to move): it surges, rocking fore and aft, and sheds lightning.
+        f.body.rotation.x = s * 0.12;
+        f.body.position.y = Math.max(0, s) * 0.08;
+        if (Math.random() < 0.6)
+          this.fx.spawn(f.middle().add(new Vector3((Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.4)), {
+            color: BOLT[f.side],
+            size: 0.03,
+            vel: new Vector3((Math.random() - 0.5) * 1.5, Math.random() * 0.8, (Math.random() - 0.5) * 1.5),
+            life: 300,
+            gravity: 0,
+            glow: true,
+          });
+        return;
+      }
       const [fl, fr, bl, br] = f.hooves;
       fl.rotation.x = s * 0.7;
       fr.rotation.x = c * 0.7;
@@ -480,6 +504,7 @@ class Acts {
       const th = -0.7 * k;
       f.body.rotation.x = th;
       f.body.position.set(0, -0.2 * Math.sin(th), -0.2 + 0.2 * Math.cos(th));
+      if (!fl) return;
       for (const [leg, off] of [
         [fl, 0],
         [fr, 1.4],

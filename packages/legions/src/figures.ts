@@ -7,6 +7,8 @@ import {
   AdditiveBlending,
   LoopOnce,
   LoopRepeat,
+  RepeatWrapping,
+  SRGBColorSpace,
   type AnimationAction,
   type AnimationClip,
   type AnimationMixer,
@@ -102,7 +104,7 @@ export class Fig {
     for (const r of this.runes) r.visible = false;
     this.floating = false;
     clipAbove(this.mats, null);
-    if (this.anim && this.anim.current?.getClip().name !== this.anim.idle) this.play(this.anim.idle, { loop: true, speed: 0.7 });
+    if (this.anim && this.anim.current?.getClip().name !== this.anim.idle) this.play(this.anim.idle, { loop: true });
   }
 
   /**
@@ -127,7 +129,7 @@ export class Fig {
       const done = (e: { action: AnimationAction }) => {
         if (e.action !== next) return;
         a.mixer.removeEventListener("finished", done);
-        if (!o.hold && a.current === next) this.play(a.idle, { loop: true, fade: 0.3, speed: 0.7 });
+        if (!o.hold && a.current === next) this.play(a.idle, { loop: true, fade: 0.3 });
         resolve();
       };
       a.mixer.addEventListener("finished", done);
@@ -170,6 +172,13 @@ export class Fig {
 
   /** Sword holders: a chop from overhead, or a slash across; resolves at the hit. */
   async swing(clock: Clock, kind: "chop" | "slash") {
+    if (this.anim?.clips.has("Attack")) {
+      // A modelled fighter: its attack clip, resolving as the blow lands.
+      const clip = this.anim.clips.get("Attack")!;
+      void this.play("Attack", { speed: 1.4 });
+      await tween(clock, Math.min(700, (clip.duration / 1.4) * 450), () => {});
+      return;
+    }
     const a = this.arm;
     if (!a) return;
     const rest = (a.userData.rest as Euler).clone();
@@ -993,16 +1002,95 @@ function soldier(side: Side): Fig {
 // ---------- Rook ----------
 
 /** A tower of loose dressed stones (each can fall away and come back), runes glowing between rows when magic moves it. */
+/**
+ * Dressed stone, drawn once: grain, pits and chisel strokes as a color map, and a
+ * normal map from the same height field, so blocks catch the light like the
+ * modelled figures do.
+ */
+let stoneMaps: { map: CanvasTexture; normal: CanvasTexture } | null = null;
+function stoneTextures() {
+  if (stoneMaps) return stoneMaps;
+  const N = 256;
+  const h = new Float32Array(N * N);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  // Height: soft noise, pits, and a few chisel strokes.
+  for (let o = 0; o < 4; o++) {
+    const cells = 4 << o;
+    const g = Array.from({ length: (cells + 1) * (cells + 1) }, rnd);
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++) {
+        const fx = (x / N) * cells;
+        const fy = (y / N) * cells;
+        const ix = Math.floor(fx);
+        const iy = Math.floor(fy);
+        const tx = fx - ix;
+        const ty = fy - iy;
+        const at = (i: number, j: number) => g[(j % (cells + 1)) * (cells + 1) + (i % (cells + 1))];
+        const v = at(ix, iy) * (1 - tx) * (1 - ty) + at(ix + 1, iy) * tx * (1 - ty) + at(ix, iy + 1) * (1 - tx) * ty + at(ix + 1, iy + 1) * tx * ty;
+        h[y * N + x] += v / (1 << o);
+      }
+  }
+  for (let k = 0; k < 90; k++) {
+    const cx = rnd() * N;
+    const cy = rnd() * N;
+    const r = 1 + rnd() * 3;
+    for (let y = Math.floor(cy - r); y <= cy + r; y++)
+      for (let x = Math.floor(cx - r); x <= cx + r; x++) if (x >= 0 && y >= 0 && x < N && y < N && (x - cx) ** 2 + (y - cy) ** 2 < r * r) h[y * N + x] -= 0.35;
+  }
+  for (let k = 0; k < 26; k++) {
+    let x = rnd() * N;
+    let y = rnd() * N;
+    const a = (rnd() - 0.5) * 0.8;
+    for (let i = 0; i < 18; i++, x += Math.cos(a) * 1.5, y += Math.sin(a) * 1.5) if (x >= 0 && y >= 0 && x < N && y < N) h[Math.floor(y) * N + Math.floor(x)] -= 0.25;
+  }
+  const make = (fill: (i: number, d: Uint8ClampedArray, o: number) => void) => {
+    const c = document.createElement("canvas");
+    c.width = c.height = N;
+    const g = c.getContext("2d")!;
+    const img = g.createImageData(N, N);
+    for (let i = 0; i < N * N; i++) fill(i, img.data, i * 4);
+    g.putImageData(img, 0, 0);
+    const t = new CanvasTexture(c);
+    t.wrapS = t.wrapT = RepeatWrapping;
+    return t;
+  };
+  const map = make((i, d, o) => {
+    const v = 150 + h[i] * 50;
+    d[o] = v;
+    d[o + 1] = v;
+    d[o + 2] = v * 1.04;
+    d[o + 3] = 255;
+  });
+  map.colorSpace = SRGBColorSpace;
+  const normal = make((i, d, o) => {
+    const x = i % N;
+    const y = Math.floor(i / N);
+    const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x + N - 1) % N)];
+    const dy = h[((y + 1) % N) * N + x] - h[((y + N - 1) % N) * N + x];
+    const n = new Vector3(-dx * 2.2, -dy * 2.2, 1).normalize();
+    d[o] = (n.x * 0.5 + 0.5) * 255;
+    d[o + 1] = (n.y * 0.5 + 0.5) * 255;
+    d[o + 2] = (n.z * 0.5 + 0.5) * 255;
+    d[o + 3] = 255;
+  });
+  stoneMaps = { map, normal };
+  return stoneMaps;
+}
+
 function stoneTower(side: Side): Fig {
   const f = new Fig("r", side, 1.0);
-  const base = side === "b" ? 0x3a3f4f : 0xe6e2da;
+  // Slate with a violet cast for dark, pale limestone for light, as the modelled figures.
+  const base = side === "b" ? 0x4a4658 : 0xe4ddd0;
   const magic = MAGIC[side].getHex();
-  const block = new RoundedBoxGeometry(0.25, 0.19, 0.15, 1, 0.025);
-  const merlon = new RoundedBoxGeometry(0.17, 0.16, 0.15, 1, 0.025);
+  const block = new RoundedBoxGeometry(0.25, 0.19, 0.15, 3, 0.022);
+  const merlon = new RoundedBoxGeometry(0.17, 0.16, 0.15, 3, 0.022);
   const R = 0.29;
+  const tex = stoneTextures();
   const add = (geo: BufferGeometry, a: number, y: number) => {
-    const c = new Color(base).offsetHSL(0, 0, (Math.random() - 0.5) * 0.06);
-    const s = mesh(geo, mat(c.getHex(), { rough: 0.45 }), Math.cos(a) * R, y, Math.sin(a) * R);
+    const c = new Color(base).offsetHSL(0, 0, (Math.random() - 0.5) * 0.08);
+    const m = new MeshStandardMaterial({ color: c, map: tex.map, normalMap: tex.normal, normalScale: new Vector2(1.4, 1.4), roughness: 0.82, metalness: 0.02 });
+    const s = mesh(geo, m, Math.cos(a) * R, y, Math.sin(a) * R);
     s.rotation.y = -a + Math.PI / 2;
     s.userData.home = { pos: s.position.clone(), rot: s.rotation.y };
     f.stones.push(s);
@@ -1010,9 +1098,16 @@ function stoneTower(side: Side): Fig {
   };
   for (let row = 0; row < 4; row++) for (let j = 0; j < 8; j++) add(block, ((j + (row % 2) * 0.5) / 8) * Math.PI * 2, 0.1 + row * 0.2);
   for (let j = 0; j < 4; j++) add(merlon, (j / 4) * Math.PI * 2 + Math.PI / 4, 0.88);
+  // Gold bands under the battlement and round the foot, like the modelled figures' trim.
+  const gold = mat(0xc9a14a, { metal: 0.9, rough: 0.3 });
+  for (const y of [0.79, 0.015]) {
+    const band = mesh(new TorusGeometry(R + 0.07, 0.016, 8, 40), gold, 0, y, 0);
+    band.rotation.x = Math.PI / 2;
+    f.body.add(band);
+  }
   f.core = new Group();
   f.core.add(
-    mesh(new CylinderGeometry(0.25, 0.27, 0.8, 24), mat(side === "b" ? 0x1a1d27 : 0xa8a49a), 0, 0.4, 0),
+    mesh(new CylinderGeometry(0.25, 0.27, 0.8, 24), new MeshStandardMaterial({ color: side === "b" ? 0x221f2c : 0xa8a196, map: tex.map, normalMap: tex.normal, roughness: 0.9 }), 0, 0.4, 0),
     mesh(new CylinderGeometry(0.27, 0.27, 0.01, 24), mat(side === "b" ? 0x262a36 : 0xc8c3b8), 0, 0.8, 0),
   );
   f.body.add(f.core);
@@ -1028,8 +1123,22 @@ function stoneTower(side: Side): Fig {
 }
 
 export function makeFig(role: Role, side: Side): Fig {
-  const f =
+  // Modelled figures (one model for both sides, light recolored), once loaded.
+  const modelled =
     role === "k"
+      ? modelFig("stormcourt-king", "k", side, 1.6)
+      : role === "q"
+        ? modelFig("stormcourt-queen", "q", side, 1.45)
+        : role === "b"
+          ? modelFig("stormcourt-bishop", "b", side, 1.4)
+          : role === "n"
+            ? modelFig("stormcourt-knight", "n", side, 1.15, { turn: KNIGHT_TURN })
+            : role === "p"
+              ? modelFig("stormcourt-pawn", "p", side, 0.85)
+              : null;
+  const f =
+    modelled ??
+    (role === "k"
       ? king(side)
       : role === "q"
         ? queen(side)
@@ -1038,10 +1147,13 @@ export function makeFig(role: Role, side: Side): Fig {
           : role === "b"
             ? side === "w"
               ? nobleBishop()
-              : (modelFig("stormcourt-bishop-dark", "b", "b", 1.5) ?? darkSorcerer())
+              : darkSorcerer()
             : role === "n"
               ? knight(side)
-              : soldier(side);
+              : soldier(side));
   f.root.rotation.y = side === "w" ? Math.PI : 0;
   return f;
 }
+
+/** How the storm horse model is turned to face +z like every figure (it already does). */
+const KNIGHT_TURN = 0;
