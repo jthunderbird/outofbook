@@ -393,7 +393,7 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
               <Select
                 value={live.gameBoard}
                 onChange={(e) => setL({ gameBoard: e.target.value })}
-                options={[["lichess", "Same as my Lichess board"], ["arena", "Arena (3D)"], ...BOARD_NAMES]}
+                options={[["lichess", "Same as my Lichess board"], ["arena", "Chess Legions (3D)"], ...BOARD_NAMES]}
                 data-testid="board-choice"
               />
             </Field>

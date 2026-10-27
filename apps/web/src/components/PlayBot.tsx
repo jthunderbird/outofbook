@@ -770,7 +770,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
                 label="Drill"
                 hint="After each move: engine verdict, your usual move and the line; a banner with take-back on mistakes or when you leave your repertoire."
               />
-              <Switch checked={arena} onChange={setArena} label="Arena mode" hint="Play on a 3D board where the pieces fight it out: every piece kills its own way." />
+              <Switch checked={arena} onChange={setArena} label="Legion mode" hint="Chess Legions: play on a 3D board where the pieces fight it out, every piece killing its own way." />
               <Switch checked={sound} onChange={setSound} label="Sound" />
               <Switch checked={showEval} onChange={setShowEval} label="Show eval bar during the game" />
               <Button variant="primary" size="lg" onClick={newGame}>
