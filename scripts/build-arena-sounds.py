@@ -18,7 +18,7 @@ KENNEY = {
 # name: (source, start s, length s or None for all, fade-out s)
 # Sources: "fs:<id>" (Freesound) or "kenney:<pack>:<file>".
 CLIPS = {
-    "order": ("fs:442774", 0, 1.3, 0.4),  # magic spell: the king's order
+    "order": ("fs:442774", 0, 0.6, 0.3),  # magic spell: the king's order (short: it plays every move)
     "step1": ("kenney:impact:footstep_concrete_000.ogg", 0, None, 0),
     "step2": ("kenney:impact:footstep_concrete_001.ogg", 0, None, 0),
     "step3": ("kenney:impact:footstep_concrete_002.ogg", 0, None, 0),

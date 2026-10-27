@@ -531,7 +531,7 @@ export class Arena {
   /** The king sends a piece: a gesture and an arc of magic from his staff to it. */
   private async order(king: Fig, target: Fig) {
     void king.cast(this.clock, "order");
-    this.sound.play("order", { gain: 0.6 });
+    this.sound.play("order", { gain: 0.3 });
     await wait(this.clock, 200);
     await magicArc(this.clock, this.scene, king.staffTip(), target.middle(), MAGIC[king.side], 480);
   }
