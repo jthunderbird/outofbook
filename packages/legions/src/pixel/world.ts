@@ -280,3 +280,43 @@ export function cliff(w: number, h: number) {
   g.fillRect(0, 2, w, 1);
   return c;
 }
+
+/** A tile at 128 px: the 32 px tile softened up, with fine detail (blades, ripples, grit) drawn over it, as HD-2D environments are high resolution under chunky sprites. */
+export function hiTile(kind: TileKind, frame = 0) {
+  const src = tile(kind, 32, 32, frame);
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(src, 0, 0, 128, 128);
+  let seed = kind.length * 977 + frame * 31 + 7;
+  const r = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+  if (kind === "grass" || kind === "grass2") {
+    for (let i = 0; i < 520; i++) {
+      const x = r() * 128;
+      const y = r() * 128;
+      g.strokeStyle = r() < 0.5 ? "rgba(30,90,30,.35)" : "rgba(190,240,120,.35)";
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + (r() - 0.5) * 3, y - 3 - r() * 5);
+      g.stroke();
+    }
+  } else if (kind === "water") {
+    for (let i = 0; i < 40; i++) {
+      const x = r() * 128;
+      const y = r() * 128;
+      g.strokeStyle = r() < 0.5 ? "rgba(200,240,255,.35)" : "rgba(10,50,120,.3)";
+      g.beginPath();
+      g.moveTo(x, y);
+      g.quadraticCurveTo(x + 8, y - 2, x + 16 + r() * 8, y);
+      g.stroke();
+    }
+  } else
+    for (let i = 0; i < 700; i++) {
+      g.fillStyle = r() < 0.5 ? "rgba(120,90,50,.3)" : "rgba(255,240,200,.3)";
+      g.fillRect(r() * 128, r() * 128, 1 + r() * 2, 1 + r() * 2);
+    }
+  return c;
+}

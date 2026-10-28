@@ -11,6 +11,7 @@ import {
   BufferGeometry,
   CanvasTexture,
   CircleGeometry,
+  ConeGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -22,7 +23,11 @@ import {
   MeshStandardMaterial,
   MirroredRepeatWrapping,
   Path,
+  PlaneGeometry,
   PointLight,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  NearestFilter,
   RepeatWrapping,
   ShaderMaterial,
   Shape,
@@ -43,6 +48,7 @@ import type { Board } from "./board";
 import { glowMap } from "./figures";
 import { woodPanel, woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
+import { castle, clouds as pixelClouds, cliff, hiTile, hills, mountains, sky as pixelSky } from "./pixel/world";
 
 export interface Court {
   id: string;
@@ -825,8 +831,121 @@ function hallGradient() {
   return hallBg;
 }
 
+// ---------- The Epoch Drifters' home: Epoch Plains ----------
+
+/**
+ * A floating island of meadow and pond in a dusk sky: grass and animated water
+ * squares, the island's rock beneath, and a pixel-art world far off (mountains,
+ * hills, a castle, drifting clouds) over a sea of cloud. Pixel art for any tribe.
+ */
+function epochPlains(scene: Scene, board: Board): CourtSet {
+  const group = new Group();
+  scene.add(group);
+  const smooth = (c: HTMLCanvasElement) => {
+    const t = new CanvasTexture(c);
+    t.magFilter = LinearFilter;
+    t.minFilter = LinearMipmapLinearFilter;
+    t.colorSpace = SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  };
+  const chunky = (c: HTMLCanvasElement, repeat?: number) => {
+    const t = new CanvasTexture(c);
+    t.magFilter = t.minFilter = NearestFilter;
+    t.colorSpace = SRGBColorSpace;
+    t.generateMipmaps = false;
+    if (repeat) {
+      t.wrapS = t.wrapT = RepeatWrapping;
+      t.repeat.set(repeat, repeat);
+    }
+    return t;
+  };
+  const grass = [new MeshStandardMaterial({ map: smooth(hiTile("grass")), roughness: 1 }), new MeshStandardMaterial({ map: smooth(hiTile("grass2")), roughness: 1 })];
+  const frames = [0, 1, 2, 3].map((i) => smooth(hiTile("water", i)));
+  const water = new MeshStandardMaterial({ map: frames[0], emissive: new Color(0x0a2a55), emissiveMap: frames[0], emissiveIntensity: 0.5, roughness: 0.6 });
+  let n = 0;
+  for (const sq of board.squares.values()) {
+    (sq.material as MeshStandardMaterial).dispose();
+    sq.material = sq.userData.light ? grass[n++ % 3 === 0 ? 1 : 0] : water;
+  }
+  // The plinth is the island's rim: grass on top, rock down the sides.
+  const rock = new MeshStandardMaterial({ map: chunky(cliff(32, 32), 3), roughness: 1 });
+  for (const w of board.walls) {
+    (w.material as MeshStandardMaterial).dispose();
+    w.material = rock;
+  }
+  const FLOOR = -1.4;
+  for (const [w, h, y] of [
+    [9, 0.5, FLOOR + 0.5],
+    [7.8, 0.7, FLOOR - 0.1],
+    [6.4, 0.8, FLOOR - 0.85],
+    [4.8, 0.9, FLOOR - 1.7],
+  ] as const) {
+    const b = new Mesh(new BoxGeometry(w, h, w), rock);
+    b.position.y = y;
+    b.receiveShadow = true;
+    group.add(b);
+  }
+  const tip = new Mesh(new ConeGeometry(2.3, 3.2, 7), rock);
+  tip.rotation.x = Math.PI;
+  tip.position.y = FLOOR - 3.6;
+  group.add(tip);
+  // The world far off, as pixel art cards, over a sea of cloud.
+  const layer = (c: HTMLCanvasElement, w: number, h: number, x: number, y: number, z: number) => {
+    const m = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: chunky(c), transparent: true, fog: false, depthWrite: false }));
+    m.position.set(x, y, z);
+    group.add(m);
+    return m;
+  };
+  const drift: Mesh[] = [];
+  layer(pixelSky(512, 128), 250, 66, 0, 8, -92);
+  layer(mountains(512, 70, 4, "#6b58b0", "#5846a0", 52), 200, 24, -10, -16, -76);
+  layer(castle(120, 84), 24, 17, 22, -15, -64);
+  layer(mountains(512, 56, 9, "#4a3f8c", "#3b3178", 40, false), 150, 14, 14, -15, -58);
+  layer(hills(512, 64, 3, "#2f6b4a", "#2f7a3c", "#58b050"), 130, 16, -3, -18, -48);
+  drift.push(layer(pixelClouds(512, 60, 1, "#ffd0d8", "#c486c4"), 70, 8, -20, -8, -40));
+  drift.push(layer(pixelClouds(512, 60, 2, "#ffe6ea", "#d9a0d0"), 60, 7, 18, -10, -24));
+  const sea = document.createElement("canvas");
+  sea.width = sea.height = 256;
+  const sg = sea.getContext("2d")!;
+  sg.fillStyle = "#e0839f";
+  sg.fillRect(0, 0, 256, 256);
+  for (const [seed, y] of [
+    [2, 0],
+    [1, 70],
+    [2, 140],
+    [1, 200],
+  ] as const)
+    sg.drawImage(pixelClouds(512, 60, seed, "#ffe6ea", "#d9a0d0"), 0, y, 256, 56);
+  const seaMesh = new Mesh(new PlaneGeometry(400, 400), new MeshBasicMaterial({ map: chunky(sea, 5) }));
+  seaMesh.rotation.x = -Math.PI / 2;
+  seaMesh.position.y = -19;
+  group.add(seaMesh);
+  const sun = new DirectionalLight(0xffc890, 1.1);
+  sun.position.set(-7, 9, 6);
+  const rim = new DirectionalLight(0x8ab4ff, 0.8);
+  rim.position.set(5, 6, -9);
+  group.add(sun, rim);
+  const prevBg = scene.background;
+  scene.background = new Color(0xe0839f);
+  let t = 0;
+  return {
+    update(ms) {
+      t += ms / 1000;
+      const f = frames[Math.floor(t * 4) % 4];
+      water.map = water.emissiveMap = f;
+      drift.forEach((d, i) => (d.position.x += (i + 1) * 0.004 * (d.position.x > 50 ? -20 : 1)));
+    },
+    dispose() {
+      group.removeFromParent();
+      scene.background = prevBg;
+    },
+  };
+}
+
 export const COURTS: Court[] = [
   { id: "staunton", name: "Tournament Hall", tribe: "staunton", top: "#4a3020", bottom: "#060403", dress: tournamentHall },
+  { id: "epoch-drifters", name: "Epoch Plains", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: epochPlains },
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
   { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
