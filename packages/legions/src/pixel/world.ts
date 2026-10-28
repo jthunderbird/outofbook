@@ -320,3 +320,51 @@ export function hiTile(kind: TileKind, frame = 0) {
     }
   return c;
 }
+
+/** The world beyond the board, as one picture drawn each frame: dusk sky, ridges, castle, hills, drifting clouds and a rocket crossing. 512 x 288. */
+export class Backdrop {
+  readonly cv = canvas(512, 288).c;
+  private g = this.cv.getContext("2d")!;
+  private L = {
+    sky: sky(512, 288),
+    far: mountains(512, 70, 4, "#6b58b0", "#5846a0", 52),
+    near: mountains(512, 56, 9, "#4a3f8c", "#3b3178", 40, false),
+    castle: castle(120, 84),
+    hills: hills(512, 64, 3, "#2f6b4a", "#2f7a3c", "#58b050"),
+    cloudA: clouds(512, 60, 1, "#ffd0d8", "#c486c4"),
+    cloudB: clouds(512, 60, 2, "#ffe6ea", "#d9a0d0"),
+  };
+  draw(t: number) {
+    const g = this.g;
+    const L = this.L;
+    g.imageSmoothingEnabled = false;
+    g.drawImage(L.sky, 0, 0);
+    g.drawImage(L.far, 0, 70);
+    g.drawImage(L.near, 0, 92);
+    g.drawImage(L.castle, 392, 36);
+    g.drawImage(L.hills, 0, 112);
+    for (const [c, sp, y] of [
+      [L.cloudA, 5, 20],
+      [L.cloudB, 11, 160],
+    ] as const) {
+      const x = Math.floor((t * sp) % 512);
+      g.drawImage(c, x, y);
+      g.drawImage(c, x - 512, y);
+    }
+    // The drifting ship from the logo.
+    const x = Math.floor(((t * 18) % 592) - 40);
+    const y = 44 + Math.round(Math.sin(t * 2) * 2);
+    const px = (dx: number, dy: number, w: number, h: number, c: string) => {
+      g.fillStyle = c;
+      g.fillRect(x + dx, y + dy, w, h);
+    };
+    px(-1, 0, 14, 5, "#1d1530");
+    px(0, 1, 12, 3, "#e03a4a");
+    px(2, 1, 6, 1, "#ffd24a");
+    px(9, 1, 3, 2, "#7fe9ff");
+    px(3, -2, 5, 2, "#ffd24a");
+    px(3, 4, 5, 2, "#ffd24a");
+    px(-4, 1, 3, 2, "#ff9ec2");
+    px(-7, 2, 3, 1, "#ffe9a0");
+  }
+}

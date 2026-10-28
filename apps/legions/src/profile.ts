@@ -95,7 +95,7 @@ export function useProfile() {
 export const getProfile = () => profile;
 export const update = (fn: (p: Profile) => Profile) => save(fn(profile));
 // Epoch Drifters and its stage are open to everyone while the tribe is being previewed.
-const PREVIEW: string[] = ["tribe:epoch-drifters", "court:epoch-drifters"];
+const PREVIEW: string[] = ["tribe:epoch-drifters", "court:epoch-drifters", "court:epoch-flat"];
 export const owns = (p: Profile, id: ItemId) => p.owned.includes(id) || PREVIEW.includes(id);
 
 /** What a game's end brought: XP, a level reached, items unlocked. */

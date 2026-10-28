@@ -6,6 +6,7 @@
 import {
   Color,
   DoubleSide,
+  type Intersection,
   Mesh,
   MeshBasicMaterial,
   MeshDepthMaterial,
@@ -29,6 +30,9 @@ import type { Stage, Tribe, TribeMove } from "./tribe";
 const HEIGHT: Record<Role, number> = { p: 1.1, n: 1.4, b: 1.4, r: 1.4, q: 1.4, k: 1.4 };
 const plane = new PlaneGeometry(1, 1).translate(0, 0.5, 0);
 const UP = new Vector3(0, 1, 0);
+
+/** How far the cards lean back: a little in a 3D view; at the camera's own angle in the flat one, so they stand upright on the screen. Set by the scene. */
+export const lean = { tilt: 0.3 };
 
 const pixelTexture = (c: HTMLCanvasElement) => {
   const t = new CanvasTexture(c);
@@ -75,6 +79,18 @@ function epochFigure(role: Role, side: Side): Fig {
     }),
   );
   card.scale.set(h, h, 1);
+  // Only the drawn pixels can be tapped: a card's empty corners must not take a tap meant for the square or piece behind it.
+  const alpha = src.getContext("2d")!.getImageData(0, 0, 32, 32).data;
+  card.raycast = (caster, out) => {
+    const hits: Intersection[] = [];
+    Mesh.prototype.raycast.call(card, caster, hits);
+    for (const hit of hits) {
+      if (!hit.uv) continue;
+      const x = Math.min(31, Math.floor(hit.uv.x * 32));
+      const y = Math.min(31, Math.floor((1 - hit.uv.y) * 32));
+      if (alpha[(y * 32 + x) * 4 + 3] > 127) out.push(hit);
+    }
+  };
   card.castShadow = true;
   card.customDepthMaterial = new MeshDepthMaterial({ depthPacking: RGBADepthPacking, map, alphaTest: 0.5 });
   // Turn to the camera about the vertical, whatever way the figure is turned, unless it is knocked over.
@@ -87,7 +103,7 @@ function epochFigure(role: Role, side: Side): Fig {
     card.getWorldPosition(at);
     q.setFromAxisAngle(UP, Math.atan2(camera.position.x - at.x, camera.position.z - at.z));
     card.quaternion.copy(pq.invert()).multiply(q);
-    card.rotateX(-0.3);
+    card.rotateX(-lean.tilt);
     card.updateMatrixWorld(true);
   };
   const blob = new Mesh(new PlaneGeometry(0.95, 0.55).rotateX(-Math.PI / 2), new MeshBasicMaterial({ map: shadowBlob(), transparent: true, depthWrite: false }));

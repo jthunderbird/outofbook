@@ -72,6 +72,15 @@ export function QuickPlay({ go }: { go: (s: Screen) => void }) {
             })}
           </div>
         </div>
+        <div className="toggle">
+          <span>
+            Pixel look
+            <div className="muted" style={{ fontSize: 13, maxWidth: 360 }}>
+              Draws the whole battle at 16-bit resolution and palette, including 3D tribes.
+            </div>
+          </span>
+          <button className={`switch${p.pixel ? " on" : ""}`} aria-label="Pixel look" aria-pressed={p.pixel} onClick={() => update((q) => ({ ...q, pixel: !q.pixel }))} />
+        </div>
         <div>
           <div style={{ marginBottom: 8 }}>You play</div>
           <div className="seg">

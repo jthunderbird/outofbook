@@ -38,6 +38,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { Clock, FIRE_TIME, Particles, SPEED } from "./fx";
 import { court, courtBackground, type CourtSet } from "./courts";
+import { lean } from "./epoch";
 import { buildBoard, squareAt, type Board } from "./board";
 import { type Fig, type Role, type Side } from "./figures";
 import { stormcourt } from "./stormcourt";
@@ -237,18 +238,32 @@ export class LegionsScene {
     this.renderer.domElement.remove();
   }
 
-  setOrientation(o: Side) {
-    this.orientation = o;
-    const s = o === "w" ? 1 : -1;
-    if (this.pixel) {
-      // Low and oblique, pulled back on narrow screens so the board stays whole.
+  /** The camera's place: the court's own view if it has one (fixed or just a start), else the usual one. */
+  private applyView() {
+    const s = this.orientation === "w" ? 1 : -1;
+    const v = this.court?.view;
+    this.controls.enabled = !v?.fixed;
+    // A fixed view sits far off, with a narrow lens, beyond the orbit's usual range.
+    this.controls.minDistance = v?.fixed ? 1 : 9;
+    this.controls.maxDistance = v?.fixed ? 400 : 20;
+    this.camera.fov = v?.fov ?? 36;
+    this.camera.updateProjectionMatrix();
+    lean.tilt = v?.fixed ? v.pitch : 0.3;
+    if (v) {
+      // Pulled back on narrow screens so the board stays whole.
       const k = Math.max(1, 1.3 / this.camera.aspect);
-      this.camera.position.set(0, 5.4, 11.4 * k * s);
-      this.controls.target.set(0, 0.8, 0);
+      this.camera.position.set(0, v.ty + Math.sin(v.pitch) * v.dist * k, Math.cos(v.pitch) * v.dist * k * s);
+      this.controls.target.set(0, v.ty, 0);
     } else {
       this.camera.position.set(0, 12.6, 9.4 * s);
       this.controls.target.set(0, 0, 0.5 * s);
     }
+  }
+
+  setOrientation(o: Side) {
+    this.orientation = o;
+    const s = o === "w" ? 1 : -1;
+    this.applyView();
     this.sun.position.set(4 * s, 12, 6 * s);
     this.controls.update();
     this.drawLabels();
@@ -300,6 +315,7 @@ export class LegionsScene {
     this.scene.background = courtBackground(id);
     const c = court(id);
     if (c.dress) this.court = c.dress(this.scene, this.board);
+    this.applyView();
     this.highlight();
   }
 
@@ -313,16 +329,14 @@ export class LegionsScene {
   }
 
   /**
-   * The pixel look for any tribe: the camera fixed at a low, oblique angle, the
-   * picture drawn at a few hundred pixels tall and scaled up without smoothing,
-   * and its colors cut to a 16-bit-style palette. A way to see 3D figures as a 2D game would.
+   * The pixel look for any tribe: the picture drawn at 288 pixels tall and scaled
+   * up without smoothing, its colors cut to a 16-bit-style palette. A way to see
+   * 3D figures as a 2D game would.
    */
   setPixel(on: boolean) {
     if (on === this.pixel) return;
     this.pixel = on;
-    this.controls.enabled = !on;
     this.renderer.domElement.style.imageRendering = on ? "pixelated" : "";
-    this.setOrientation(this.orientation);
     this.post();
     this.resize();
   }
@@ -392,8 +406,8 @@ export class LegionsScene {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     if (!w || !h) return;
-    // The pixel look draws about 300 pixels tall, whatever the screen.
-    this.renderer.setPixelRatio(this.pixel ? Math.min(1, 300 / h) : Math.min(window.devicePixelRatio, 2));
+    // The pixel look draws 288 pixels tall, whatever the screen.
+    this.renderer.setPixelRatio(this.pixel ? Math.min(1, 288 / h) : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(w, h, false);
     this.composer?.setPixelRatio(this.renderer.getPixelRatio());
     this.composer?.setSize(w, h);
@@ -407,10 +421,8 @@ export class LegionsScene {
       this.camera.clearViewOffset();
       this.camera.aspect = w / h;
     }
-    // A wide lens in the pixel look, so the sky above the board shows.
-    this.camera.fov = this.pixel ? 50 : 36;
     this.camera.updateProjectionMatrix();
-    if (this.pixel) this.setOrientation(this.orientation);
+    if (this.court?.view?.fixed) this.applyView();
   }
 
   private drawLabels() {
