@@ -473,7 +473,7 @@ export class LegionsScene {
     this.checkLight.intensity = 0;
     const mark = (sq: string, color: number, opacity: number, geo: CircleGeometry | RingGeometry | PlaneGeometry) => {
       const m = new Mesh(geo, new MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
-      m.position.copy(squareAt(sq)).setY(0.006);
+      m.position.copy(squareAt(sq)).setY(this.court?.markY ?? 0.006);
       m.renderOrder = 1;
       this.marks.add(m);
     };
@@ -493,8 +493,11 @@ export class LegionsScene {
     }
     if (this.selected) {
       mark(this.selected, 0x6fd36f, 0.5, tile);
-      for (const m of this.movesFrom(this.selected))
-        mark(m.to, 0x6fd36f, 0.75, m.captured ? new RingGeometry(0.38, 0.47, 32).rotateX(-Math.PI / 2) : new CircleGeometry(0.14, 20).rotateX(-Math.PI / 2));
+      for (const m of this.movesFrom(this.selected)) {
+        // A dark halo under each marker keeps it readable on any square, light or dark, grass or soil.
+        mark(m.to, 0x000000, 0.45, m.captured ? new RingGeometry(0.34, 0.51, 32).rotateX(-Math.PI / 2) : new CircleGeometry(0.2, 24).rotateX(-Math.PI / 2));
+        mark(m.to, 0x7dff7d, 0.95, m.captured ? new RingGeometry(0.38, 0.47, 32).rotateX(-Math.PI / 2) : new CircleGeometry(0.14, 20).rotateX(-Math.PI / 2));
+      }
     }
   }
 

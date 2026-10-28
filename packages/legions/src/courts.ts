@@ -60,6 +60,8 @@ export interface Court {
 
 /** A court in the scene: updated each frame, removed for another. */
 export interface CourtSet {
+  /** Height at which move markers lie, when the squares stand proud of the board. */
+  markY?: number;
   update(ms: number): void;
   dispose(): void;
 }
@@ -122,16 +124,16 @@ function sea(dark: RGB, light: RGB, glow: RGB, y: number) {
 }
 
 /** The painted sky round about: a wide painting mirrored round a cylinder. */
-function skyDome(url: string, tint: number) {
+function skyDome(url: string, tint: number, radius = 50, repeat = 4) {
   const mat = new MeshBasicMaterial({ side: BackSide, fog: false, color: tint });
   void texture(url).then((t) => {
     t.wrapS = MirroredRepeatWrapping;
-    t.repeat.set(4, 1);
+    t.repeat.set(repeat, 1);
     mat.map = t;
     mat.needsUpdate = true;
   });
-  const dome = new Mesh(new CylinderGeometry(50, 50, 44, 64, 1, true), mat);
-  dome.position.y = 6;
+  const dome = new Mesh(new CylinderGeometry(radius, radius, (44 * radius) / 50, 64, 1, true), mat);
+  dome.position.y = 6 * (radius / 50);
   return { dome, mat };
 }
 
@@ -588,14 +590,15 @@ function heartwoodGrove(scene: Scene, board: Board): CourtSet {
   cloudShade(floor, cloud);
   void texture(art("thornwood", "floor.webp")).then((t) => {
     t.wrapS = t.wrapT = RepeatWrapping;
-    t.repeat.set(26, 26);
+    t.repeat.set(12, 12);
     floor.map = t;
     floor.needsUpdate = true;
   });
-  const ground = new Mesh(new CircleGeometry(50, 48).rotateX(-Math.PI / 2), floor);
+  const ground = new Mesh(new CircleGeometry(24, 48).rotateX(-Math.PI / 2), floor);
   ground.position.y = FLOOR;
   ground.receiveShadow = true;
-  const { dome } = skyDome(art("thornwood", "forest.webp"), 0xd8d8c8);
+  // The painted forest stands close behind the trees, not far off.
+  const { dome } = skyDome(art("thornwood", "forest.webp"), 0xd8d8c8, 22, 1.8);
   group.add(ground, dome);
 
   // Oaks along both flanks and in the far distance, undergrowth all round; nothing tall on the sides the players look across.
@@ -606,16 +609,28 @@ function heartwoodGrove(scene: Scene, board: Board): CourtSet {
     [7.4, -4.8, 5],
     [7.0, 0.4, 4.4],
     [7.9, 4.6, 5.4],
-    [-13, -11, 6.5],
-    [12, -12, 6.8],
-    [-12, 12, 6.2],
-    [13, 11, 6.6],
+    [-11, -9, 6.5],
+    [10, -10, 6.8],
+    [-10, 10, 6.2],
+    [11, 9, 6.6],
+    [-14, 0.5, 6.4],
+    [14.5, -1, 6.6],
+    [-3, -15, 6.8],
+    [4, -15.5, 6.4],
+    [-5, 15, 6.2],
+    [3, 15.5, 6.6],
   ])
     plant(group, art("thornwood", "tree.glb"), x, z, h, Math.random() * Math.PI * 2, FLOOR);
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2 + Math.random() * 0.2;
     const r = 5.6 + Math.random() * 1.2;
     plant(group, art("thornwood", "bush.glb"), Math.cos(a) * r, Math.sin(a) * r, 0.9 + Math.random() * 0.5, Math.random() * Math.PI * 2, FLOOR);
+  }
+  // Undergrowth scattered through the clearing's edge, so the ground reads as woodland, not tiles.
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 7.5 + Math.random() * 11;
+    plant(group, art("thornwood", "bush.glb"), Math.cos(a) * r, Math.sin(a) * r, 0.8 + Math.random() * 0.9, Math.random() * Math.PI * 2, FLOOR);
   }
   const sun = new DirectionalLight(0xffd9a0, 0.6);
   sun.position.set(-10, 9, -6);
@@ -655,6 +670,8 @@ function heartwoodGrove(scene: Scene, board: Board): CourtSet {
 
   let t = 0;
   return {
+    // The modelled tiles stand about 0.06 proud of the board; markers must lie above them.
+    markY: 0.085,
     update(ms) {
       t += ms;
       const s = t / 1000;
