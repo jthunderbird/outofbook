@@ -12,6 +12,7 @@ import {
   CanvasTexture,
   Color,
   ConeGeometry,
+  DoubleSide,
   CylinderGeometry,
   DirectionalLight,
   DodecahedronGeometry,
@@ -99,23 +100,42 @@ function nebulaMap(a: string, b: string) {
   return t;
 }
 
-/** A sign on a stage's gate: "Stage 3" over its rating. */
-function signMap(title: string, sub: string) {
+/** A stage's banner: dark violet cloth with a gold border and swallowtail foot, "Stage 3" over its rating. */
+function bannerMap(title: string, sub: string) {
   const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 192;
+  c.width = 384;
+  c.height = 448;
   const g = c.getContext("2d")!;
+  const cloth = (inset: number) => {
+    g.beginPath();
+    g.moveTo(inset, inset);
+    g.lineTo(384 - inset, inset);
+    g.lineTo(384 - inset, 448 - inset);
+    g.lineTo(192, 370 - inset * 0.6);
+    g.lineTo(inset, 448 - inset);
+    g.closePath();
+  };
+  cloth(0);
+  g.fillStyle = "#d9a23a";
+  g.fill();
+  cloth(12);
+  const grad = g.createLinearGradient(0, 0, 0, 448);
+  grad.addColorStop(0, "#3b1f78");
+  grad.addColorStop(1, "#1a0d3a");
+  g.fillStyle = grad;
+  g.fill();
   g.textAlign = "center";
-  g.shadowColor = "rgba(0,0,0,.8)";
-  g.shadowBlur = 12;
+  g.shadowColor = "rgba(0,0,0,.7)";
+  g.shadowBlur = 8;
   g.fillStyle = "#ffd36a";
-  g.font = "bold 84px system-ui, sans-serif";
-  g.fillText(title, 256, 92);
+  g.font = "bold 76px Georgia, serif";
+  g.fillText(title, 192, 150);
   g.fillStyle = "#cfe6ff";
-  g.font = "600 52px system-ui, sans-serif";
-  g.fillText(sub, 256, 162);
+  g.font = "600 46px system-ui, sans-serif";
+  g.fillText(sub, 192, 240);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
   return t;
 }
 
@@ -293,27 +313,49 @@ export class TrekScene {
     this.track.add(tiles, rocks, rings, stones);
     this.tiles = tiles;
     this.rings = rings;
-    // A gate at the start of each stage: two glowing pillars and a sign.
+    // A gate at the start of each stage: two glowing pillars, turned a little toward the camera, with a crossbar and a cloth banner between them (stage and rating) that stirs in the wind.
     const pillar = new CylinderGeometry(0.12, 0.16, 2.6, 8);
     const stone = new MeshStandardMaterial({ color: 0x5a5470, roughness: 0.7, metalness: 0.2 });
+    const turn = 0.9;
+    this.banners = [];
     this.stops.forEach((s, i) => {
       if (i > 0 && s.stage === this.stops[i - 1].stage) return;
       const p = this.points[i].clone().lerp(i > 0 ? this.points[i - 1] : this.points[i].clone().setX(this.points[i].x - STEP), 0.5);
-      for (const dz of [-1, 1]) {
+      const gate = new Group();
+      gate.position.copy(p);
+      gate.rotation.y = turn - Math.PI / 2;
+      for (const side of [-1, 1]) {
         const m = new Mesh(pillar, stone);
-        m.position.set(p.x, p.y + 1.1, p.z + dz * 0.95);
+        m.position.set(side * 0.95, 1.1, 0);
         const orb = new Sprite(new SpriteMaterial({ map: glowMap(), color: 0x9fd0ff, blending: AdditiveBlending, depthWrite: false }));
         orb.position.set(0, 1.45, 0);
         orb.scale.setScalar(0.7);
         m.add(orb);
-        this.track.add(m);
+        gate.add(m);
       }
-      const sign = new Sprite(new SpriteMaterial({ map: signMap(`Stage ${s.stage}`, `Rating ${400 + 100 * (s.stage - 1)}`), depthWrite: false }));
-      sign.position.set(p.x, p.y + 3.1, p.z);
-      sign.scale.set(2.4, 0.9, 1);
-      this.track.add(sign);
+      const bar = new Mesh(new CylinderGeometry(0.04, 0.04, 1.9, 6).rotateZ(Math.PI / 2), new MeshStandardMaterial({ color: 0xc8962e, metalness: 0.8, roughness: 0.35 }));
+      bar.position.y = 2.25;
+      const geo = new PlaneGeometry(1.35, 1.58, 8, 10).translate(0, -0.79, 0);
+      const banner = new Mesh(
+        geo,
+        new MeshStandardMaterial({
+          map: bannerMap(`Stage ${s.stage}`, `Rating ${400 + 100 * (s.stage - 1)}`),
+          side: DoubleSide,
+          alphaTest: 0.5,
+          roughness: 0.9,
+          emissive: 0xffffff,
+          emissiveIntensity: 0.18,
+        }),
+      );
+      (banner.material as MeshStandardMaterial).emissiveMap = (banner.material as MeshStandardMaterial).map;
+      banner.position.y = 2.22;
+      geo.userData.rest = geo.attributes.position.array.slice();
+      this.banners.push(banner);
+      gate.add(bar, banner);
+      this.track.add(gate);
     });
   }
+  private banners: Mesh[] = [];
 
   /** The space behind the track, in layers that keep up with the camera at their own pace (k: 1 stays with it, 0 is fixed). */
   private space() {
@@ -463,6 +505,19 @@ export class TrekScene {
     this.camera.lookAt(look.x + ahead, look.y + 0.9, look.z);
     for (const l of this.layers) l.g.position.x = this.camera.position.x * l.k;
     for (const a of this.asteroids.children) a.rotation.y += a.userData.spin * dt;
+    // The banners near the camera stir: a ripple down the cloth, stronger toward its foot.
+    for (const b of this.banners) {
+      if (Math.abs(b.parent!.position.x - this.camera.position.x) > 30) continue;
+      const pos = b.geometry.attributes.position;
+      const rest = b.geometry.userData.rest as Float32Array;
+      for (let i = 0; i < pos.count; i++) {
+        const x = rest[i * 3];
+        const y = rest[i * 3 + 1];
+        pos.setZ(i, Math.sin(this.t * 2.2 + x * 2.5 + y * 3) * 0.07 * -y);
+      }
+      pos.needsUpdate = true;
+      b.geometry.computeVertexNormals();
+    }
     // The worlds behind the rips shift a little as the camera passes (depth), and the pixel world drifts on.
     for (const r of this.rips) {
       r.mat.uniforms.time.value = this.t;

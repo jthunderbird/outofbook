@@ -127,7 +127,7 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
 
   // After a failure: 3 seconds to spend a retry, then back to the trek.
   useEffect(() => {
-    if (state !== "failed") return;
+    if (state !== "failed" || busy) return;
     const end = performance.now() + RETRY_WINDOW;
     const t = setInterval(() => {
       const r = end - performance.now();
@@ -139,7 +139,17 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
       }
     }, 50);
     return () => clearInterval(t);
-  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state, busy]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A puzzle solved: the next once the board has finished acting out the last move.
+  useEffect(() => {
+    if (state !== "solved" || busy) return;
+    const t = setTimeout(() => {
+      idx.current++;
+      void begin();
+    }, 500);
+    return () => clearTimeout(t);
+  }, [state, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const retry = () => {
     if (p.perks.retry <= 0 || state !== "failed") return;
@@ -173,10 +183,6 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
         return;
       }
       setState("solved");
-      later(900, () => {
-        idx.current++;
-        void begin();
-      });
       return;
     }
     setState("reply");
@@ -262,7 +268,7 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
         </div>
       )}
 
-      {state === "failed" && (
+      {state === "failed" && !busy && (
         <div className="overlay">
           <div className="panel">
             <h2 className="loss">{why === "time" ? "Out of time" : "Wrong move"}</h2>
@@ -292,7 +298,7 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
         </div>
       )}
 
-      {state === "passed" && (
+      {state === "passed" && !busy && (
         <div className="overlay" data-testid="passed">
           <div className="panel">
             <h2 className="win">{complete ? "Trek complete!" : "Challenge passed!"}</h2>
