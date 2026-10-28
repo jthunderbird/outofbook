@@ -15,7 +15,9 @@ import {
   Color,
   CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
   Float32BufferAttribute,
+  Fog,
   Group,
   HemisphereLight,
   Mesh,
@@ -34,6 +36,7 @@ import {
   ShaderMaterial,
   Shape,
   ShapeGeometry,
+  SphereGeometry,
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
@@ -45,6 +48,7 @@ import {
   type Texture,
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { BACKGROUNDS, backgroundTexture } from "./backgrounds";
 import type { Board } from "./board";
 import { glowMap } from "./figures";
@@ -1045,27 +1049,67 @@ function epochFlat(scene: Scene, board: Board): CourtSet {
 
 // ---------- The skins' courts: a sketchbook desk (Sketch), a back alley (Noir) ----------
 
-/** A picture as the scene's background, fitted to cover the screen (16:9); returns its resize and its removal. */
-function backdrop(scene: Scene, url: string) {
-  const prev = scene.background;
-  let bg: Texture | null = null;
-  let size: [number, number] = [16, 9];
-  void texture(url).then((t) => {
-    bg = t.clone();
-    bg.needsUpdate = true;
-    cover(bg, ...size);
-    scene.background = bg;
+/** A Meshy prop: loaded once, then each copy scaled to h tall, its foot at (x, y, z), turned rot. */
+function prop(group: Group, url: string, h: number, x: number, y: number, z: number, rot = 0) {
+  let p = props.get(url);
+  if (!p) {
+    p = new GLTFLoader().loadAsync(url).then((g) => g.scene as unknown as Group);
+    props.set(url, p);
+  }
+  void p.then((src) => {
+    if (!group.parent) return;
+    const o = src.clone();
+    o.rotation.y = rot;
+    o.updateMatrixWorld(true);
+    const box = new Box3().setFromObject(o);
+    const k = h / (box.max.y - box.min.y);
+    const c = box.getCenter(new Vector3());
+    o.scale.setScalar(k);
+    o.position.set(x - c.x * k, y - box.min.y * k, z - c.z * k);
+    o.traverse((m) => {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    });
+    group.add(o);
   });
-  return {
-    resize(w: number, h: number) {
-      size = [w, h];
-      if (bg) cover(bg, w, h);
-    },
-    dispose() {
-      if (scene.background === bg) scene.background = prev;
-      bg?.dispose();
-    },
-  };
+}
+
+/** A seamless picture, repeated over a surface w by h (world units), size units to a tile. */
+function tiled(url: string, w: number, h: number, size: number, o: { roughness?: number; metalness?: number; color?: number } = {}) {
+  const m = new MeshStandardMaterial({ roughness: o.roughness ?? 0.9, metalness: o.metalness ?? 0, color: o.color ?? 0xffffff });
+  void texture(url).then((t) => {
+    const r = t.clone();
+    r.wrapS = r.wrapT = RepeatWrapping;
+    r.repeat.set(w / size, h / size);
+    r.needsUpdate = true;
+    m.map = r;
+    m.needsUpdate = true;
+  });
+  return m;
+}
+
+/** The night through a window: a deep gradient, stars and a moon over rooftops' lit windows. */
+function nightView() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 320;
+  const g = c.getContext("2d")!;
+  const grad = g.createLinearGradient(0, 0, 0, 320);
+  grad.addColorStop(0, "#070a1c");
+  grad.addColorStop(1, "#24305a");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 320);
+  for (let i = 0; i < 80; i++) {
+    g.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.7})`;
+    g.fillRect(Math.random() * 256, Math.random() * 220, 1.5, 1.5);
+  }
+  g.fillStyle = "#fff4d8";
+  g.beginPath();
+  g.arc(180, 70, 16, 0, Math.PI * 2);
+  g.fill();
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
 }
 
 /** A square of sketchbook paper: faint grain and, for a dark square, pencil hatching both ways. */
@@ -1101,89 +1145,192 @@ function paperSquare(dark: boolean) {
   return t;
 }
 
+/** The pencil drawings of the game's characters, made by the Sketch skin (mockups/shelf.html?drawing=...). */
+const DRAWINGS = [
+  "stormcourt-k",
+  "stormcourt-q",
+  "stormcourt-n",
+  "stormcourt-b",
+  "thornwood-k",
+  "thornwood-q",
+  "thornwood-n",
+  "thornwood-r",
+  "epoch-drifters-n",
+  "epoch-drifters-p",
+  "epoch-drifters-q",
+  "epoch-drifters-r",
+];
+
+/** A drawing on a sheet of paper, size wide, a touch below white so the lamp and glow keep it readable. */
+function sheet(name: string, size: number) {
+  const m = new MeshStandardMaterial({ color: 0xbdb8ae, roughness: 0.95, side: DoubleSide });
+  void texture(art("sketch", `draw-${name}.webp`)).then((t) => {
+    m.map = t;
+    m.needsUpdate = true;
+  });
+  const s = new Mesh(new PlaneGeometry(size, size), m);
+  s.receiveShadow = true;
+  return s;
+}
+
 /**
- * The Sketch skin's court: a board drawn in pencil on paper, on a real study
- * desk in a bedroom at night, among the drawings of the game's characters (the
- * Storm King, the Epoch dragon, the Dryad Queen), some half under the board,
- * with pencils and an eraser, under a warm desk lamp.
+ * The Sketch skin's court: a board drawn in pencil on sketchbook paper, on a
+ * study desk in the middle of a bedroom at night. Half the game's characters lie
+ * drawn on the desk, some slipped under the board, with pencils and an eraser;
+ * the other half are pinned to a corkboard on the wall. A bed, a bookshelf, a
+ * chair and a window on the night stand round the room; a desk lamp lights it.
  */
 function sketchDesk(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
-  const TABLE = -0.11;
+  const DESK = -1.42;
+  const FLOOR = -16;
+  const R = 34;
   const paper = [paperSquare(false), paperSquare(true)];
   for (const sq of board.squares.values()) {
     (sq.material as MeshStandardMaterial).dispose();
-    sq.material = new MeshStandardMaterial({ map: paper[sq.userData.light ? 0 : 1], roughness: 0.95 });
+    // A touch below white, so the board's lamp-lit paper keeps its pencil.
+    sq.material = new MeshStandardMaterial({ map: paper[sq.userData.light ? 0 : 1], color: 0xc8c2b4, roughness: 0.95 });
   }
-  const edge = new MeshStandardMaterial({ map: paperSquare(false), color: 0xe8e2d2, roughness: 0.95 });
+  const edge = new MeshStandardMaterial({ map: paperSquare(false), color: 0xb8b2a4, roughness: 0.95 });
   for (const w of board.walls) {
     (w.material as MeshStandardMaterial).dispose();
     w.material = edge;
   }
-  // The desk: one plank of warm oak.
-  const deskTex = woodPanel("#a87444", "#5a3418", 23).clone();
-  deskTex.repeat.set(1, 1);
-  const desk = new Mesh(new PlaneGeometry(34, 20).rotateX(-Math.PI / 2), new MeshStandardMaterial({ map: deskTex, roughness: 0.55 }));
-  desk.position.y = TABLE - 0.02;
-  desk.receiveShadow = true;
-  group.add(desk);
-  // The drawings, loose on the desk, some slipped under the board.
-  for (const [file, x, z, rot] of [
-    ["draw-stormcourt-k.webp", -5.6, -2.2, 0.28],
-    ["draw-epoch-drifters-n.webp", 5.2, 2.6, -0.22],
-    ["draw-thornwood-q.webp", 4.9, -3.4, 0.12],
-    ["draw-thornwood-n.webp", -5.4, 3.6, -0.4],
-  ] as const) {
-    // A touch below white, so the lamp and glow do not wash the drawings out.
-    const m = new MeshStandardMaterial({ color: 0xbdb8ae, roughness: 0.95 });
-    void texture(art("sketch", file)).then((t) => {
-      m.map = t;
-      m.needsUpdate = true;
-    });
-    const sheet = new Mesh(new PlaneGeometry(3.6, 3.6).rotateX(-Math.PI / 2), m);
-    sheet.position.set(x, TABLE - 0.01 + Math.random() * 0.004, z);
-    sheet.rotation.y = rot;
-    sheet.receiveShadow = true;
-    group.add(sheet);
-  }
+  // The desk: an oak top on four legs, the board standing on it.
+  const oak = woodPanel("#a87444", "#5a3418", 23).clone();
+  const top = new Mesh(new BoxGeometry(26, 0.9, 16), new MeshStandardMaterial({ map: oak, roughness: 0.55 }));
+  top.position.y = DESK - 0.45;
+  top.receiveShadow = top.castShadow = true;
+  group.add(top);
+  const legMat = new MeshStandardMaterial({ color: 0x6a4424, roughness: 0.6 });
+  for (const x of [-12, 12])
+    for (const z of [-7, 7]) {
+      const leg = new Mesh(new BoxGeometry(0.9, DESK - 0.9 - FLOOR, 0.9), legMat);
+      leg.position.set(x, (DESK - 0.9 + FLOOR) / 2, z);
+      leg.castShadow = true;
+      group.add(leg);
+    }
+  // Six drawings on the desk round the board, some partly under it.
+  (
+    [
+      [-7.6, -3.6, 0.28],
+      [7.4, 3.2, -0.22],
+      [7.8, -4.2, 0.14],
+      [-7.8, 3.8, -0.36],
+      [-1.5, 6.6, 0.1],
+      [2.4, -6.4, -0.18],
+    ] as const
+  ).forEach(([x, z, rot], i) => {
+    const s = sheet(DRAWINGS[i * 2], 4);
+    s.rotation.set(-Math.PI / 2, 0, rot);
+    s.position.set(x, DESK + 0.01 + i * 0.002, z);
+    group.add(s);
+  });
   // Pencils and an eraser.
   const yellow = new MeshStandardMaterial({ color: 0xf2c22a, roughness: 0.5 });
   const wood = new MeshStandardMaterial({ color: 0xe8c890, roughness: 0.8 });
   const lead = new MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.4 });
   for (const [x, z, a] of [
-    [5.9, -0.4, 0.4],
-    [-5.8, 0.9, -1.1],
+    [9.5, -0.4, 0.4],
+    [-9.6, 0.9, -1.1],
   ]) {
     const pencil = new Group();
-    const body = new Mesh(new CylinderGeometry(0.09, 0.09, 2.6, 6).rotateZ(Math.PI / 2), yellow);
-    const tip = new Mesh(new ConeGeometry(0.09, 0.3, 6).rotateZ(-Math.PI / 2), wood);
-    tip.position.x = 1.45;
-    const point = new Mesh(new ConeGeometry(0.03, 0.1, 6).rotateZ(-Math.PI / 2), lead);
-    point.position.x = 1.62;
+    const body = new Mesh(new CylinderGeometry(0.12, 0.12, 3.2, 6).rotateZ(Math.PI / 2), yellow);
+    const tip = new Mesh(new ConeGeometry(0.12, 0.4, 6).rotateZ(-Math.PI / 2), wood);
+    tip.position.x = 1.8;
+    const point = new Mesh(new ConeGeometry(0.04, 0.12, 6).rotateZ(-Math.PI / 2), lead);
+    point.position.x = 2.02;
     pencil.add(body, tip, point);
-    pencil.position.set(x, TABLE + 0.09, z);
+    pencil.position.set(x, DESK + 0.12, z);
     pencil.rotation.y = a;
     pencil.traverse((o) => (o.castShadow = true));
     group.add(pencil);
   }
-  const eraser = new Mesh(new BoxGeometry(0.8, 0.22, 0.4), new MeshStandardMaterial({ color: 0xff8aa8, roughness: 0.9 }));
-  eraser.position.set(-5.2, TABLE + 0.11, -0.6);
+  const eraser = new Mesh(new BoxGeometry(1, 0.3, 0.5), new MeshStandardMaterial({ color: 0xff8aa8, roughness: 0.9 }));
+  eraser.position.set(-9.2, DESK + 0.15, -1.2);
   eraser.rotation.y = 0.5;
   eraser.castShadow = true;
   group.add(eraser);
-  // The desk lamp's warm pool of light.
-  const lamp = new PointLight(0xffc888, 7, 30, 1.5);
-  lamp.position.set(-7, 9, -4);
+  prop(group, art("sketch", "desk-lamp.glb"), 9, -10.5, DESK, -5.5, 0.6);
+  const lamp = new PointLight(0xffc888, 12, 40, 1.5);
+  lamp.position.set(-8, 6, -3.5);
   lamp.castShadow = true;
   group.add(lamp);
-  const room = backdrop(scene, art("sketch", "bedroom.webp"));
+
+  // The room: papered walls, plank floor, a plain ceiling, and a warm glow from above.
+  const H = 46;
+  const floorTex = woodTexture("#9a6a3e", "#5a3a1e", 31, 1).clone();
+  floorTex.repeat.set(6, 6);
+  floorTex.needsUpdate = true;
+  const floor = new Mesh(new PlaneGeometry(2 * R, 2 * R).rotateX(-Math.PI / 2), new MeshStandardMaterial({ map: floorTex, roughness: 0.7 }));
+  floor.position.y = FLOOR;
+  floor.receiveShadow = true;
+  group.add(floor);
+  const ceiling = new Mesh(new PlaneGeometry(2 * R, 2 * R).rotateX(Math.PI / 2), new MeshStandardMaterial({ color: 0xe8e0d0, roughness: 1 }));
+  ceiling.position.y = FLOOR + H;
+  group.add(ceiling);
+  const paperWall = tiled(art("sketch", "wallpaper.webp"), 2 * R, H, 9);
+  for (const [x, z, ry] of [
+    [0, -R, 0],
+    [0, R, Math.PI],
+    [-R, 0, Math.PI / 2],
+    [R, 0, -Math.PI / 2],
+  ]) {
+    const w = new Mesh(new PlaneGeometry(2 * R, H), paperWall);
+    w.position.set(x, FLOOR + H / 2, z);
+    w.rotation.y = ry;
+    w.receiveShadow = true;
+    group.add(w);
+  }
+  // The window on the far wall, the night beyond.
+  const win = new Mesh(new PlaneGeometry(14, 16), new MeshBasicMaterial({ map: nightView(), toneMapped: false }));
+  win.position.set(-12, FLOOR + 24, -R + 0.05);
+  group.add(win);
+  const trim = new MeshStandardMaterial({ color: 0xf2ece0, roughness: 0.6 });
+  for (const [w, h, x, y] of [
+    [15, 0.8, 0, 8.2],
+    [15, 1.2, 0, -8.4],
+    [0.8, 17, -7.3, 0],
+    [0.8, 17, 7.3, 0],
+    [14, 0.4, 0, 0],
+    [0.4, 16, 0, 0],
+  ]) {
+    const b = new Mesh(new BoxGeometry(w, h, 0.5), trim);
+    b.position.set(-12 + x, FLOOR + 24 + y, -R + 0.25);
+    group.add(b);
+  }
+  const moon = new PointLight(0x9fb4ff, 30, 50, 1.5);
+  moon.position.set(-12, FLOOR + 22, -R + 6);
+  group.add(moon);
+  // The corkboard on the far wall with the other six drawings pinned to it.
+  const cork = new Mesh(new BoxGeometry(18, 12, 0.4), new MeshStandardMaterial({ color: 0xb48a58, roughness: 1 }));
+  cork.position.set(11, FLOOR + 25, -R + 0.2);
+  group.add(cork);
+  const pin = new MeshStandardMaterial({ color: 0xd02030, roughness: 0.4 });
+  for (let i = 0; i < 6; i++) {
+    const s = sheet(DRAWINGS[i * 2 + 1], 5);
+    s.position.set(11 - 5.6 + (i % 3) * 5.6, FLOOR + 27.8 - Math.floor(i / 3) * 5.6, -R + 0.45 + i * 0.01);
+    s.rotation.z = (Math.random() - 0.5) * 0.12;
+    group.add(s);
+    const p = new Mesh(new SphereGeometry(0.22, 8, 6), pin);
+    p.position.set(s.position.x, s.position.y + 2.2, -R + 0.6);
+    group.add(p);
+  }
+  // The furniture round the room.
+  prop(group, art("sketch", "bed.glb"), 12, -R + 12, FLOOR, 14, Math.PI / 2);
+  prop(group, art("sketch", "bookshelf.glb"), 30, R - 5, FLOOR, -8, -Math.PI / 2);
+  prop(group, art("sketch", "chair.glb"), 14, 3, FLOOR, 12, Math.PI);
+  const room = new PointLight(0xffe2b8, 16, 90, 1.2);
+  room.position.set(0, FLOOR + H - 4, 6);
+  group.add(room, new HemisphereLight(0xfff0dc, 0x3a2614, 0.25));
+  const prevBg = scene.background;
+  scene.background = new Color(0x1a1410);
   return {
-    resize: room.resize,
     update() {},
     dispose() {
       group.removeFromParent();
-      room.dispose();
+      scene.background = prevBg;
       paper.forEach((t) => t.dispose());
       edge.dispose();
     },
@@ -1191,32 +1338,91 @@ function sketchDesk(scene: Scene, board: Board): CourtSet {
 }
 
 /**
- * The Noir skin's court: a clean marble board on the wet cobbles of a 1950s
- * back alley at night, under a street lamp's cold light, the speakeasy's sign
- * glowing beyond.
+ * The Noir skin's court: the clean marble board standing on the wet cobbles
+ * of a 1950s back alley at night, one corner in a puddle that mirrors the
+ * pieces. Brick walls rise either side: a speakeasy's door with its warm lamp,
+ * a fire escape, trash, crates; a cold street lamp; the alley's mouth far off.
  */
 function backAlley(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
-  // Wet stone under the board, catching the lamp; the alley's picture beyond.
-  const ground = new Mesh(new CircleGeometry(9, 40).rotateX(-Math.PI / 2), new MeshStandardMaterial({ color: 0x15171c, roughness: 0.18, metalness: 0.3, transparent: true, opacity: 0.85 }));
-  ground.position.y = -0.14;
-  ground.receiveShadow = true;
-  group.add(ground);
-  const lamp = new PointLight(0xdfe6ff, 10, 30, 1.4);
-  lamp.position.set(8, 9, -9);
-  lamp.castShadow = true;
-  const sign = new PointLight(0xffb070, 6, 14, 1.5);
-  sign.position.set(-6, 3, -7);
-  group.add(lamp, sign);
-  const street = backdrop(scene, art("noir", "alley.webp"));
-  void board;
+  const GROUND = -1.41;
+  const W = 15;
+  const L = 70;
+  // Black lacquer on the board's sides.
+  const lacquer = new MeshPhysicalMaterial({ color: 0x0c0c10, roughness: 0.25, clearcoat: 0.8 });
+  for (const w of board.walls) {
+    (w.material as MeshStandardMaterial).dispose();
+    w.material = lacquer;
+  }
+  // The street: wet cobbles.
+  const road = new Mesh(new PlaneGeometry(2 * W, 2 * L).rotateX(-Math.PI / 2), tiled(art("noir", "cobble.webp"), 2 * W, 2 * L, 6, { roughness: 0.35, metalness: 0.15, color: 0x50545e }));
+  road.position.y = GROUND;
+  road.receiveShadow = true;
+  group.add(road);
+  // A puddle under one corner of the board, mirroring it.
+  // An uneven outline, as rain pools.
+  const edge = new Shape();
+  for (let i = 0; i <= 48; i++) {
+    const a = (i / 48) * Math.PI * 2;
+    const r = 4.2 * (1 + 0.16 * Math.sin(a * 3 + 1) + 0.09 * Math.sin(a * 7 + 2) + 0.05 * Math.sin(a * 13));
+    const x = Math.cos(a) * r * 1.4;
+    const y = Math.sin(a) * r;
+    if (i === 0) edge.moveTo(x, y);
+    else edge.lineTo(x, y);
+  }
+  const puddle = new Reflector(new ShapeGeometry(edge), { textureWidth: 512, textureHeight: 512, color: 0xa8aebb });
+  puddle.rotation.x = -Math.PI / 2;
+  puddle.position.set(4.6, GROUND + 0.015, 3.2);
+  group.add(puddle);
+  // The brick walls either side, and across the far end behind the camera's back.
+  const brick = (w: number) => tiled(art("noir", "brick.webp"), w, 40, 8, { roughness: 0.85, color: 0x9a8a80 });
+  for (const s of [-1, 1]) {
+    const wall = new Mesh(new PlaneGeometry(2 * L, 40), brick(2 * L));
+    wall.position.set(s * W, GROUND + 20, 0);
+    wall.rotation.y = -s * (Math.PI / 2);
+    wall.receiveShadow = true;
+    group.add(wall);
+  }
+  const back = new Mesh(new PlaneGeometry(2 * W, 40), brick(2 * W));
+  back.position.set(0, GROUND + 20, L);
+  back.rotation.y = Math.PI;
+  group.add(back);
+  // The alley's mouth far off: the street beyond.
+  const mouth = new MeshBasicMaterial({ color: 0x9098a8, toneMapped: false });
+  void texture(art("noir", "alley.webp")).then((t) => {
+    mouth.map = t;
+    mouth.needsUpdate = true;
+  });
+  const end = new Mesh(new PlaneGeometry(2 * W * 1.6, 2 * W * 0.9), mouth);
+  end.position.set(0, GROUND + W * 0.9 - 2, -L);
+  group.add(end);
+  // The props.
+  prop(group, art("noir", "door.glb"), 13, -W + 1.6, GROUND, -7, Math.PI / 2);
+  prop(group, art("noir", "fire-escape.glb"), 16, W - 2.5, GROUND + 9, -2, -Math.PI / 2);
+  prop(group, art("noir", "lamp.glb"), 17, W - 2.2, GROUND, -13, -Math.PI / 2);
+  prop(group, art("noir", "trash.glb"), 4.5, -W + 2.6, GROUND, 9, 0.4);
+  prop(group, art("noir", "crates.glb"), 6, W - 3, GROUND, 10, -0.3);
+  // The street lamp's cold light, the speakeasy's warm one, little else.
+  const street = new PointLight(0xdfe6ff, 70, 50, 1.4);
+  street.position.set(W - 3.5, GROUND + 16, -13);
+  street.castShadow = true;
+  street.shadow.mapSize.set(1024, 1024);
+  const door = new PointLight(0xffb070, 30, 22, 1.5);
+  door.position.set(-W + 3, GROUND + 9, -7);
+  group.add(street, door, new HemisphereLight(0x6a7488, 0x0a0a10, 0.35));
+  const prevBg = scene.background;
+  const prevFog = scene.fog;
+  scene.background = new Color(0x07080c);
+  scene.fog = new Fog(0x0a0c12, 30, 110);
   return {
-    resize: street.resize,
     update() {},
     dispose() {
       group.removeFromParent();
-      street.dispose();
+      scene.background = prevBg;
+      scene.fog = prevFog;
+      puddle.dispose();
+      lacquer.dispose();
     },
   };
 }
@@ -1228,7 +1434,7 @@ export const COURTS: Court[] = [
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
   { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
-  { id: "sketch", name: "Sketchbook Desk", skin: "sketch", top: "#6a4a30", bottom: "#1a120a", preview: art("sketch", "bedroom.webp"), dress: sketchDesk },
+  { id: "sketch", name: "Sketchbook Desk", skin: "sketch", top: "#6a4a30", bottom: "#1a120a", dress: sketchDesk },
   { id: "noir", name: "Back Alley", skin: "noir", top: "#2a2e38", bottom: "#05060a", preview: art("noir", "alley.webp"), dress: backAlley },
 ];
 
