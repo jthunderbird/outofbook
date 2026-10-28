@@ -326,6 +326,18 @@ export class Arena {
     void this.pump();
   }
 
+  /**
+   * The part of the canvas the board is framed in (an element over it), when the
+   * scene fills more than the board's place, such as the whole screen; the
+   * whole canvas when null.
+   */
+  setFrame(el: HTMLElement | null) {
+    this.frame = el;
+    if (el) this.ro.observe(el);
+    this.resize();
+  }
+  private frame: HTMLElement | null = null;
+
   private resize() {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
@@ -333,7 +345,16 @@ export class Arena {
     this.renderer.setSize(w, h, false);
     this.composer?.setPixelRatio(this.renderer.getPixelRatio());
     this.composer?.setSize(w, h);
-    this.camera.aspect = w / h;
+    const f = this.frame?.getBoundingClientRect();
+    const host = this.host.getBoundingClientRect();
+    if (f && f.width && f.height) {
+      // The camera frames the board in the frame; the rest of the canvas shows what lies round it.
+      this.camera.aspect = f.width / f.height;
+      this.camera.setViewOffset(f.width, f.height, host.left - f.left, host.top - f.top, w, h);
+    } else {
+      this.camera.clearViewOffset();
+      this.camera.aspect = w / h;
+    }
     this.camera.updateProjectionMatrix();
   }
 

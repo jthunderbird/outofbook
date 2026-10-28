@@ -152,7 +152,7 @@ function veinShader(m: MeshStandardMaterial, u: VeinUniforms) {
           // The surge: a ring racing out from the strike (surge.xy), fading as it goes (surge.z: its radius).
           float d = distance(p, surge.xy);
           float ring = surge.z > 0.0 ? exp(-pow((d - surge.z) / 0.7, 2.0)) * smoothstep(13.0, 3.0, surge.z) : 0.0;
-          totalEmissiveRadiance *= 1.3 + 4.5 * (a + b) + 9.0 * ring + 4.0 * veinFlash;
+          totalEmissiveRadiance *= 0.8 + 1.6 * (a + b) + 4.0 * ring + 0.8 * veinFlash;
         }`,
     );
   };
@@ -233,7 +233,7 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
       // A touch off white, so the marble's blue veins can show.
       if (light) m.color.setHex(0xd4d9e4);
       m.emissiveMap = cut(light ? marbleGlow : glow);
-      m.emissiveIntensity = light ? 1.6 : 1;
+      m.emissiveIntensity = light ? 1.2 : 1;
       veinShader(m, vu);
       (sq.material as MeshStandardMaterial).dispose();
       sq.material = m;
@@ -308,7 +308,7 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
   let next = 2500;
   let flash = 0;
   let bolts: { mesh: Mesh; life: number }[] = [];
-  let crawl = 1500;
+  let crawl = 4000;
   /** Where the last strike's surge started, and how far it has run. */
   const surge = vu.surge.value;
   const spark = (from?: Vector3) => {
@@ -333,18 +333,17 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
         // The surge comes in from the board's edge nearest the strike, with arcs where it lands.
         const edge = b.at.clone().setY(0).normalize().multiplyScalar(4);
         surge.set(edge.x, edge.z, 0);
-        for (let i = 0; i < 3; i++) spark(edge.clone().multiplyScalar(0.95));
+        spark(edge.clone().multiplyScalar(0.95));
       }
       // Now and then a small arc crawls over the board on its own.
       crawl -= ms;
       if (crawl <= 0) {
-        crawl = 700 + Math.random() * 1600;
+        crawl = 5000 + Math.random() * 7000;
         spark();
-        if (Math.random() < 0.4) spark();
       }
       if (surge.z >= 0) surge.z = surge.z > 14 ? -1 : surge.z + ms * 0.009;
       // Arcs follow the surge's front now and then.
-      if (surge.z > 1 && surge.z < 9 && Math.random() < ms / 120) {
+      if (surge.z > 1 && surge.z < 9 && Math.random() < ms / 1500) {
         const a = Math.random() * Math.PI * 2;
         const p = new Vector3(surge.x + Math.cos(a) * surge.z, 0, surge.y + Math.sin(a) * surge.z);
         if (Math.abs(p.x) < 3.9 && Math.abs(p.z) < 3.9) spark(p);
@@ -363,9 +362,9 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
       });
       flash = Math.max(0, flash - ms / 700);
       const f = flash * (0.6 + 0.4 * Math.random());
-      seaU.flash.value = f;
-      sky.color.setHex(0x9098a8).multiplyScalar(1 + f * 0.9);
-      strikeLight.intensity = f * 1.4;
+      seaU.flash.value = f * 0.6;
+      sky.color.setHex(0x9098a8).multiplyScalar(1 + f * 0.5);
+      strikeLight.intensity = f * 0.5;
       vu.veinTime.value = t / 1000;
       vu.veinFlash.value = f;
       for (const c of crystals) c.material.opacity = 0.55 + 0.2 * Math.sin(t / 300 + c.position.x) + f * 0.45;

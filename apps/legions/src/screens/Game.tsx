@@ -37,6 +37,7 @@ const itemName = (id: ItemId) => {
 export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void }) {
   const p = useProfile();
   const chess = useRef(new Chess());
+  const frame = useRef<HTMLDivElement>(null);
   const [plies, setPlies] = useState<string[]>([]);
   const [thinking, setThinking] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
@@ -141,8 +142,10 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
 
   return (
     <div className="game" data-testid="game">
-      <div className="board">
+      {/* The scene fills the screen; the board is framed where its place is. */}
+      <div className="stage">
         <ArenaBoard
+          frame={frame}
           fen={fen}
           orientation={me}
           lastMove={lastMove}
@@ -156,6 +159,7 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
           hint={hint}
         />
       </div>
+      <div className="board" ref={frame} />
       <div className="side">
         <div className="who">
           <div>

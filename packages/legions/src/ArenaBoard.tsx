@@ -1,6 +1,6 @@
 // The arena board (board style "Arena"): the same props as a 2D board, drawn
 // with three.js in arena/scene. Loaded only when Arena is chosen.
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import type { Side } from "@outofbook/core/types";
 import { Arena } from "./scene";
 import { tribe } from "./tribes";
@@ -21,11 +21,13 @@ export interface ArenaBoardProps {
   court?: string;
   /** Glow on bright light, lightning and fire (bloom). */
   glow?: boolean;
+  /** Where to frame the board when the scene is larger than it (fills the screen); the whole scene when not given. */
+  frame?: RefObject<HTMLElement | null>;
   /** A suggested move to show, as uci. */
   hint?: string | null;
 }
 
-export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, court = "night", glow = false, hint = null }: ArenaBoardProps) {
+export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, court = "night", glow = false, hint = null, frame }: ArenaBoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const arena = useRef<Arena | null>(null);
   const busy = useRef(onBusy);
@@ -42,6 +44,8 @@ export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove
     };
   }, []);
   useEffect(() => arena.current?.setOrientation(orientation), [orientation]);
+  // After layout effects: the frame is a later sibling, its ref set after ours run.
+  useEffect(() => arena.current?.setFrame(frame?.current ?? null), [frame]);
   const tw = tribes?.w ?? "stormcourt";
   const tb = tribes?.b ?? "stormcourt";
   // Before the position, so the first figures are already the right tribe.

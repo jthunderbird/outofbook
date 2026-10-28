@@ -399,13 +399,32 @@ button {
   padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
   --board: min(100vw - 16px, 100dvh - 200px);
 }
+/* The 3D scene fills the screen behind the board's place and the panel. */
+.game .stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  --board-radius: 0;
+}
+/* The board's place: the scene frames the board here; taps go through to it. */
 .game .board {
   width: var(--board);
   height: var(--board);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 16px 40px #000a;
   flex: none;
+  pointer-events: none;
+}
+.game .side {
+  position: relative;
+  z-index: 1;
+}
+/* The game screen lies over the scene: only its panel and dialogs take taps. */
+.game {
+  pointer-events: none;
+}
+.game .stage,
+.game .side,
+.game .overlay {
+  pointer-events: auto;
 }
 .game .side {
   width: var(--board);
