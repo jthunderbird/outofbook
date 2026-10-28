@@ -56,6 +56,11 @@ export interface TrekStop {
 }
 
 const STEP = 2.6;
+/** Rips in space passed over the whole trek, and the way between them. */
+const RIPS = 20;
+const RIP_GAP = 32;
+/** Pictures for the rips: battle scenes and courts rendered in the game (scripts in mockups/battle.ts). */
+const RIP_ART = import.meta.glob<string>("../rips/*.webp", { eager: true, query: "?url", import: "default" });
 /** The extra way between stages, where a stage's gate stands. */
 const GATE = 3.4;
 const STATE_COLOR: Record<TrekStop["state"], number> = { done: 0xffc94a, next: 0x7fe3ff, open: 0xffe3a0, locked: 0x3a3f58 };
@@ -122,23 +127,21 @@ const RIP_FRAG = `
 uniform sampler2D map; uniform vec3 rim; uniform float time; uniform float seed; uniform vec2 shift;
 varying vec2 vUv;
 float edge(float a) {
-  return 0.36 + 0.05 * sin(a * 3.0 + seed) + 0.035 * sin(a * 7.0 + seed * 2.3 + time * 0.6)
-    + 0.02 * sin(a * 17.0 + seed * 5.1) + 0.012 * sin(a * 31.0 - time * 1.7);
+  return 0.34 + 0.05 * sin(a * 3.0 + seed + time * 0.25) + 0.035 * sin(a * 7.0 + seed * 2.3 + time * 0.7)
+    + 0.02 * sin(a * 17.0 + seed * 5.1 - time * 0.9) + 0.012 * sin(a * 31.0 - time * 1.7);
 }
 void main() {
   vec2 p = vUv - 0.5;
   float a = atan(p.y, p.x);
   float r = length(p * vec2(1.0, 1.25));
   float e = edge(a);
-  if (r > e + 0.12) discard;
+  if (r > e + 0.16) discard;
   vec3 world = texture2D(map, clamp(vUv * 0.78 + 0.11 + shift, 0.0, 1.0)).rgb;
-  // Inside: the world, darkening toward the edge; at the edge a hot rim; outside it a fading glow.
-  float inside = 1.0 - smoothstep(e - 0.012, e, r);
-  float band = exp(-pow((r - e) / 0.012, 2.0));
-  float halo = (1.0 - smoothstep(e, e + 0.12, r)) * (1.0 - inside);
-  float flick = 0.85 + 0.15 * sin(time * 9.0 + a * 5.0 + seed);
-  vec3 c = world * inside * (0.6 + 0.4 * smoothstep(e, e * 0.4, r)) + rim * (band * 1.6 + halo * 0.5) * flick;
-  gl_FragColor = vec4(c, max(inside, band + halo * 0.6));
+  // The world fades out into space over a wide soft edge; round it a faint, shifting glow of color, no hard line.
+  float inside = 1.0 - smoothstep(e - 0.1, e + 0.015, r);
+  float glow = exp(-pow((r - e) / 0.06, 2.0)) * (0.55 + 0.45 * sin(time * 2.0 + a * 4.0 + seed));
+  vec3 c = world * inside + rim * glow * 0.35;
+  gl_FragColor = vec4(c, clamp(inside + glow * 0.3, 0.0, 1.0));
 }`;
 
 export class TrekScene {
@@ -251,6 +254,9 @@ export class TrekScene {
       o.traverse((m) => (m as Mesh).geometry?.dispose());
     }
     this.points = this.stops.map((_, i) => this.place(i));
+    // The rips' layer keeps pace with the camera so that, from the first stop to the last, the trek passes all of them.
+    const length = this.points[this.points.length - 1]?.x ?? 0;
+    if (length) this.ripLayer.k = Math.max(0, 1 - ((RIPS - 1) * RIP_GAP) / length);
     const n = this.stops.length;
     const dummy = new Object3D();
     const tiles = new InstancedMesh(new CylinderGeometry(0.62, 0.5, 0.26, 10), new MeshStandardMaterial({ roughness: 0.85, metalness: 0.1 }), n);
@@ -341,36 +347,41 @@ export class TrekScene {
       nebulae.add(s);
     }
     this.add(nebulae, 0.85);
-    // The rips: other worlds behind tears in space.
+    // The rips: other worlds behind tears in space, each showing a picture drawn at random on every visit
+    // (the courts, battle scenes rendered in the game, the live Epoch Plains), spread so that the whole
+    // trek passes about RIPS of them (the layer's pace is set once the track's length is known).
     const loader = new TextureLoader();
-    const worldTex = (id: string): Texture => {
-      const t = loader.load(court(id).preview!);
+    const load = (url: string): Texture => {
+      const t = loader.load(url);
       t.colorSpace = SRGBColorSpace;
       return t;
     };
-    const worlds = [
-      { map: worldTex("stormcourt"), rim: new Color(0xb488ff) },
-      { map: worldTex("thornwood"), rim: new Color(0x7dff9a) },
-      { map: this.pixelTex, rim: new Color(0xff8ccf) },
-    ];
+    const pool: (() => Texture)[] = [...Object.values(RIP_ART).map((url) => () => load(url)), () => load(court("stormcourt").preview!), () => load(court("thornwood").preview!), () => this.pixelTex];
+    const order: (() => Texture)[] = [];
+    while (order.length < RIPS) order.push(...[...pool].sort(() => Math.random() - 0.5).filter((x, i) => i > 0 || x !== order[order.length - 1]));
+    const made = new Map<() => Texture, Texture>();
+    const rims = [0x9b7bff, 0x6fe0c8, 0xff7fb8, 0xffb35a, 0x7fb4ff];
     const rips = new Group();
-    for (let i = 0; i < 26; i++) {
-      const w = worlds[i % 3];
+    for (let i = 0; i < RIPS; i++) {
+      const pick = order[i];
+      if (!made.has(pick)) made.set(pick, pick());
       const mat = new ShaderMaterial({
         vertexShader: RIP_VERT,
         fragmentShader: RIP_FRAG,
-        uniforms: { map: { value: w.map }, rim: { value: w.rim }, time: { value: 0 }, seed: { value: Math.random() * 40 }, shift: { value: new Vector2() } },
+        uniforms: { map: { value: made.get(pick) }, rim: { value: new Color(rims[i % rims.length]) }, time: { value: 0 }, seed: { value: Math.random() * 40 }, shift: { value: new Vector2() } },
         transparent: true,
         depthWrite: false,
       });
-      const size = 15 + Math.random() * 9;
-      const mesh = new Mesh(new PlaneGeometry(size * 1.5, size), mat);
-      mesh.position.set(-20 + i * 26 + Math.random() * 8, (i % 2 ? 9 : -2) + Math.random() * 6, -55 - Math.random() * 15);
-      mesh.rotation.z = (Math.random() - 0.5) * 0.5;
+      const size = 16 + Math.random() * 8;
+      const mesh = new Mesh(new PlaneGeometry(size * 1.6, size), mat);
+      mesh.position.set(-6 + i * RIP_GAP + (Math.random() - 0.5) * 8, (i % 2 ? 10 : -1) + Math.random() * 5, -55 - Math.random() * 15);
+      mesh.rotation.z = (Math.random() - 0.5) * 0.4;
       rips.add(mesh);
       this.rips.push({ mat, mesh });
     }
-    this.add(rips, 0.55);
+    this.ripLayer = { g: rips, k: 0.5 };
+    this.scene.add(rips);
+    this.layers.push(this.ripLayer);
     // Asteroids drifting near the track, above and below it.
     const rock = new MeshStandardMaterial({ color: 0x5b5068, roughness: 1, flatShading: true });
     const asteroids = new Group();
@@ -386,6 +397,7 @@ export class TrekScene {
     this.asteroids = asteroids;
   }
   private asteroids = new Group();
+  private ripLayer!: { g: Object3D; k: number };
   private add(o: Object3D, k: number) {
     this.scene.add(o);
     this.layers.push({ g: o, k });

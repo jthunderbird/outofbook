@@ -536,8 +536,9 @@ input.text {
   user-select: text;
 }
 
-/* Wide screens (landscape, desktop): the banners stand either side of the board at its upper and lower corners, large, instead of taking its height. */
-@media (min-aspect-ratio: 1/1) and (min-width: 700px) {
+/* Wide screens (landscape, desktop): the banners stand either side of the board at its upper and lower corners, large, instead of taking its height.
+   Nearly square screens (a foldable opened, a tablet) keep the banners above and below: beside the board they would leave it too small. */
+@media (min-aspect-ratio: 3/2) and (min-width: 700px) {
   .game {
     display: block;
     padding: 0;

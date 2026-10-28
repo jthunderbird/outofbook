@@ -174,7 +174,7 @@ export class LegionsScene {
     this.scene.add(this.labels, this.marks);
 
     this.controls = new OrbitControls(this.camera, r.domElement);
-    Object.assign(this.controls, { enablePan: false, enableDamping: true, minDistance: 9, maxDistance: 20, minPolarAngle: 0.15, maxPolarAngle: 1.25 });
+    Object.assign(this.controls, { enablePan: false, enableDamping: true, minDistance: 6, maxDistance: 20, minPolarAngle: 0.15, maxPolarAngle: 1.25 });
     this.setOrientation("w");
 
     r.domElement.addEventListener("pointerdown", this.onDown);
@@ -252,6 +252,8 @@ export class LegionsScene {
    * A menu's still camera (a campaign page's hero shot): fixed where it is put,
    * whatever the court; null gives the game's camera back.
    */
+  private oriented = false;
+
   setShowcase(v: { pos: [number, number, number]; target: [number, number, number]; fov: number } | null) {
     this.show = v;
     this.applyView();
@@ -307,7 +309,7 @@ export class LegionsScene {
     this.controls.enabled = !v?.fixed;
     Object.assign(this.controls, { minPolarAngle: 0.15, maxPolarAngle: 1.25 });
     // A fixed view sits far off, with a narrow lens, beyond the orbit's usual range.
-    this.controls.minDistance = v?.fixed ? 1 : 9;
+    this.controls.minDistance = v?.fixed ? 1 : 6;
     this.controls.maxDistance = v?.fixed ? 400 : 20;
     this.camera.fov = v?.fov ?? 36;
     // A fixed view stands far off; its depth range moves with it.
@@ -330,9 +332,15 @@ export class LegionsScene {
   }
 
   setOrientation(o: Side) {
+    // Turning to the other side keeps the player's own view (their zoom and angle), swung round to the other edge; only the first time, a menu's shot or a fixed view puts the camera in place.
+    const turn = this.oriented && o !== this.orientation && !this.show && !this.court?.view?.fixed;
+    this.oriented = true;
     this.orientation = o;
     const s = o === "w" ? 1 : -1;
-    this.applyView();
+    if (turn) {
+      for (const v of [this.camera.position, this.controls.target]) v.set(-v.x, v.y, -v.z);
+      this.camera.lookAt(this.controls.target);
+    } else this.applyView();
     this.sun.position.set(4 * s, 12, 6 * s);
     this.controls.update();
     this.drawLabels();
