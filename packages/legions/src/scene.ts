@@ -34,7 +34,6 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { Clock, FIRE_TIME, Particles, SPEED } from "./fx";
 import { court, courtBackground, type CourtSet } from "./courts";
@@ -45,7 +44,7 @@ import { stormcourt } from "./stormcourt";
 import type { Stage, Tribe } from "./tribe";
 import { LegionsSound } from "./sound";
 import { dressFigure, type Look } from "./looks";
-import { modeShader, type Mode } from "./modes";
+import { FIGURE_LAYER, SkinPass, type Mode } from "./modes";
 
 const FILES = "abcdefgh";
 const boardOf = (fen: string) => fen.split(" ")[0];
@@ -227,7 +226,7 @@ export class LegionsScene {
       this.shake -= frame;
       this.camera.position.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12));
     }
-    if (this.modePass) this.modePass.uniforms.time.value += frame / 1000;
+    this.skinPass?.tick(frame);
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
     this.camera.position.copy(cam);
@@ -265,6 +264,7 @@ export class LegionsScene {
 
   /** A figure off the board (a menu's hero), lit, animated and updated with the rest; removed with removeFigure. */
   addFigure(f: Fig) {
+    f.root.traverse((o) => o.layers.enable(FIGURE_LAYER));
     this.scene.add(f.root);
     this.live.add(f);
   }
@@ -418,14 +418,13 @@ export class LegionsScene {
   }
 
   /**
-   * The pixel look for any tribe: the picture drawn at 288 pixels tall and scaled
-   * up without smoothing, its colors cut to a 16-bit-style palette. A way to see
-   * 3D figures as a 2D game would.
+   * Retro: the figures drawn at 288 pixels tall and scaled up without
+   * smoothing, their colors cut to a 16-bit-style palette (the board as it is).
+   * A way to see 3D figures as a 2D game would.
    */
   setPixel(on: boolean) {
     if (on === this.pixel) return;
     this.pixel = on;
-    this.renderer.domElement.style.imageRendering = on ? "pixelated" : "";
     this.post();
     this.resize();
   }
@@ -447,33 +446,20 @@ export class LegionsScene {
     this.post();
   }
   private mode: Mode | null = null;
-  private modePass: ShaderPass | null = null;
+  private skinPass: SkinPass | null = null;
 
-  /** The effects pipeline: bloom for glow, a color cut for the pixel look; none (plain rendering) when neither. */
+  /** The effects pipeline: a skin on the figures (Retro, Noir, Sketch), bloom for glow; none (plain rendering) when neither. */
   private post() {
     this.composer?.dispose();
+    this.skinPass?.dispose();
     this.composer = null;
-    this.modePass = null;
-    if (!this.glow && !this.pixel && !this.mode) return;
+    this.skinPass = null;
+    const skin = this.pixel ? "retro" : this.mode;
+    if (!this.glow && !skin) return;
     const c = (this.composer = new EffectComposer(this.renderer));
-    c.addPass(new RenderPass(this.scene, this.camera));
+    c.addPass(skin ? (this.skinPass = new SkinPass(this.scene, this.camera, () => this.live, skin)) : new RenderPass(this.scene, this.camera));
     if (this.glow) c.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.5, 0.35, 1.5));
     c.addPass(new OutputPass());
-    if (this.mode) c.addPass((this.modePass = new ShaderPass(modeShader(this.mode))));
-    if (this.pixel)
-      c.addPass(
-        new ShaderPass({
-          uniforms: { tDiffuse: { value: null } },
-          vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-          // Five bits a channel with a light ordered dither, as a 16-bit display would show it.
-          fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
-            void main(){
-              vec4 c = texture2D(tDiffuse, vUv);
-              float d = (fract(dot(floor(gl_FragCoord.xy), vec2(0.5, 0.25))) - 0.375) / 32.0;
-              gl_FragColor = vec4(floor((c.rgb + d) * 31.0 + 0.5) / 31.0, c.a);
-            }`,
-        }),
-      );
     this.resize();
   }
 
@@ -514,15 +500,10 @@ export class LegionsScene {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     if (!w || !h) return;
-    // The pixel look draws 288 pixels tall, whatever the screen.
-    this.renderer.setPixelRatio(this.pixel ? Math.min(1, 288 / h) : Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(w, h, false);
     this.composer?.setPixelRatio(this.renderer.getPixelRatio());
     this.composer?.setSize(w, h);
-    if (this.modePass) {
-      const pr = this.renderer.getPixelRatio();
-      this.modePass.uniforms.texel.value = [1 / (w * pr), 1 / (h * pr)];
-    }
     const f = this.frame?.getBoundingClientRect();
     const host = this.host.getBoundingClientRect();
     if (f && f.width && f.height) {
@@ -754,6 +735,7 @@ export class LegionsScene {
       if (!f) {
         f = this.tribes[w.side].figure(w.role, w.side);
         dressFigure(f, this.looks[w.side], w.side);
+        f.root.traverse((o) => o.layers.enable(FIGURE_LAYER));
         this.figs.set(sq, f);
         this.live.add(f);
         this.scene.add(f.root);
