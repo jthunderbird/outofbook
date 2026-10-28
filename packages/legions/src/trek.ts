@@ -144,10 +144,10 @@ const RIP_VERT = `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const RIP_FRAG = `
-uniform sampler2D map; uniform vec3 rim; uniform float time; uniform float seed; uniform vec2 shift;
+uniform sampler2D map; uniform vec3 rim; uniform float time; uniform float seed; uniform vec2 shift; uniform float open; uniform float zoom;
 varying vec2 vUv;
 float edge(float a) {
-  return 0.34 + 0.05 * sin(a * 3.0 + seed + time * 0.25) + 0.035 * sin(a * 7.0 + seed * 2.3 + time * 0.7)
+  return open + 0.05 * sin(a * 3.0 + seed + time * 0.25) + 0.035 * sin(a * 7.0 + seed * 2.3 + time * 0.7)
     + 0.02 * sin(a * 17.0 + seed * 5.1 - time * 0.9) + 0.012 * sin(a * 31.0 - time * 1.7);
 }
 void main() {
@@ -156,7 +156,7 @@ void main() {
   float r = length(p * vec2(1.0, 1.25));
   float e = edge(a);
   if (r > e + 0.16) discard;
-  vec3 world = texture2D(map, clamp(vUv * 0.78 + 0.11 + shift, 0.0, 1.0)).rgb;
+  vec3 world = texture2D(map, clamp(vUv * zoom + (1.0 - zoom) * 0.5 + shift, 0.0, 1.0)).rgb;
   // The world fades out into space over a wide soft edge; round it a faint, shifting glow of color, no hard line.
   float inside = 1.0 - smoothstep(e - 0.1, e + 0.015, r);
   float glow = exp(-pow((r - e) / 0.06, 2.0)) * (0.55 + 0.45 * sin(time * 2.0 + a * 4.0 + seed));
@@ -404,19 +404,32 @@ export class TrekScene {
     const made = new Map<() => Texture, Texture>();
     const rims = [0x9b7bff, 0x6fe0c8, 0xff7fb8, 0xffb35a, 0x7fb4ff];
     const rips = new Group();
+    let wasBig = false;
     for (let i = 0; i < RIPS; i++) {
       const pick = order[i];
       if (!made.has(pick)) made.set(pick, pick());
+      // About two in five are big (never two side by side), drawn in front of the small ones.
+      const big: boolean = !wasBig && Math.random() < 0.45;
+      wasBig = big;
       const mat = new ShaderMaterial({
         vertexShader: RIP_VERT,
         fragmentShader: RIP_FRAG,
-        uniforms: { map: { value: made.get(pick) }, rim: { value: new Color(rims[i % rims.length]) }, time: { value: 0 }, seed: { value: Math.random() * 40 }, shift: { value: new Vector2() } },
+        uniforms: {
+          map: { value: made.get(pick) },
+          rim: { value: new Color(rims[i % rims.length]) },
+          time: { value: 0 },
+          seed: { value: Math.random() * 40 },
+          shift: { value: new Vector2() },
+          // A big rip opens wide on nearly the whole picture; a small one shows a snippet of it.
+          open: { value: big ? 0.43 : 0.34 },
+          zoom: { value: big ? 0.95 : 0.72 },
+        },
         transparent: true,
         depthWrite: false,
       });
-      const size = 16 + Math.random() * 8;
+      const size = big ? 30 + Math.random() * 8 : 16 + Math.random() * 8;
       const mesh = new Mesh(new PlaneGeometry(size * 1.6, size), mat);
-      mesh.position.set(-6 + i * RIP_GAP + (Math.random() - 0.5) * 8, (i % 2 ? 10 : -1) + Math.random() * 5, -55 - Math.random() * 15);
+      mesh.position.set(-6 + i * RIP_GAP + (Math.random() - 0.5) * 8, big ? 5 + Math.random() * 3 : (i % 2 ? 10 : -1) + Math.random() * 5, big ? -48 : -55 - Math.random() * 15);
       mesh.rotation.z = (Math.random() - 0.5) * 0.4;
       rips.add(mesh);
       this.rips.push({ mat, mesh });
