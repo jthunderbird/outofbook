@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Epoch Drifters flat map</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #120d22;
+        color: #f4efe2;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        overflow: hidden;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #view {
+        position: relative;
+        width: min(100vw, calc(100vh * 16 / 9));
+        aspect-ratio: 16 / 9;
+      }
+      #map {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+      }
+      #gl {
+        position: absolute;
+        inset: 0;
+      }
+      #bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+        background: linear-gradient(transparent, rgba(10, 6, 24, 0.85));
+        justify-content: center;
+        align-items: center;
+        z-index: 5;
+      }
+      button {
+        font: inherit;
+        color: #f4efe2;
+        background: #2c2358;
+        border: 2px solid #7f6cd6;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+        min-height: 40px;
+      }
+      button.on {
+        background: #7f6cd6;
+        color: #120d22;
+        font-weight: 700;
+      }
+      #say {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(10, 6, 24, 0.75);
+        border: 2px solid #7f6cd6;
+        border-radius: 6px;
+        padding: 6px 14px;
+        z-index: 5;
+        text-align: center;
+        max-width: 92vw;
+      }
+      #logo {
+        position: fixed;
+        left: 10px;
+        top: 8px;
+        width: min(22vw, 240px);
+        z-index: 5;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="view">
+        <canvas id="map" width="512" height="288"></canvas>
+        <div id="gl"></div>
+      </div>
+    </div>
+    <img id="logo" alt="Epoch Drifters" />
+    <div id="say">You play the light side: tap a piece, then a square.</div>
+    <div id="bar"></div>
+    <script type="module" src="./flat.ts"></script>
+  </body>
+</html>

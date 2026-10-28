@@ -32,7 +32,7 @@ const plane = new PlaneGeometry(1, 1).translate(0, 0.5, 0);
 const UP = new Vector3(0, 1, 0);
 
 /** How far the cards lean back: a little in a 3D view; at the camera's own angle in the flat one, so they stand upright on the screen. Set by the scene. */
-export const lean = { tilt: 0.3 };
+export const lean = { tilt: 0.3, size: 1, foot: 0 };
 
 const pixelTexture = (c: HTMLCanvasElement) => {
   const t = new CanvasTexture(c);
@@ -98,6 +98,8 @@ function epochFigure(role: Role, side: Side): Fig {
   const pq = new Quaternion();
   const at = new Vector3();
   card.onBeforeRender = (_r, _s, camera) => {
+    card.scale.set(h * lean.size, h * lean.size, 1);
+    card.position.z = lean.foot;
     card.parent!.getWorldQuaternion(pq);
     if (UP.clone().applyQuaternion(pq).y < 0.95) return;
     card.getWorldPosition(at);

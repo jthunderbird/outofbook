@@ -131,7 +131,7 @@ export class LegionsScene {
         self.shake = ms;
       },
     };
-    const r = (this.renderer = new WebGLRenderer({ antialias: true }));
+    const r = (this.renderer = new WebGLRenderer({ antialias: true, alpha: true }));
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     r.shadowMap.enabled = true;
     r.shadowMap.type = PCFSoftShadowMap;
@@ -249,11 +249,15 @@ export class LegionsScene {
     this.camera.fov = v?.fov ?? 36;
     this.camera.updateProjectionMatrix();
     lean.tilt = v?.fixed ? v.pitch : 0.3;
+    // In a fixed view the cards are drawn pixel for pixel: 32 pixels to a square, standing toward the front of it.
+    lean.size = v?.fixed ? 1 / 1.4 : 1;
+    lean.foot = v?.fixed ? 0.25 : 0;
     if (v) {
       // Pulled back on narrow screens so the board stays whole.
       const k = Math.max(1, 1.3 / this.camera.aspect);
-      this.camera.position.set(0, v.ty + Math.sin(v.pitch) * v.dist * k, Math.cos(v.pitch) * v.dist * k * s);
-      this.controls.target.set(0, v.ty, 0);
+      const tz = (v.tz ?? 0) * s;
+      this.camera.position.set(0, v.ty + Math.sin(v.pitch) * v.dist * k, tz + Math.cos(v.pitch) * v.dist * k * s);
+      this.controls.target.set(0, v.ty, tz);
     } else {
       this.camera.position.set(0, 12.6, 9.4 * s);
       this.controls.target.set(0, 0, 0.5 * s);
@@ -316,6 +320,9 @@ export class LegionsScene {
     const c = court(id);
     if (c.dress) this.court = c.dress(this.scene, this.board);
     this.applyView();
+    // A bare court is drawn over a picture the page supplies: no board, no labels, a clear background.
+    this.labels.visible = !this.court?.bare;
+    this.board.group.visible = !this.court?.bare;
     this.highlight();
   }
 

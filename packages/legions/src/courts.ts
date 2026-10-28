@@ -25,9 +25,11 @@ import {
   Path,
   PointLight,
   LinearFilter,
+  PlaneGeometry,
   LinearMipmapLinearFilter,
   NearestFilter,
   RepeatWrapping,
+  ShadowMaterial,
   ShaderMaterial,
   Shape,
   ShapeGeometry,
@@ -72,11 +74,15 @@ export interface CourtView {
   dist: number;
   fov: number;
   ty: number;
+  /** Where on the ground, along z, the camera looks, when not at the board's center. */
+  tz?: number;
 }
 
 export interface CourtSet {
   /** Where the camera stands for this court, instead of the usual place. */
   view?: CourtView;
+  /** Drawn over a picture the page provides: the board and its labels hidden, the background clear. */
+  bare?: boolean;
   /** Height at which move markers lie, when the squares stand proud of the board. */
   markY?: number;
   update(ms: number): void;
@@ -945,7 +951,45 @@ export const COURTS: Court[] = [
   { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
 ];
 
-export const court = (id: string) => COURTS.find((c) => c.id === id) ?? COURTS[0];
+/**
+ * The flat pixel map's overlay (its picture, backdrop and tiles, is drawn by the page under the
+ * scene): the board hidden and the camera fixed so that 32 x 24 pixels on the page's picture are one
+ * square, whatever tribe stands on it. Not offered in menus.
+ */
+const OVERLAY: Court = {
+  id: "epoch-overlay",
+  name: "Epoch Plains (map)",
+  top: "#c45a96",
+  bottom: "#3b2a78",
+  dress(scene, board) {
+    const group = new Group();
+    scene.add(group);
+    // Figures' shadows fall on the page's tiles.
+    const shade = new Mesh(new PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new ShadowMaterial({ opacity: 0.35 }));
+    shade.position.y = 0.002;
+    shade.receiveShadow = true;
+    group.add(shade);
+    const sun = new DirectionalLight(0xffe2b8, 1.4);
+    sun.position.set(-6, 10, 8);
+    sun.castShadow = true;
+    group.add(sun);
+    void board;
+    const prev = scene.background;
+    scene.background = null;
+    return {
+      bare: true,
+      // asin(0.75): a tile 32 wide is 24 high. Seen from far off through a narrow lens so it is nearly flat; the scene is 512 x 288 pixels of 32 to the unit, its middle 4 pixels above the board's.
+      view: { fixed: true, pitch: Math.asin(0.75), dist: 70, fov: (2 * Math.atan(4.5 / 70) * 180) / Math.PI, ty: 0, tz: -4 / 24 },
+      update() {},
+      dispose() {
+        group.removeFromParent();
+        scene.background = prev;
+      },
+    };
+  },
+};
+
+export const court = (id: string) => (id === OVERLAY.id ? OVERLAY : (COURTS.find((c) => c.id === id) ?? COURTS[0]));
 
 /** The plain courts' sky: their gradient. */
 export const courtBackground = (id: string) => backgroundTexture(court(id).dress ? "night" : id);
