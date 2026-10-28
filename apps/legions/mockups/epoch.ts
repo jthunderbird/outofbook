@@ -4,6 +4,7 @@
 //          field, bloom and a layered backdrop, as modern HD-2D RPGs do.
 import { Chess } from "chess.js";
 import {
+  ACESFilmicToneMapping,
   AdditiveBlending,
   AmbientLight,
   BoxGeometry,
@@ -16,6 +17,9 @@ import {
   DoubleSide,
   Fog,
   HemisphereLight,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  PointLight,
   Mesh,
   MeshBasicMaterial,
   MeshDepthMaterial,
@@ -469,22 +473,155 @@ const px = (c: HTMLCanvasElement, repeat?: [number, number]): Texture => {
   }
   return t;
 };
+/** A tile at 128 px: the 32 px tile softened up, with fine detail (blades, ripples, grit) drawn over it, as HD-2D environments are high resolution under chunky sprites. */
+function hiTile(kind: TileKind, frame = 0) {
+  const src = tile(kind, 32, 32, frame);
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(src, 0, 0, 128, 128);
+  let seed = kind.length * 977 + frame * 31 + 7;
+  const r = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+  if (kind === "grass" || kind === "grass2") {
+    for (let i = 0; i < 520; i++) {
+      const x = r() * 128;
+      const y = r() * 128;
+      g.strokeStyle = r() < 0.5 ? "rgba(30,90,30,.35)" : "rgba(190,240,120,.35)";
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + (r() - 0.5) * 3, y - 3 - r() * 5);
+      g.stroke();
+    }
+  } else if (kind === "water") {
+    for (let i = 0; i < 40; i++) {
+      const x = r() * 128;
+      const y = r() * 128;
+      g.strokeStyle = r() < 0.5 ? "rgba(200,240,255,.35)" : "rgba(10,50,120,.3)";
+      g.beginPath();
+      g.moveTo(x, y);
+      g.quadraticCurveTo(x + 8, y - 2, x + 16 + r() * 8, y);
+      g.stroke();
+    }
+  } else
+    for (let i = 0; i < 700; i++) {
+      g.fillStyle = r() < 0.5 ? "rgba(120,90,50,.3)" : "rgba(255,240,200,.3)";
+      g.fillRect(r() * 128, r() * 128, 1 + r() * 2, 1 + r() * 2);
+    }
+  return c;
+}
+/** A smooth, mipmapped texture: the environment's high resolution detail, against the chunky sprites. */
+const hi = (c: HTMLCanvasElement, repeat?: [number, number]): Texture => {
+  const t = new CanvasTexture(c);
+  t.magFilter = LinearFilter;
+  t.minFilter = LinearMipmapLinearFilter;
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 8;
+  if (repeat) {
+    t.wrapS = t.wrapT = RepeatWrapping;
+    t.repeat.set(...repeat);
+  }
+  return t;
+};
+/**
+ * A normal map for a flat sprite, so light wraps round it instead of lying
+ * flat on a card: the sprite's blurred silhouette is a rounded bump, with its
+ * own brightness carving small detail (the "paper-thin" fix HD-2D games rely on).
+ */
+function normalMap(src: HTMLCanvasElement) {
+  const n = src.width;
+  const d = src.getContext("2d")!.getImageData(0, 0, n, n).data;
+  let h = new Float32Array(n * n);
+  const lum = new Float32Array(n * n);
+  for (let i = 0; i < n * n; i++) {
+    h[i] = d[i * 4 + 3] > 127 ? 1 : 0;
+    lum[i] = d[i * 4 + 3] > 127 ? (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255 : 0;
+  }
+  for (let pass = 0; pass < 3; pass++) {
+    const o = new Float32Array(n * n);
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        let sum = 0;
+        let cnt = 0;
+        for (let dy = -2; dy <= 2; dy++)
+          for (let dx = -2; dx <= 2; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx >= 0 && yy >= 0 && xx < n && yy < n) {
+              sum += h[yy * n + xx];
+              cnt++;
+            } else cnt++;
+          }
+        o[y * n + x] = sum / cnt;
+      }
+    h = o;
+  }
+  const at = (x: number, y: number) => {
+    const i = Math.max(0, Math.min(n - 1, y)) * n + Math.max(0, Math.min(n - 1, x));
+    return h[i] * 3.2 + lum[i] * 0.35;
+  };
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const g = c.getContext("2d")!;
+  const img = g.createImageData(n, n);
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const nx = (at(x - 1, y) - at(x + 1, y)) * 1.4;
+      const ny = (at(x, y + 1) - at(x, y - 1)) * 1.4;
+      const l = Math.hypot(nx, ny, 1);
+      const i = (y * n + x) * 4;
+      img.data[i] = ((nx / l) * 0.5 + 0.5) * 255;
+      img.data[i + 1] = ((ny / l) * 0.5 + 0.5) * 255;
+      img.data[i + 2] = ((1 / l) * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+  g.putImageData(img, 0, 0);
+  const t = new CanvasTexture(c);
+  t.magFilter = t.minFilter = NearestFilter;
+  t.generateMipmaps = false;
+  return t;
+}
+const blob = (() => {
+  let t: CanvasTexture | null = null;
+  return () => {
+    if (!t) {
+      const c = document.createElement("canvas");
+      c.width = c.height = 64;
+      const g = c.getContext("2d")!;
+      const r = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+      r.addColorStop(0, "rgba(10,5,30,.75)");
+      r.addColorStop(1, "rgba(10,5,30,0)");
+      g.fillStyle = r;
+      g.fillRect(0, 0, 64, 64);
+      t = new CanvasTexture(c);
+    }
+    return t;
+  };
+})();
+
 const TILT_SHIFT = {
-  uniforms: { tDiffuse: { value: null as Texture | null }, dir: { value: new Vector2(1, 0) }, amount: { value: 0.0014 }, focus: { value: 0.4 } },
+  uniforms: { tDiffuse: { value: null as Texture | null }, amount: { value: 0.012 }, focus: { value: 0.52 }, aspect: { value: 1.78 } },
   vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-  // Blur grows with distance from a horizontal focus band: the toy-diorama look of HD-2D.
-  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 dir; uniform float amount; uniform float focus; varying vec2 vUv;
+  // Depth of field as a bokeh: a golden-angle spiral of samples whose radius grows with distance from a horizontal focus band (the board), rotated per pixel by interleaved gradient noise; bright samples weigh more, so highlights bloom into discs.
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float amount; uniform float focus; uniform float aspect; varying vec2 vUv;
     void main(){
       float d = abs(vUv.y - focus);
-      float k = smoothstep(0.22, 0.55, d) * amount * 4.0;
-      vec4 s = texture2D(tDiffuse, vUv) * 0.2270;
-      for (int i = 1; i < 5; i++) {
-        float o = float(i) * k;
-        float w = i == 1 ? 0.1945 : i == 2 ? 0.1216 : i == 3 ? 0.054 : 0.016;
-        s += texture2D(tDiffuse, vUv + dir * o) * w;
-        s += texture2D(tDiffuse, vUv - dir * o) * w;
+      float coc = smoothstep(0.2, 0.62, d) * amount;
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (coc < 0.0006) { gl_FragColor = base; return; }
+      float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      vec3 acc = vec3(0.0); float wsum = 0.0;
+      for (int i = 0; i < 32; i++) {
+        float r = sqrt((float(i) + 0.5) / 32.0);
+        float a = float(i) * 2.39996 + ign * 6.2831;
+        vec2 o = vec2(cos(a) * r / aspect, sin(a) * r) * coc;
+        vec3 s = texture2D(tDiffuse, vUv + o).rgb;
+        float w = 1.0 + dot(s, vec3(0.33)) * dot(s, vec3(0.33)) * 2.0;
+        acc += s * w; wsum += w;
       }
-      gl_FragColor = s;
+      gl_FragColor = vec4(acc / wsum, base.a);
     }`,
 };
 const GRADE = {
@@ -520,6 +657,8 @@ class Diorama {
   ) {
     const r = (this.renderer = new WebGLRenderer({ antialias: false }));
     r.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    r.toneMapping = ACESFilmicToneMapping;
+    r.toneMappingExposure = 1.05;
     r.shadowMap.enabled = true;
     r.shadowMap.type = PCFSoftShadowMap;
     r.domElement.classList.add("gl");
@@ -539,11 +678,18 @@ class Diorama {
     sc.far = 40;
     sun.shadow.bias = -0.0004;
     s.add(sun);
-    this.waterTex = [0, 1, 2, 3].map((i) => px(tile("water", 32, 32, i)));
-    this.pathTex = px(tile("path", 32, 32));
+    // A cool rim light from behind, to pick the figures out from the board and each other; and a warm point light over the field, which is how HD-2D lets figures throw shadows onto the ground.
+    const rim = new DirectionalLight(0x8ab4ff, 1.6);
+    rim.position.set(5, 6, -9);
+    s.add(rim);
+    const lamp = new PointLight(0xffd9a0, 18, 14, 1.6);
+    lamp.position.set(0, 3.2, 1);
+    s.add(lamp);
+    this.waterTex = [0, 1, 2, 3].map((i) => hi(hiTile("water", i)));
+    this.pathTex = hi(hiTile("path"));
     const std = (map: Texture | null, extra = {}) => new MeshStandardMaterial({ map, roughness: 1, ...extra });
-    this.mats.g1 = std(px(tile("grass", 32, 32)));
-    this.mats.g2 = std(px(tile("grass2", 32, 32)));
+    this.mats.g1 = std(hi(hiTile("grass")));
+    this.mats.g2 = std(hi(hiTile("grass2")));
     this.dark = this.water = std(this.waterTex[0], { emissive: new Color(0x0a2a55), emissiveMap: this.waterTex[0], emissiveIntensity: 0.5 });
     // The board: a tile per square, raised a little off the island.
     const side = std(px(cliff(32, 32)));
@@ -622,20 +768,41 @@ class Diorama {
     this.parts = new Points(new BufferGeometry(), new PointsMaterial({ size: 0.075, vertexColors: true, depthWrite: false }));
     this.parts.frustumCulled = false;
     s.add(this.parts);
+    // Shafts of low sun slanting through the haze: long additive strips that shimmer.
+    const gc = document.createElement("canvas");
+    gc.width = 8;
+    gc.height = 128;
+    const gg = gc.getContext("2d")!;
+    const gr = gg.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, "rgba(255,225,170,0.55)");
+    gr.addColorStop(1, "rgba(255,225,170,0)");
+    gg.fillStyle = gr;
+    gg.fillRect(0, 0, 8, 128);
+    const shaftTex = new CanvasTexture(gc);
+    for (let i = 0; i < 5; i++) {
+      const m = new Mesh(
+        new PlaneGeometry(1.3 + i * 0.35, 16),
+        new MeshBasicMaterial({ map: shaftTex, transparent: true, blending: AdditiveBlending, depthWrite: false, opacity: 0.35, side: DoubleSide }),
+      );
+      m.position.set(-9 + i * 3.2, 5.5, -3 - i * 0.7);
+      m.rotation.z = -0.5;
+      m.rotation.x = -0.2;
+      this.shafts.push(m);
+      s.add(m);
+    }
     // Post: bloom, then tilt-shift blur and a grade.
     const c = (this.composer = new EffectComposer(r));
     c.addPass(new RenderPass(s, this.cam));
     c.addPass(new UnrealBloomPass(new Vector2(512, 288), 0.28, 0.7, 0.88));
-    for (const dir of [new Vector2(1, 0), new Vector2(0, 1)]) {
-      const p = new ShaderPass(TILT_SHIFT);
-      p.uniforms.dir.value = dir;
-      c.addPass(p);
-    }
+    this.dof = new ShaderPass(TILT_SHIFT);
+    c.addPass(this.dof);
     c.addPass(new ShaderPass(GRADE));
     c.addPass(new OutputPass());
     addEventListener("pointermove", (e) => this.mouse.set((e.clientX / innerWidth - 0.5) * 2, (e.clientY / innerHeight - 0.5) * 2));
   }
   parts: Points;
+  shafts: Mesh[] = [];
+  dof: ShaderPass;
   setStyle(s: Style) {
     this.style = s;
     const m = this.dark;
@@ -649,6 +816,7 @@ class Diorama {
     const h = innerHeight;
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
+    this.dof.uniforms.aspect.value = w / h;
     this.cam.aspect = w / h;
     // Fit the board whatever the screen's shape: pull back on narrow ones.
     this.fit = Math.max(1, 1.7 / this.cam.aspect);
@@ -662,11 +830,27 @@ class Diorama {
       const geo = new PlaneGeometry(1, 1).translate(0, 0.5, 0);
       m = new Mesh(
         geo,
-        new MeshStandardMaterial({ map: t, transparent: false, alphaTest: 0.5, roughness: 1, emissive: new Color(0xffffff), emissiveMap: t, emissiveIntensity: 0.28, side: DoubleSide }),
+        new MeshStandardMaterial({
+          map: t,
+          normalMap: normalMap(sprite(p.role, p.side)),
+          normalScale: new Vector2(1.1, 1.1),
+          transparent: false,
+          alphaTest: 0.5,
+          roughness: 0.85,
+          emissive: new Color(0xffffff),
+          emissiveMap: t,
+          emissiveIntensity: 0.12,
+          side: DoubleSide,
+        }),
       );
       m.customDepthMaterial = new MeshDepthMaterial({ depthPacking: RGBADepthPacking, map: t, alphaTest: 0.5 });
       m.castShadow = true;
       m.rotation.x = -0.5;
+      // A soft contact shadow where the figure meets the ground.
+      const cs = new Mesh(new PlaneGeometry(0.95, 0.55), new MeshBasicMaterial({ map: blob(), transparent: true, depthWrite: false }));
+      cs.rotation.x = -Math.PI / 2 + 0.5;
+      cs.position.set(0, 0.05, 0.05);
+      m.add(cs);
       this.scene.add(m);
       this.sprites.set(p, m);
     }
@@ -680,6 +864,7 @@ class Diorama {
     const sh = this.show.shake > 0 ? Math.sin(t * 90) * 0.04 : 0;
     this.cam.position.x += sh;
     this.drift.forEach((d, i) => (d.position.x += (i + 1) * 0.004 * (d.position.x > 60 ? -30 : 1)));
+    this.shafts.forEach((m, i) => ((m.material as MeshBasicMaterial).opacity = 0.22 + 0.12 * Math.sin(t * 0.6 + i * 1.7)));
     const frame = Math.floor(t * 4) % 4;
     if (this.style === "pond" && this.dark.map !== this.waterTex[frame]) this.dark.map = this.dark.emissiveMap = this.waterTex[frame];
     const dp = this.dots.geometry.attributes.position as BufferAttribute;
@@ -694,7 +879,7 @@ class Diorama {
       live.add(p);
       const m = this.mesh(p);
       m.position.set(p.col + p.ox - 3.5, p.hop - 0.03, p.row + p.oz - 3.5 + 0.1);
-      (m.material as MeshStandardMaterial).emissiveIntensity = 0.28 + p.flash * 2.5;
+      (m.material as MeshStandardMaterial).emissiveIntensity = 0.12 + p.flash * 2.5;
     }
     for (const [p, m] of this.sprites)
       if (!live.has(p)) {
