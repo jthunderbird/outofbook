@@ -1130,10 +1130,10 @@ function sketchDesk(scene: Scene, board: Board): CourtSet {
   group.add(desk);
   // The drawings, loose on the desk, some slipped under the board.
   for (const [file, x, z, rot] of [
-    ["king.webp", -5.6, -2.2, 0.28],
-    ["dragon.webp", 5.2, 2.6, -0.22],
-    ["queen.webp", 4.9, -3.4, 0.12],
-    ["dragon.webp", -5.4, 3.6, -0.4],
+    ["draw-stormcourt-k.webp", -5.6, -2.2, 0.28],
+    ["draw-epoch-drifters-n.webp", 5.2, 2.6, -0.22],
+    ["draw-thornwood-q.webp", 4.9, -3.4, 0.12],
+    ["draw-thornwood-n.webp", -5.4, 3.6, -0.4],
   ] as const) {
     // A touch below white, so the lamp and glow do not wash the drawings out.
     const m = new MeshStandardMaterial({ color: 0xbdb8ae, roughness: 0.95 });
