@@ -44,8 +44,8 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import logo from "../src/assets/logos/epoch-drifters.webp";
-import { NAMES, SIDES, sprite, type Role } from "./sprites";
-import { castle, clouds, cliff, hills, mountains, sky, tile, type TileKind } from "./world";
+import { NAMES, SIDES, normalMap, sprite, type Role } from "@outofbook/legions/pixel/sprites";
+import { castle, clouds, cliff, hills, mountains, sky, tile, type TileKind } from "@outofbook/legions/pixel/world";
 
 const FILES = "abcdefgh";
 type Side = "w" | "b";
@@ -525,64 +525,6 @@ const hi = (c: HTMLCanvasElement, repeat?: [number, number]): Texture => {
   }
   return t;
 };
-/**
- * A normal map for a flat sprite, so light wraps round it instead of lying
- * flat on a card: the sprite's blurred silhouette is a rounded bump, with its
- * own brightness carving small detail (the "paper-thin" fix HD-2D games rely on).
- */
-function normalMap(src: HTMLCanvasElement) {
-  const n = src.width;
-  const d = src.getContext("2d")!.getImageData(0, 0, n, n).data;
-  let h = new Float32Array(n * n);
-  const lum = new Float32Array(n * n);
-  for (let i = 0; i < n * n; i++) {
-    h[i] = d[i * 4 + 3] > 127 ? 1 : 0;
-    lum[i] = d[i * 4 + 3] > 127 ? (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255 : 0;
-  }
-  for (let pass = 0; pass < 3; pass++) {
-    const o = new Float32Array(n * n);
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        let sum = 0;
-        let cnt = 0;
-        for (let dy = -2; dy <= 2; dy++)
-          for (let dx = -2; dx <= 2; dx++) {
-            const xx = x + dx;
-            const yy = y + dy;
-            if (xx >= 0 && yy >= 0 && xx < n && yy < n) {
-              sum += h[yy * n + xx];
-              cnt++;
-            } else cnt++;
-          }
-        o[y * n + x] = sum / cnt;
-      }
-    h = o;
-  }
-  const at = (x: number, y: number) => {
-    const i = Math.max(0, Math.min(n - 1, y)) * n + Math.max(0, Math.min(n - 1, x));
-    return h[i] * 3.2 + lum[i] * 0.35;
-  };
-  const c = document.createElement("canvas");
-  c.width = c.height = n;
-  const g = c.getContext("2d")!;
-  const img = g.createImageData(n, n);
-  for (let y = 0; y < n; y++)
-    for (let x = 0; x < n; x++) {
-      const nx = (at(x - 1, y) - at(x + 1, y)) * 1.4;
-      const ny = (at(x, y + 1) - at(x, y - 1)) * 1.4;
-      const l = Math.hypot(nx, ny, 1);
-      const i = (y * n + x) * 4;
-      img.data[i] = ((nx / l) * 0.5 + 0.5) * 255;
-      img.data[i + 1] = ((ny / l) * 0.5 + 0.5) * 255;
-      img.data[i + 2] = ((1 / l) * 0.5 + 0.5) * 255;
-      img.data[i + 3] = 255;
-    }
-  g.putImageData(img, 0, 0);
-  const t = new CanvasTexture(c);
-  t.magFilter = t.minFilter = NearestFilter;
-  t.generateMipmaps = false;
-  return t;
-}
 const blob = (() => {
   let t: CanvasTexture | null = null;
   return () => {
