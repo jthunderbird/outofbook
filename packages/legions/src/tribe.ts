@@ -3,7 +3,7 @@
 // on the stage the scene gives it. A piece dies the way its taker kills, so a
 // tribe's kills work on any tribe's figures through the shared Fig parts
 // (root, body, materials, height).
-import type { Mesh, PointLight, Scene } from "three";
+import type { Camera, Mesh, PointLight, Scene } from "three";
 import type { Fig, Role, Side } from "./figures";
 import type { Clock, Particles } from "./fx";
 import type { LegionsSound } from "./sound";
@@ -18,6 +18,10 @@ export interface Stage {
   readonly flash: PointLight;
   /** The board's squares by name, for effects that open one (a pit). */
   readonly squares: Map<string, Mesh>;
+  /** The camera, for effects that play to the screen (a piece thrown off into the distance). */
+  readonly camera: Camera;
+  /** The court being played on (courts.ts), for effects that differ on a tribe's home. */
+  readonly court: string;
   /** Shakes the camera for this many ms. */
   shake: number;
 }

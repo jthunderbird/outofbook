@@ -118,6 +118,12 @@ export class LegionsScene {
       scene: this.scene,
       sound: this.sound,
       flash: this.flash,
+      get camera() {
+        return self.camera;
+      },
+      get court() {
+        return self.courtId;
+      },
       get squares() {
         return self.squares;
       },
@@ -248,6 +254,9 @@ export class LegionsScene {
     this.controls.minDistance = v?.fixed ? 1 : 9;
     this.controls.maxDistance = v?.fixed ? 400 : 20;
     this.camera.fov = v?.fov ?? 36;
+    // A fixed view stands far off; its depth range moves with it.
+    this.camera.near = v?.fixed ? v.dist - 40 : 0.1;
+    this.camera.far = v?.fixed ? v.dist + 160 : 220;
     this.camera.updateProjectionMatrix();
     lean.tilt = v?.fixed ? v.pitch : 0.3;
     // In a fixed view the cards are drawn pixel for pixel: 32 pixels to a square.

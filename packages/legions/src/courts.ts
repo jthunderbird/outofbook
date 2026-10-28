@@ -971,11 +971,12 @@ function epochFlat(scene: Scene, board: Board): CourtSet {
   const map = new FlatMap();
   map.draw(0);
   const tex = chunky(map.cv);
-  const D = 70;
+  // So far off, through so narrow a lens, that the view is all but flat: every square the same size, as on the picture.
+  const D = 400;
   // 32 pixels to a square: the picture is 20 x 11.25 squares where the camera looks; further back it is scaled up to match.
   const pic = new Mesh(new PlaneGeometry(Backdrop.W / 32, Backdrop.H / 32), new MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false, toneMapped: false, fog: false }));
   pic.renderOrder = -10;
-  const back = 30;
+  const back = 25;
   const look = new Vector3();
   const dir = new Vector3();
   pic.onBeforeRender = (_r, _s, camera) => {
@@ -995,6 +996,7 @@ function epochFlat(scene: Scene, board: Board): CourtSet {
   const sun = new DirectionalLight(0xffe2b8, 1.4);
   sun.position.set(-6, 10, 8);
   sun.castShadow = true;
+  Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6 });
   group.add(sun);
   const prev = scene.background;
   scene.background = new Color(0xecb6cc);

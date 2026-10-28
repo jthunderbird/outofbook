@@ -160,8 +160,10 @@ export interface Frame {
   bob: number;
   step: number;
   act: number;
+  /** Flying (the dragon): the wings' beat, up (-) or down (+); the legs tucked up. */
+  wing?: number;
 }
-export type Motion = "idle" | "walk" | "attack";
+export type Motion = "idle" | "walk" | "attack" | "fly";
 /** Two frames of breathing, four of a walk, three of a strike. */
 export const FRAMES: Record<Motion, Frame[]> = {
   idle: [
@@ -178,6 +180,12 @@ export const FRAMES: Record<Motion, Frame[]> = {
     { bob: 1, step: 0, act: 1 },
     { bob: -1, step: 1, act: 2 },
     { bob: 0, step: 0, act: 3 },
+  ],
+  fly: [
+    { bob: -1, step: 0, act: 0, wing: -4 },
+    { bob: 0, step: 0, act: 0, wing: -1 },
+    { bob: 1, step: 0, act: 0, wing: 3 },
+    { bob: 0, step: 0, act: 0, wing: -1 },
   ],
 };
 
@@ -301,7 +309,7 @@ function queen(p: Paint, c: Palette, f: Frame) {
 
 function knight(p: Paint, c: Palette, f: Frame) {
   // A young dragon on its haunches: wings beat as it walks; it rears back, then breathes fire.
-  const flap = f.step !== 0 ? -2 : 0;
+  const flap = f.wing ?? (f.step !== 0 ? -2 : 0);
   const rear = f.act === 1 ? -2 : f.act === 2 ? 1 : 0;
   posed({ dy: f.bob }, () => {
     posed({ dy: flap }, () =>
@@ -356,7 +364,12 @@ function knight(p: Paint, c: Palette, f: Frame) {
       );
     });
   });
-  feet(p, f, [10, 27], [18, 26], 4, c.cloth);
+  if (f.wing === undefined) feet(p, f, [10, 27], [18, 26], 4, c.cloth);
+  else {
+    // In flight the legs are tucked up under the belly.
+    p.draw(rect(11, 25 + f.bob, 14, 27 + f.bob), c.cloth);
+    p.draw(rect(17, 25 + f.bob, 20, 27 + f.bob), c.cloth);
+  }
   posed({ dy: f.bob + rear, dx: f.act === 2 ? 1 : 0 }, () => {
     p.draw(ell(21, 12, 5.5, 4.5), c.cloth);
     p.draw(rect(24, 12, 29, f.act === 2 ? 13 : 15), c.cloth);
@@ -627,3 +640,68 @@ export function normalMap(src: HTMLCanvasElement) {
   t.generateMipmaps = false;
   return t;
 }
+
+/** Pixel fire, 32 x 48, six flickering frames: white at the heart through yellow, orange and red to dark tongues. */
+export const flames = (() => {
+  let made: HTMLCanvasElement[] | null = null;
+  return () => {
+    if (made) return made;
+    made = [];
+    const pal: [number, string][] = [
+      [0.86, "#fffbe0"],
+      [0.68, "#ffe85c"],
+      [0.5, "#ffb13b"],
+      [0.33, "#ff6a2a"],
+      [0.2, "#b8302a"],
+    ];
+    for (let f = 0; f < 6; f++) {
+      const c = document.createElement("canvas");
+      c.width = 32;
+      c.height = 48;
+      const g = c.getContext("2d")!;
+      for (let y = 0; y < 48; y++)
+        for (let x = 0; x < 32; x++) {
+          const u = (x - 15.5) / 16;
+          const v = 1 - y / 47;
+          const tongue = Math.sin(x * 0.9 + f * 1.7) * 0.12 + Math.sin(x * 0.37 - f * 1.1) * 0.1;
+          const heat = (1 - Math.abs(u) * (0.9 + v * 0.8)) * (1.05 - v * (0.95 - tongue)) + (((x * 7 + y * 13 + f * 31) % 17) / 17 - 0.5) * 0.12;
+          const hit = pal.find(([k]) => heat > k);
+          if (!hit) continue;
+          g.fillStyle = hit[1];
+          g.fillRect(x, y, 1, 1);
+        }
+      made.push(c);
+    }
+    return made;
+  };
+})();
+
+/** A pixel pillar of holy light, 24 x 96, three frames: a white core, gold edges that waver, sparks inside. */
+export const beam = (() => {
+  let made: HTMLCanvasElement[] | null = null;
+  return () => {
+    if (made) return made;
+    made = [];
+    for (let f = 0; f < 3; f++) {
+      const c = document.createElement("canvas");
+      c.width = 24;
+      c.height = 96;
+      const g = c.getContext("2d")!;
+      for (let y = 0; y < 96; y++) {
+        const w = 7 + Math.round(Math.sin(y * 0.3 + f * 2.1) * 1.5);
+        for (let x = 0; x < 24; x++) {
+          const d = Math.abs(x - 11.5);
+          if (d > w + 2) continue;
+          g.fillStyle = d < w * 0.45 ? "#ffffff" : d < w ? "#fff2a8" : "#f2c230";
+          g.fillRect(x, y, 1, 1);
+        }
+      }
+      for (let i = 0; i < 10; i++) {
+        g.fillStyle = "#ffffff";
+        g.fillRect(4 + ((i * 7 + f * 5) % 16), (i * 23 + f * 17) % 96, 1, 2);
+      }
+      made.push(c);
+    }
+    return made;
+  };
+})();

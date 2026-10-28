@@ -438,10 +438,10 @@ export class Backdrop {
     g.drawImage(this.high, x, 18, W, 46);
     g.drawImage(this.high, x - W, 18, W, 46);
     // The waterfall off the castle's island, pouring into the clouds.
-    for (let y = 176; y < 262; y++) {
+    for (let y = 172; y < 262; y++) {
       const k = (y + Math.floor(t * 30)) % 6;
       g.fillStyle = k < 2 ? "#e8f8ff" : k < 4 ? "#9fd8f5" : "#6cbbe8";
-      g.fillRect(446, y, 5, 1);
+      g.fillRect(598, y, 5, 1);
     }
     // The sea of cloud, three rows, back to front.
     cloudRow(g, W, 252, 0, t, "#e9a6c9", "#b97aae");

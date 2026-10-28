@@ -27,8 +27,8 @@ import {
 } from "three";
 import { squareAt } from "./board";
 import { Fig, type Role, type Side } from "./figures";
-import { ease, magicArc, ownMaterials, tween, wait } from "./fx";
-import { normalMap, sprite, type Motion } from "./pixel/sprites";
+import { clipAbove, ease, magicArc, ownMaterials, tween, wait } from "./fx";
+import { beam, flames, normalMap, sprite, type Motion } from "./pixel/sprites";
 import type { Stage, Tribe, TribeMove } from "./tribe";
 
 /** A card's height: pawns a little smaller than the rest. */
@@ -130,7 +130,7 @@ function epochFigure(role: Role, side: Side): Fig {
   card.onBeforeRender = (_r, _s, camera) => {
     const a = act(f);
     const now = performance.now() / 1000;
-    const i = a.motion === "idle" ? Math.floor(now / 0.6 + a.phase) % 2 : a.motion === "walk" ? Math.floor(now / 0.11) % 4 : a.i;
+    const i = a.motion === "idle" ? Math.floor(now / 0.6 + a.phase) % 2 : a.motion === "walk" ? Math.floor(now / 0.11) % 4 : a.motion === "fly" ? Math.floor(now / 0.09) % 4 : a.i;
     const fr = frame(role, side, a.motion, i);
     const m = card.material as MeshStandardMaterial;
     if (m.map !== fr.map) {
@@ -138,6 +138,8 @@ function epochFigure(role: Role, side: Side): Fig {
       m.normalMap = fr.normal;
     }
     card.scale.set(h * lean.size, h * lean.size, 1);
+    // Standing upright to a flat view, a card would throw a long smear of shadow: there only the soft spot beneath it shows.
+    card.castShadow = lean.tilt < 0.6;
     card.parent!.getWorldQuaternion(pq);
     if (UP.clone().applyQuaternion(pq).y < 0.95) return;
     card.getWorldPosition(at);
@@ -157,13 +159,31 @@ export const epoch: Tribe = {
   play: (stage, move) => play(stage, move),
 };
 
-/** Walks (the dragon flies, in an arc) from where f stands to b. */
+/** Walks from where f stands to b; the dragon takes off, flies and lands. */
 async function travel(stage: Stage, f: Fig, b: Vector3, ms?: number) {
   const a = f.root.position.clone();
-  const fly = f.role === "n" ? 0.8 : 0;
+  if (f.role === "n") return flyTo(stage, f, b, 0, ms);
   setAct(f, "walk");
-  await tween(stage.clock, ms ?? Math.max(360, a.distanceTo(b) * 260), (t) => f.root.position.set(a.x + (b.x - a.x) * t, Math.sin(Math.PI * t) * fly, a.z + (b.z - a.z) * t), ease.inOut);
+  await tween(stage.clock, ms ?? Math.max(360, a.distanceTo(b) * 260), (t) => f.root.position.set(a.x + (b.x - a.x) * t, 0, a.z + (b.z - a.z) * t), ease.inOut);
   setAct(f, "idle");
+}
+
+/** The dragon flies, wings beating, from where it is (on the ground or in the air) to b at height y, rising over the way. */
+async function flyTo(stage: Stage, f: Fig, b: Vector3, y: number, ms?: number) {
+  const a = f.root.position.clone();
+  const top = Math.max(a.y, y) + 0.7;
+  setAct(f, "fly");
+  await tween(
+    stage.clock,
+    ms ?? Math.max(520, a.distanceTo(b) * 300),
+    (t) => {
+      // Up quickly, along, and down to the end height: a smooth hump through top.
+      const h = t < 0.5 ? a.y + (top - a.y) * Math.sin(t * Math.PI) : y + (top - y) * Math.sin(t * Math.PI);
+      f.root.position.set(a.x + (b.x - a.x) * t, h, a.z + (b.z - a.z) * t);
+    },
+    ease.inOut,
+  );
+  setAct(f, y > 0.05 ? "fly" : "idle");
 }
 
 const flashLight = (stage: Stage, at: Vector3, color: number, power = 6, ms = 420) => {
@@ -172,7 +192,212 @@ const flashLight = (stage: Stage, at: Vector3, color: number, power = 6, ms = 42
   return tween(stage.clock, ms, (t) => (stage.flash.intensity = power * (1 - t)));
 };
 
-/** Each kind's blow on the figure it strikes, timed to the strike frame. */
+const fxTextures = new Map<HTMLCanvasElement, Texture>();
+/**
+ * A pixel-art effect (fire, a pillar of light) on a card that faces the camera
+ * like the figures, its frames played at fps; w and h in squares, standing on at,
+ * drawn over the figures.
+ */
+function effectCard(stage: Stage, pics: HTMLCanvasElement[], fps: number, w: number, h: number, at: Vector3) {
+  const tex = pics.map((c) => {
+    let t = fxTextures.get(c);
+    if (!t) {
+      t = new CanvasTexture(c);
+      t.magFilter = t.minFilter = NearestFilter;
+      t.colorSpace = SRGBColorSpace;
+      t.generateMipmaps = false;
+      fxTextures.set(c, t);
+    }
+    return t;
+  });
+  // Drawn over everything, so the fire engulfing a figure is never hidden behind it.
+  const mat = new MeshBasicMaterial({ map: tex[0], alphaTest: 0.5, toneMapped: false, side: DoubleSide, depthTest: false });
+  const m = new Mesh(plane, mat);
+  m.renderOrder = 5;
+  m.position.copy(at);
+  m.scale.set(w, h, 1);
+  const start = performance.now();
+  m.onBeforeRender = (_r, _s, camera) => {
+    mat.map = tex[Math.floor(((performance.now() - start) / 1000) * fps) % tex.length];
+    m.rotation.set(0, Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z), 0);
+    m.rotateX(-lean.tilt);
+    m.updateMatrixWorld(true);
+  };
+  stage.scene.add(m);
+  return {
+    mesh: m,
+    remove: () => {
+      m.removeFromParent();
+      mat.dispose();
+    },
+  };
+}
+
+/** Fades a figure's materials (for one thrown off into the distance). */
+function fade(v: Fig, k: number) {
+  for (const m of v.mats) {
+    m.transparent = true;
+    m.opacity = k;
+    if ("alphaTest" in m && m.alphaTest) m.alphaTest = 0.01;
+  }
+}
+
+const HOME = ["epoch-drifters", "epoch-flat"];
+
+/**
+ * The princess's grand blow: she lifts the victim off its square with her magic,
+ * then throws it away. On her tribe's home boards it sails up out of the top of
+ * the view and falls back into sight far off in the background, smaller and
+ * smaller, fading away; elsewhere it is simply gone out of the top of the view.
+ */
+async function throwAway(stage: Stage, q: Fig, v: Fig) {
+  const at = v.root.position.clone();
+  setAct(q, "attack", 0);
+  void flashLight(stage, at, 0xff9ec2, 4, 900);
+  await tween(stage.clock, 800, (t) => {
+    v.root.position.y = 1.3 * ease.inOut(t);
+    v.root.rotation.z = Math.sin(t * 9) * 0.08;
+    if (Math.random() < 0.5)
+      stage.fx.spawn(at.clone().add(new Vector3((Math.random() - 0.5) * 0.9, v.root.position.y + Math.random() * v.height, (Math.random() - 0.5) * 0.4)), {
+        color: Math.random() < 0.5 ? 0xff9ec2 : 0xffffff,
+        size: 0.05,
+        vel: new Vector3(0, 0.6, 0),
+        life: 500,
+        gravity: 0,
+        glow: true,
+      });
+  });
+  setAct(q, "attack", 1);
+  stage.sound.play("knock", { gain: 0.5 });
+  // Away from the camera and up: out over the top of the view.
+  const cam = stage.camera.position;
+  const away = at.clone().sub(cam).setY(0).normalize();
+  const from = v.root.position.clone();
+  await tween(stage.clock, 520, (t) => {
+    v.root.position
+      .copy(from)
+      .addScaledVector(away, 3 * t)
+      .add(new Vector3(0, 16 * t * t, 0));
+    v.root.rotation.z += 0.25;
+  });
+  setAct(q, "attack", 2);
+  if (!HOME.includes(stage.court)) {
+    v.root.removeFromParent();
+    return;
+  }
+  // Back into sight in the far background, falling away: placed along rays through the screen, from just over its top edge down toward the middle, ever further off.
+  const near = cam.distanceTo(new Vector3(0, 0, 0));
+  const nx = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.3);
+  const p = new Vector3();
+  const scale = v.root.scale.x;
+  void (async () => {
+    await tween(stage.clock, 1700, (t) => {
+      p.set(nx * (1 - 0.3 * t), 1.15 - 0.75 * t, 0.5)
+        .unproject(stage.camera)
+        .sub(cam)
+        .normalize();
+      v.root.position.copy(cam).addScaledVector(p, near + 10 + 60 * t);
+      v.root.scale.setScalar(scale * (0.9 - 0.75 * t));
+      v.root.rotation.z += 0.12;
+      fade(v, t < 0.5 ? 1 : 1 - (t - 0.5) * 2);
+    });
+    v.root.removeFromParent();
+  })();
+}
+
+/**
+ * The dragon's blow: it hovers before the victim and pours fire over it until
+ * pixel flames engulf it whole; the victim chars and burns down to ash.
+ */
+async function burn(stage: Stage, d: Fig, v: Fig) {
+  const at = v.root.position.clone();
+  const fx = stage.fx;
+  setAct(d, "attack", 0);
+  await wait(stage.clock, 220);
+  setAct(d, "attack", 1);
+  // The breath: flames along the way from the mouth to the victim, then the victim engulfed.
+  const mouth = d.root.position.clone().add(new Vector3(0, d.height * lean.size * 0.62, 0));
+  const cards = [] as ReturnType<typeof effectCard>[];
+  for (let i = 1; i <= 3; i++) {
+    const p = mouth
+      .clone()
+      .lerp(at, i / 4)
+      .setY(Math.max(0, mouth.y + (0.4 - mouth.y) * (i / 4) - 0.3));
+    cards.push(effectCard(stage, flames(), 12, 0.45 + i * 0.12, 0.6 + i * 0.15, p));
+    await wait(stage.clock, 70);
+  }
+  const big = v.height * 1.25 * (v.root.userData.pixels ? lean.size : 1);
+  for (const [dx, dz, k] of [
+    [0, 0.06, 1],
+    [-0.34, -0.02, 0.8],
+    [0.34, -0.02, 0.85],
+  ] as const)
+    cards.push(effectCard(stage, flames(), 12, 1.25 * k, big * k, at.clone().add(new Vector3(dx, 0, dz))));
+  stage.sound.play("knock", { gain: 0.5 });
+  void tween(stage.clock, 1100, (t) => {
+    stage.flash.position.copy(at).setY(1.2);
+    stage.flash.color.set(0xff8a2a);
+    stage.flash.intensity = (5 + Math.sin(t * 40) * 2) * (1 - t * 0.6);
+  });
+  // The victim chars black and burns down from the top.
+  const lit = v.mats.filter((m): m is MeshStandardMaterial => "emissive" in m);
+  for (const m of lit) m.emissive = new Color(0xff5a1a);
+  await tween(stage.clock, 1000, (t) => {
+    for (const m of lit) {
+      m.color.lerp(new Color(0x140a06), 0.08);
+      m.emissiveIntensity = 0.6 * (1 - t) + Math.random() * 0.3;
+    }
+    clipAbove(v.mats, v.height * (v.root.userData.pixels ? lean.size : 1) * (1.05 - t) + 0.02);
+    if (Math.random() < 0.6)
+      fx.spawn(at.clone().add(new Vector3((Math.random() - 0.5) * 0.5, Math.random() * big * (1 - t), 0)), {
+        color: Math.random() < 0.5 ? 0x3a3330 : 0x6a605a,
+        size: 0.05,
+        vel: new Vector3((Math.random() - 0.5) * 0.4, 1 + Math.random(), 0),
+        life: 900,
+        gravity: -0.3,
+      });
+  });
+  v.root.removeFromParent();
+  setAct(d, "attack", 2);
+  await tween(stage.clock, 260, (t) => cards.forEach((c) => c.mesh.scale.setY(c.mesh.scale.y * (1 - t * 0.3))));
+  for (const c of cards) c.remove();
+  stage.flash.intensity = 0;
+}
+
+/** The cleric's blow: a pillar of holy light falls on the victim, which turns to light and rises away in sparks. */
+async function smite(stage: Stage, c: Fig, v: Fig) {
+  const at = v.root.position.clone();
+  setAct(c, "attack", 0);
+  await wait(stage.clock, 220);
+  setAct(c, "attack", 1);
+  const pillar = effectCard(stage, beam(), 10, 0.9, 0.1, at);
+  void flashLight(stage, at, 0xfff0b0, 9, 900);
+  stage.sound.play("knock", { gain: 0.5 });
+  // The pillar drops from the sky to the ground.
+  await tween(stage.clock, 220, (t) => pillar.mesh.scale.setY(0.1 + 5.9 * t));
+  const lit = v.mats.filter((m): m is MeshStandardMaterial => "emissive" in m);
+  for (const m of lit) m.emissive = new Color(0xfff6d0);
+  await tween(stage.clock, 650, (t) => {
+    for (const m of lit) m.emissiveIntensity = 2.5 * t;
+    v.root.position.y = 0.5 * t * t;
+    fade(v, 1 - t);
+    if (Math.random() < 0.7)
+      stage.fx.spawn(at.clone().add(new Vector3((Math.random() - 0.5) * 0.5, Math.random() * v.height, 0)), {
+        color: Math.random() < 0.5 ? 0xffffff : 0xfff0a0,
+        size: 0.05,
+        vel: new Vector3(0, 1.5 + Math.random(), 0),
+        life: 700,
+        gravity: 0,
+        glow: true,
+      });
+  });
+  v.root.removeFromParent();
+  setAct(c, "attack", 2);
+  await tween(stage.clock, 260, (t) => pillar.mesh.scale.setX(0.9 * (1 - t)));
+  pillar.remove();
+}
+
+/** The hero's, guardian's and king's blows on the figure struck, timed to the strike frame. */
 async function blow(stage: Stage, a: Fig, v: Fig) {
   const at = v.root.position.clone();
   const mid = at.clone().setY(v.height * 0.5);
@@ -191,49 +416,11 @@ async function blow(stage: Stage, a: Fig, v: Fig) {
       });
     }
     void flashLight(stage, at, 0xffffff, 3, 220);
-  } else if (a.role === "n") {
-    // Fire poured from the dragon's mouth onto the victim.
-    const mouth = a.root.position.clone().setY(a.height * lean.size * 0.62);
-    void flashLight(stage, at, 0xff8a2a, 7, 600);
-    for (let k = 0; k < 6; k++) {
-      for (let i = 0; i < 7; i++) {
-        const dir = mid.clone().sub(mouth);
-        fx.spawn(mouth, {
-          color: [0xffe85c, 0xffb13b, 0xff6a2a][i % 3],
-          size: 0.09,
-          vel: dir.multiplyScalar(2.2).add(new Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.3) * 0.6, (Math.random() - 0.5) * 0.6)),
-          life: 420,
-          gravity: -1,
-          glow: true,
-        });
-      }
-      await wait(stage.clock, 60);
-    }
-  } else if (a.role === "b") {
-    // A pillar of light down onto the victim.
-    void flashLight(stage, at, 0xfff0b0, 7, 520);
-    for (let i = 0; i < 30; i++)
-      fx.spawn(new Vector3(at.x + (Math.random() - 0.5) * 0.35, Math.random() * 2.4, at.z + (Math.random() - 0.5) * 0.35), {
-        color: i % 2 ? 0xffffff : 0xfff0a0,
-        size: 0.06,
-        vel: new Vector3(0, -1.5, 0),
-        life: 500,
-        gravity: 0,
-        glow: true,
-      });
   } else if (a.role === "r") {
     // The guardian's fists hit the ground: the board shakes, rock and dust fly.
     stage.shake = 340;
     fx.dust(at, 22, 0x9097ad);
     fx.burst(at.clone().setY(0.2), 0x8d93a8, 14, { speed: 1.6, up: 2.2, size: 0.09 });
-  } else if (a.role === "q") {
-    // A ring of charm sparkles closing in on the victim.
-    void flashLight(stage, at, 0xff9ec2, 5, 520);
-    for (let i = 0; i < 24; i++) {
-      const ang = (i / 24) * Math.PI * 2;
-      const from = new Vector3(at.x + Math.cos(ang) * 0.8, 0.3 + (i % 4) * 0.25, at.z + Math.sin(ang) * 0.8);
-      fx.spawn(from, { color: i % 2 ? 0xff9ec2 : 0xffffff, size: 0.06, vel: mid.clone().sub(from).multiplyScalar(2.2), life: 450, gravity: 0, glow: true });
-    }
   } else {
     // The king's lightning from his scepter.
     void flashLight(stage, at, 0xffe85c, 7, 480);
@@ -283,17 +470,22 @@ async function shatter(stage: Stage, v: Fig) {
   v.root.removeFromParent();
 }
 
-/** The three frames of a strike, with the blow landing on the second. */
+/** A strike: the dragon burns, the cleric smites and the princess throws; the others strike in three frames, the blow landing on the second, and the victim breaks apart. */
 async function strike(stage: Stage, a: Fig, v: Fig) {
-  setAct(a, "attack", 0);
-  await wait(stage.clock, 200);
-  setAct(a, "attack", 1);
-  stage.sound.play("knock", { gain: 0.6 });
-  await blow(stage, a, v);
-  void shatter(stage, v);
-  await wait(stage.clock, 260);
-  setAct(a, "attack", 2);
-  await wait(stage.clock, 180);
+  if (a.role === "n") await burn(stage, a, v);
+  else if (a.role === "b") await smite(stage, a, v);
+  else if (a.role === "q") await throwAway(stage, a, v);
+  else {
+    setAct(a, "attack", 0);
+    await wait(stage.clock, 200);
+    setAct(a, "attack", 1);
+    stage.sound.play("knock", { gain: 0.6 });
+    await blow(stage, a, v);
+    void shatter(stage, v);
+    await wait(stage.clock, 260);
+    setAct(a, "attack", 2);
+    await wait(stage.clock, 180);
+  }
   setAct(a, "idle");
 }
 
@@ -305,13 +497,24 @@ async function play(stage: Stage, { mover, to, victim, castle }: TribeMove) {
     return;
   }
   if (victim) {
-    // Up to the victim (the dragon and the king strike from a distance), the strike, then onto the square.
     const at = victim.root.position.clone();
     const dir = at.clone().sub(mover.root.position).setY(0);
-    const reach = mover.role === "n" || mover.role === "k" ? 1.4 : 0.8;
-    const near = at.clone().sub(dir.clone().normalize().multiplyScalar(Math.min(reach, dir.length())));
-    if (mover.root.position.distanceTo(near) > 0.05) await travel(stage, mover, near);
+    const short = (d: number) => at.clone().sub(dir.clone().normalize().multiplyScalar(Math.min(d, dir.length())));
+    if (mover.role === "n") {
+      // The dragon flies up before its victim and hovers there to breathe fire, then lands where it stood.
+      await flyTo(stage, mover, short(1.1), 0.9);
+      await strike(stage, mover, victim);
+      await flyTo(stage, mover, b, 0, 520);
+      setAct(mover, "idle");
+      return;
+    }
+    // The princess casts from where she stands; the cleric and the king from a little way off; the hero and the guardian close in.
+    const reach = mover.role === "q" ? Infinity : mover.role === "k" || mover.role === "b" ? 1.4 : 0.8;
+    if (reach !== Infinity) {
+      const near = short(reach);
+      if (mover.root.position.distanceTo(near) > 0.05) await travel(stage, mover, near);
+    }
     await strike(stage, mover, victim);
   }
-  await travel(stage, mover, b, victim ? 320 : undefined);
+  await travel(stage, mover, b, victim && mover.role !== "q" ? 360 : undefined);
 }
