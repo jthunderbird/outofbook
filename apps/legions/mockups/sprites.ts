@@ -39,8 +39,7 @@ export const rect = (x0: number, y0: number, x1: number, y1: number): Mask => {
 };
 export const ell = (cx: number, cy: number, rx: number, ry: number): Mask => {
   const m = empty();
-  for (let y = 0; y < W; y++)
-    for (let x = 0; x < W; x++) if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1) m[y * W + x] = 1;
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1) m[y * W + x] = 1;
   return m;
 };
 export const poly = (pts: [number, number][]): Mask => {
@@ -121,7 +120,15 @@ function king(p: Paint, c: Palette) {
   p.draw(ell(26, 10, 2.4, 2.4), RUBY);
   p.draw(rect(11, 28, 14, 30), BROWN);
   p.draw(rect(18, 28, 21, 30), BROWN);
-  p.draw(poly([[8, 29], [11, 15], [21, 15], [24, 29]]), c.cloth); // robe
+  p.draw(
+    poly([
+      [8, 29],
+      [11, 15],
+      [21, 15],
+      [24, 29],
+    ]),
+    c.cloth,
+  ); // robe
   p.draw(rect(6, 17, 10, 25), c.cloth); // sleeves
   p.draw(rect(22, 17, 26, 25), c.cloth);
   p.draw(rect(11, 23, 21, 24), c.trim); // sash
@@ -129,7 +136,16 @@ function king(p: Paint, c: Palette) {
   p.draw(rect(7, 25, 9, 27), SKIN); // hands
   p.draw(rect(23, 25, 25, 27), SKIN);
   p.draw(ell(16, 10.5, 4.6, 5), SKIN); // head
-  p.draw(poly([[11.5, 11], [20.5, 11], [19.5, 18], [16, 20.5], [12.5, 18]]), WHITE); // beard
+  p.draw(
+    poly([
+      [11.5, 11],
+      [20.5, 11],
+      [19.5, 18],
+      [16, 20.5],
+      [12.5, 18],
+    ]),
+    WHITE,
+  ); // beard
   p.draw(ell(16, 16, 7, 2.4), WHITE); // ermine collar
   for (const x of [12, 16, 20]) p.dot(x, 16, INK);
   p.dot(14, 9, INK);
@@ -144,12 +160,38 @@ function queen(p: Paint, c: Palette) {
   p.draw(ell(16, 14, 8, 9), c.hair); // hair behind
   p.draw(rect(8, 14, 11, 24), c.hair);
   p.draw(rect(21, 14, 24, 24), c.hair);
-  p.draw(poly([[5, 30], [12, 17], [20, 17], [27, 30]]), c.cloth); // gown
+  p.draw(
+    poly([
+      [5, 30],
+      [12, 17],
+      [20, 17],
+      [27, 30],
+    ]),
+    c.cloth,
+  ); // gown
   p.draw(rect(10, 29, 22, 30), c.trim); // hem
-  p.draw(poly([[12, 17], [20, 17], [19, 23], [13, 23]]), c.trim); // bodice
+  p.draw(
+    poly([
+      [12, 17],
+      [20, 17],
+      [19, 23],
+      [13, 23],
+    ]),
+    c.trim,
+  ); // bodice
   p.draw(rect(12, 22, 20, 23), GOLD); // belt
   p.draw(ell(16, 11, 4.4, 5), SKIN); // face
-  p.draw(poly([[11, 8], [21, 8], [21, 11], [18, 9], [14, 9], [11, 12]]), c.hair); // fringe
+  p.draw(
+    poly([
+      [11, 8],
+      [21, 8],
+      [21, 11],
+      [18, 9],
+      [14, 9],
+      [11, 12],
+    ]),
+    c.hair,
+  ); // fringe
   p.dot(14, 11, INK);
   p.dot(18, 11, INK);
   p.dot(16, 13, RUBY[2]);
@@ -163,39 +205,122 @@ function queen(p: Paint, c: Palette) {
 
 function knight(p: Paint, c: Palette) {
   // A young dragon, rearing on its haunches.
-  p.draw(poly([[17, 9], [29, 3], [26, 12], [30, 18], [22, 15], [17, 17]]), c.trim); // far wing
-  p.draw(poly([[5, 26], [3, 20], [8, 15], [12, 21]]), c.cloth); // tail
-  p.draw(poly([[3, 28], [8, 23], [11, 27]]), c.cloth);
+  p.draw(
+    poly([
+      [17, 9],
+      [29, 3],
+      [26, 12],
+      [30, 18],
+      [22, 15],
+      [17, 17],
+    ]),
+    c.trim,
+  ); // far wing
+  p.draw(
+    poly([
+      [5, 26],
+      [3, 20],
+      [8, 15],
+      [12, 21],
+    ]),
+    c.cloth,
+  ); // tail
+  p.draw(
+    poly([
+      [3, 28],
+      [8, 23],
+      [11, 27],
+    ]),
+    c.cloth,
+  );
   p.draw(ell(13, 21, 8.5, 7), c.cloth); // body
   p.draw(ell(15, 23, 5, 5), ramp("#f3d98a")); // belly
-  p.draw(poly([[6, 8], [16, 14], [14, 20], [4, 14]]), c.trim); // near wing
-  p.draw(poly([[4, 8], [8, 12], [6, 15]]), c.cloth);
+  p.draw(
+    poly([
+      [6, 8],
+      [16, 14],
+      [14, 20],
+      [4, 14],
+    ]),
+    c.trim,
+  ); // near wing
+  p.draw(
+    poly([
+      [4, 8],
+      [8, 12],
+      [6, 15],
+    ]),
+    c.cloth,
+  );
   p.draw(rect(10, 27, 13, 30), c.cloth); // legs
   p.draw(rect(18, 26, 21, 30), c.cloth);
   p.draw(rect(9, 30, 14, 30), c.trim);
   p.draw(rect(17, 30, 22, 30), c.trim);
   p.draw(ell(21, 12, 5.5, 4.5), c.cloth); // head
   p.draw(rect(24, 12, 29, 15), c.cloth); // snout
-  p.draw(poly([[17, 9], [15, 3], [20, 7]]), WHITE); // horns
-  p.draw(poly([[22, 8], [22, 2], [25, 7]]), WHITE);
+  p.draw(
+    poly([
+      [17, 9],
+      [15, 3],
+      [20, 7],
+    ]),
+    WHITE,
+  ); // horns
+  p.draw(
+    poly([
+      [22, 8],
+      [22, 2],
+      [25, 7],
+    ]),
+    WHITE,
+  );
   p.dot(22, 11, "#ffe85c");
   p.dot(23, 11, INK);
   p.dot(28, 13, INK);
   p.dot(29, 13, INK);
-  for (const [x, y] of [[26, 15], [28, 15]]) p.dot(x, y, WHITE[0]);
+  for (const [x, y] of [
+    [26, 15],
+    [28, 15],
+  ])
+    p.dot(x, y, WHITE[0]);
 }
 
 function bishop(p: Paint, c: Palette) {
   p.draw(rect(25, 8, 25, 29), BROWN); // staff
   p.draw(ell(25, 6, 2.6, 2.6), ramp(c.glow));
   p.dot(24, 5, "#ffffff");
-  p.draw(poly([[8, 30], [11, 14], [21, 14], [24, 30]]), c.cloth); // robe
-  p.draw(poly([[14, 14], [18, 14], [20, 30], [12, 30]]), c.trim); // tabard
+  p.draw(
+    poly([
+      [8, 30],
+      [11, 14],
+      [21, 14],
+      [24, 30],
+    ]),
+    c.cloth,
+  ); // robe
+  p.draw(
+    poly([
+      [14, 14],
+      [18, 14],
+      [20, 30],
+      [12, 30],
+    ]),
+    c.trim,
+  ); // tabard
   p.draw(rect(6, 17, 10, 24), c.cloth);
   p.draw(rect(22, 17, 24, 24), c.cloth);
   p.draw(rect(7, 24, 9, 26), SKIN);
   p.draw(rect(23, 24, 25, 26), SKIN);
-  p.draw(poly([[16, 1], [22, 8], [23, 15], [9, 15], [10, 8]]), c.cloth); // hood
+  p.draw(
+    poly([
+      [16, 1],
+      [22, 8],
+      [23, 15],
+      [9, 15],
+      [10, 8],
+    ]),
+    c.cloth,
+  ); // hood
   p.draw(ell(16, 11, 3.6, 4), SKIN);
   p.draw(rect(12, 5, 20, 7), c.trim);
   p.dot(14, 11, INK);
@@ -212,7 +337,14 @@ function rook(p: Paint, c: Palette) {
   p.draw(rect(21, 26, 27, 30), STONE);
   p.draw(rect(9, 13, 23, 30), STONE); // body
   for (const y of [18, 23, 28]) for (let x = 10; x < 23; x++) p.dot(x, y, STONE[2]);
-  for (const [x, y] of [[13, 20], [19, 20], [11, 25], [16, 25], [21, 25]]) for (let k = y; k < y + 3; k++) p.dot(x, k, STONE[2]);
+  for (const [x, y] of [
+    [13, 20],
+    [19, 20],
+    [11, 25],
+    [16, 25],
+    [21, 25],
+  ])
+    for (let k = y; k < y + 3; k++) p.dot(x, k, STONE[2]);
   p.draw(rect(10, 5, 22, 13), STONE); // head
   p.draw(or(rect(10, 2, 12, 5), rect(15, 2, 17, 5), rect(20, 2, 22, 5)), STONE); // merlons
   p.draw(rect(12, 8, 14, 9), ramp(c.glow));
@@ -224,7 +356,14 @@ function rook(p: Paint, c: Palette) {
 function pawn(p: Paint, c: Palette) {
   // The hero: a young swordsman with spiky hair.
   p.draw(rect(24, 7, 25, 20), STEEL); // blade
-  p.draw(poly([[24, 7], [25, 7], [24.5, 4]]), STEEL);
+  p.draw(
+    poly([
+      [24, 7],
+      [25, 7],
+      [24.5, 4],
+    ]),
+    STEEL,
+  );
   p.draw(rect(22, 21, 27, 22), GOLD); // guard
   p.draw(rect(24, 23, 25, 25), BROWN);
   p.draw(rect(10, 28, 14, 31), BROWN); // boots
@@ -242,7 +381,20 @@ function pawn(p: Paint, c: Palette) {
   p.dot(8, 19, GOLD[0]);
   p.draw(rect(13, 15, 18, 16), c.trim); // scarf
   p.draw(ell(15.5, 11, 4.4, 4.6), SKIN); // head
-  p.draw(poly([[10, 11], [11, 4], [14, 7], [16, 2], [18, 7], [21, 4], [21, 11], [18, 8], [13, 8]]), c.hair); // spiky hair
+  p.draw(
+    poly([
+      [10, 11],
+      [11, 4],
+      [14, 7],
+      [16, 2],
+      [18, 7],
+      [21, 4],
+      [21, 11],
+      [18, 8],
+      [13, 8],
+    ]),
+    c.hair,
+  ); // spiky hair
   p.dot(14, 11, INK);
   p.dot(18, 11, INK);
 }

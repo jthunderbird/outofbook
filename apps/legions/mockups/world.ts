@@ -4,7 +4,7 @@
 
 function rng(seed: number) {
   let s = seed >>> 0 || 1;
-  return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
+  return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
 }
 function canvas(w: number, h: number) {
   const c = document.createElement("canvas");
@@ -35,7 +35,10 @@ export function sky(w: number, h: number) {
     g.fillStyle = r() < 0.2 ? "#ffffff" : "#c9c4ff";
     g.fillRect(Math.floor(r() * w), Math.floor(r() * h * 0.45), 1, 1);
   }
-  for (const [x, y, rad, col] of [[w * 0.78, h * 0.18, 9, "#f6e8ff"], [w * 0.88, h * 0.3, 4, "#ffd9c2"]] as const) {
+  for (const [x, y, rad, col] of [
+    [w * 0.78, h * 0.18, 9, "#f6e8ff"],
+    [w * 0.88, h * 0.3, 4, "#ffd9c2"],
+  ] as const) {
     g.fillStyle = col;
     g.beginPath();
     g.arc(x, y, rad, 0, 7);
@@ -150,7 +153,17 @@ export function castle(w: number, h: number) {
   tower(80, base - 44, 10, 44, 9, true);
   box(46, base - 54, 28, 54); // keep
   tower(52, base - 76, 16, 22, 16, true);
-  for (const [x, y] of [[50, 30], [58, 20], [64, 30], [70, 40], [34, 24], [84, 24], [14, 14], [110, 14]] as const) win(x, base - y - 2);
+  for (const [x, y] of [
+    [50, 30],
+    [58, 20],
+    [64, 30],
+    [70, 40],
+    [34, 24],
+    [84, 24],
+    [14, 14],
+    [110, 14],
+  ] as const)
+    win(x, base - y - 2);
   return c;
 }
 

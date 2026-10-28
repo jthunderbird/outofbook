@@ -4,9 +4,35 @@
 //          field, bloom and a layered backdrop, as modern HD-2D RPGs do.
 import { Chess } from "chess.js";
 import {
-  AdditiveBlending, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry, DirectionalLight, DoubleSide, Fog, HemisphereLight, Mesh,
-  MeshBasicMaterial, MeshDepthMaterial, MeshStandardMaterial, NearestFilter, PerspectiveCamera, PlaneGeometry, Points, PointsMaterial, RGBADepthPacking, RepeatWrapping, Scene,
-  SRGBColorSpace, Vector2, WebGLRenderer, PCFSoftShadowMap, type Texture,
+  AdditiveBlending,
+  AmbientLight,
+  BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
+  CanvasTexture,
+  Color,
+  ConeGeometry,
+  DirectionalLight,
+  DoubleSide,
+  Fog,
+  HemisphereLight,
+  Mesh,
+  MeshBasicMaterial,
+  MeshDepthMaterial,
+  MeshStandardMaterial,
+  NearestFilter,
+  PerspectiveCamera,
+  PlaneGeometry,
+  Points,
+  PointsMaterial,
+  RGBADepthPacking,
+  RepeatWrapping,
+  Scene,
+  SRGBColorSpace,
+  Vector2,
+  WebGLRenderer,
+  PCFSoftShadowMap,
+  type Texture,
 } from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -77,7 +103,19 @@ interface Piece {
   gone: boolean;
 }
 const colRow = (sq: string) => ({ col: FILES.indexOf(sq[0]), row: 8 - Number(sq[1]) });
-interface Particle { x: number; z: number; h: number; vx: number; vz: number; vh: number; life: number; max: number; color: string; size: number; grav: number }
+interface Particle {
+  x: number;
+  z: number;
+  h: number;
+  vx: number;
+  vz: number;
+  vh: number;
+  life: number;
+  max: number;
+  color: string;
+  size: number;
+  grav: number;
+}
 
 const anim = (ms: number, fn: (t: number) => void, ease = (t: number) => t) =>
   new Promise<void>((res) => {
@@ -119,7 +157,19 @@ class Show {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * 6.283;
       const s = speed * (0.3 + Math.random());
-      this.parts.push({ x, z, h, vx: Math.cos(a) * s, vz: Math.sin(a) * s * 0.6, vh: Math.random() * speed * 1.4, life: 0.5 + Math.random() * 0.5, max: 1, color: colors[i % colors.length], size: 1 + (i % 3 === 0 ? 1 : 0), grav });
+      this.parts.push({
+        x,
+        z,
+        h,
+        vx: Math.cos(a) * s,
+        vz: Math.sin(a) * s * 0.6,
+        vh: Math.random() * speed * 1.4,
+        life: 0.5 + Math.random() * 0.5,
+        max: 1,
+        color: colors[i % colors.length],
+        size: 1 + (i % 3 === 0 ? 1 : 0),
+        grav,
+      });
     }
   }
   stream(ax: number, az: number, bx: number, bz: number, colors: string[]) {
@@ -127,13 +177,37 @@ class Show {
       const d = 0.4 + Math.random() * 0.5;
       const dx = bx - ax;
       const dz = bz - az;
-      this.parts.push({ x: ax, z: az, h: 0.55, vx: (dx / d) * 1.1 + (Math.random() - 0.5) * 0.7, vz: (dz / d) * 1.1 + (Math.random() - 0.5) * 0.7, vh: (Math.random() - 0.4) * 0.8, life: d + Math.random() * 0.2, max: 1, color: colors[i % colors.length], size: 2, grav: -0.4 });
+      this.parts.push({
+        x: ax,
+        z: az,
+        h: 0.55,
+        vx: (dx / d) * 1.1 + (Math.random() - 0.5) * 0.7,
+        vz: (dz / d) * 1.1 + (Math.random() - 0.5) * 0.7,
+        vh: (Math.random() - 0.4) * 0.8,
+        life: d + Math.random() * 0.2,
+        max: 1,
+        color: colors[i % colors.length],
+        size: 2,
+        grav: -0.4,
+      });
     }
   }
   slash(x: number, z: number) {
     for (let i = 0; i < 16; i++) {
       const t = i / 15;
-      this.parts.push({ x: x - 0.4 + t * 0.8, z, h: 0.95 - t * 0.7 + Math.sin(t * 3.14) * 0.15, vx: 0, vz: 0, vh: 0, life: 0.22 + t * 0.15, max: 1, color: i % 3 ? "#ffffff" : "#bfeaff", size: 2, grav: 0 });
+      this.parts.push({
+        x: x - 0.4 + t * 0.8,
+        z,
+        h: 0.95 - t * 0.7 + Math.sin(t * 3.14) * 0.15,
+        vx: 0,
+        vz: 0,
+        vh: 0,
+        life: 0.22 + t * 0.15,
+        max: 1,
+        color: i % 3 ? "#ffffff" : "#bfeaff",
+        size: 2,
+        grav: 0,
+      });
     }
   }
   dissolve(src: HTMLCanvasElement, x: number, z: number) {
@@ -144,7 +218,19 @@ class Show {
         if (!d[i + 3]) continue;
         const ox = (px - 15.5) / 32;
         const h = (31 - py) / 32;
-        this.parts.push({ x: x + ox, z, h, vx: ox * 1.5 + (Math.random() - 0.5) * 0.4, vz: (Math.random() - 0.5) * 0.3, vh: 0.4 + Math.random() * 1.1, life: 0.6 + Math.random() * 0.7, max: 1, color: `rgb(${d[i]},${d[i + 1]},${d[i + 2]})`, size: 1, grav: 2.4 });
+        this.parts.push({
+          x: x + ox,
+          z,
+          h,
+          vx: ox * 1.5 + (Math.random() - 0.5) * 0.4,
+          vz: (Math.random() - 0.5) * 0.3,
+          vh: 0.4 + Math.random() * 1.1,
+          life: 0.6 + Math.random() * 0.7,
+          max: 1,
+          color: `rgb(${d[i]},${d[i + 1]},${d[i + 2]})`,
+          size: 1,
+          grav: 2.4,
+        });
       }
   }
   /** The attack of a piece's kind on its victim's square, then the victim breaking into its own pixels. */
@@ -180,23 +266,35 @@ class Show {
       // Close in on the victim, strike, let it break apart, then step onto the square.
       const vx = colRow(ev.victim!.sq);
       const k = Math.max(0, 1 - 0.8 / Math.max(0.01, Math.hypot(vx.col - p.col, vx.row - p.row)));
-      await anim(Math.max(260, dist * 160), (t) => {
-        p.ox = (vx.col - p.col) * k * t;
-        p.oz = (vx.row - p.row) * k * t;
-        p.hop = Math.sin(t * Math.PI) * hopH;
-      }, inOut);
+      await anim(
+        Math.max(260, dist * 160),
+        (t) => {
+          p.ox = (vx.col - p.col) * k * t;
+          p.oz = (vx.row - p.row) * k * t;
+          p.hop = Math.sin(t * Math.PI) * hopH;
+        },
+        inOut,
+      );
       this.pieces.delete(ev.victim!.sq);
       await this.hit(p, vic);
-      await anim(220, (t) => {
-        p.ox = (vx.col - p.col) * k + (dx - (vx.col - p.col) * k) * t;
-        p.oz = (vx.row - p.row) * k + (dz - (vx.row - p.row) * k) * t;
-      }, inOut);
+      await anim(
+        220,
+        (t) => {
+          p.ox = (vx.col - p.col) * k + (dx - (vx.col - p.col) * k) * t;
+          p.oz = (vx.row - p.row) * k + (dz - (vx.row - p.row) * k) * t;
+        },
+        inOut,
+      );
     } else
-      await anim(Math.max(300, dist * 170), (t) => {
-        p.ox = dx * t;
-        p.oz = dz * t;
-        p.hop = Math.sin(t * Math.PI) * hopH;
-      }, inOut);
+      await anim(
+        Math.max(300, dist * 170),
+        (t) => {
+          p.ox = dx * t;
+          p.oz = dz * t;
+          p.hop = Math.sin(t * Math.PI) * hopH;
+        },
+        inOut,
+      );
     p.col = dest.col;
     p.row = dest.row;
     p.ox = p.oz = p.hop = 0;
@@ -206,10 +304,14 @@ class Show {
       this.pieces.delete(ev.castle.from);
       const c = colRow(ev.castle.to);
       const sx = r.col;
-      await anim(380, (t) => {
-        r.ox = (c.col - sx) * t;
-        r.hop = Math.sin(t * Math.PI) * 0.1;
-      }, inOut);
+      await anim(
+        380,
+        (t) => {
+          r.ox = (c.col - sx) * t;
+          r.hop = Math.sin(t * Math.PI) * 0.1;
+        },
+        inOut,
+      );
       r.col = c.col;
       r.ox = r.hop = 0;
       this.pieces.set(ev.castle.to, r);
@@ -265,7 +367,10 @@ class Flat {
     g.drawImage(L.near, 0, 92);
     g.drawImage(L.castle, 392, 36);
     g.drawImage(L.hills, 0, 112);
-    for (const [c, sp, y] of [[L.cloudA, 5, 20], [L.cloudB, 11, 160]] as const) {
+    for (const [c, sp, y] of [
+      [L.cloudA, 5, 20],
+      [L.cloudB, 11, 160],
+    ] as const) {
       const x = Math.floor((t * sp) % FW);
       g.drawImage(c, x, y);
       g.drawImage(c, x - FW, y);
@@ -409,7 +514,10 @@ class Diorama {
   drift: Mesh[] = [];
   dots: Points;
   mouse = new Vector2();
-  constructor(private show: Show, host: HTMLElement) {
+  constructor(
+    private show: Show,
+    host: HTMLElement,
+  ) {
     const r = (this.renderer = new WebGLRenderer({ antialias: false }));
     r.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     r.shadowMap.enabled = true;
@@ -451,7 +559,12 @@ class Diorama {
       }
     // The island below: stepped, tapering rock.
     const rock = std(px(cliff(32, 32), [3, 1]));
-    for (const [w, h, y] of [[8.5, 0.5, -0.65], [7.6, 0.7, -1.25], [6.4, 0.8, -1.95], [4.8, 0.9, -2.75]] as const) {
+    for (const [w, h, y] of [
+      [8.5, 0.5, -0.65],
+      [7.6, 0.7, -1.25],
+      [6.4, 0.8, -1.95],
+      [4.8, 0.9, -2.75],
+    ] as const) {
       const b = new Mesh(new BoxGeometry(w, h, w), rock);
       b.position.set(0, y, 0);
       b.receiveShadow = true;
@@ -483,7 +596,12 @@ class Diorama {
     const sg = sea.getContext("2d")!;
     sg.fillStyle = "#e0839f";
     sg.fillRect(0, 0, 256, 256);
-    for (const [c, y] of [[clouds(512, 60, 2, "#ffe6ea", "#d9a0d0"), 0], [clouds(512, 60, 1, "#ffd0d8", "#c486c4"), 70], [clouds(512, 60, 2, "#ffe6ea", "#d9a0d0"), 140], [clouds(512, 60, 1, "#ffd0d8", "#c486c4"), 200]] as const)
+    for (const [c, y] of [
+      [clouds(512, 60, 2, "#ffe6ea", "#d9a0d0"), 0],
+      [clouds(512, 60, 1, "#ffd0d8", "#c486c4"), 70],
+      [clouds(512, 60, 2, "#ffe6ea", "#d9a0d0"), 140],
+      [clouds(512, 60, 1, "#ffd0d8", "#c486c4"), 200],
+    ] as const)
       sg.drawImage(c, 0, y, 256, 56);
     const seaMesh = new Mesh(new PlaneGeometry(900, 900), new MeshBasicMaterial({ map: px(sea, [6, 6]) }));
     seaMesh.rotation.x = -Math.PI / 2;
@@ -492,7 +610,13 @@ class Diorama {
     // Pollen and embers drifting through the air.
     const n = 70;
     const geo = new BufferGeometry();
-    geo.setAttribute("position", new BufferAttribute(new Float32Array(n * 3).map((_, i) => (i % 3 === 1 ? Math.random() * 5 : (Math.random() - 0.5) * 12)), 3));
+    geo.setAttribute(
+      "position",
+      new BufferAttribute(
+        new Float32Array(n * 3).map((_, i) => (i % 3 === 1 ? Math.random() * 5 : (Math.random() - 0.5) * 12)),
+        3,
+      ),
+    );
     this.dots = new Points(geo, new PointsMaterial({ color: 0xffe9a0, size: 0.07, blending: AdditiveBlending, transparent: true, opacity: 0.8, depthWrite: false }));
     s.add(this.dots);
     this.parts = new Points(new BufferGeometry(), new PointsMaterial({ size: 0.075, vertexColors: true, depthWrite: false }));
