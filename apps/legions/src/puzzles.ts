@@ -102,6 +102,29 @@ export interface Trek {
   total: Tally;
   /** The same for this run. */
   run: Tally;
+  /** The best medal won on each challenge, over every run (by challenge id). */
+  medals: Record<string, Medal>;
+}
+
+/** Bronze, silver, gold: won by passing a challenge, the better the less of its time is used. */
+export type Medal = 1 | 2 | 3;
+export const MEDAL_NAMES = ["", "Bronze", "Silver", "Gold"] as const;
+/** The share of a challenge's time within which gold and silver are won (bronze: any pass, or a pass with a retry). */
+const GOLD_WITHIN = 0.4;
+const SILVER_WITHIN = 0.65;
+/** The time (seconds) to beat for gold and silver. */
+export const medalTimes = (c: Challenge) => ({ gold: Math.round(c.seconds * GOLD_WITHIN), silver: Math.round(c.seconds * SILVER_WITHIN) });
+/** The medal for a pass with msUsed of the challenge's time; a retry spent makes it bronze. */
+export function medalFor(c: Challenge, msUsed: number, retried: boolean): Medal {
+  const t = medalTimes(c);
+  if (retried) return 1;
+  return msUsed <= t.gold * 1000 ? 3 : msUsed <= t.silver * 1000 ? 2 : 1;
+}
+/** How many of each medal (index 1 bronze to 3 gold). */
+export function medalCounts(t: Trek) {
+  const n = [0, 0, 0, 0];
+  for (const m of Object.values(t.medals ?? {})) n[m]++;
+  return n;
 }
 export interface Tally {
   ms: number;
@@ -110,7 +133,7 @@ export interface Tally {
   failed: number;
 }
 export const NEW_TALLY: Tally = { ms: 0, played: 0, passed: 0, failed: 0 };
-export const NEW_TREK: Trek = { cleared: [], runs: 0, finished: false, total: NEW_TALLY, run: NEW_TALLY };
+export const NEW_TREK: Trek = { cleared: [], runs: 0, finished: false, total: NEW_TALLY, run: NEW_TALLY, medals: {} };
 
 /** The first challenge not yet passed on this run (the hero's place on the track); none when the run is finished. */
 export const nextChallenge = (t: Trek) => CHALLENGES.find((c) => !t.cleared.includes(c.id));

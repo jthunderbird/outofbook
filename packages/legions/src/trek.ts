@@ -56,6 +56,8 @@ export interface TrekStop {
   stage: number;
   /** Passed, the next to play, open to replay, or not reached. */
   state: "done" | "next" | "open" | "locked";
+  /** The best medal won here: 0 none, 1 bronze, 2 silver, 3 gold. */
+  medal?: number;
 }
 
 const STEP = 2.6;
@@ -70,6 +72,8 @@ const GATE = 3.4;
 const PRIZE = 6;
 /** The track's line: rising and falling and winding a little along x. */
 const curve = (x: number) => new Vector3(x, Math.sin(x * 0.11) * 0.9, Math.sin(x * 0.045) * 2.2);
+/** No medal, bronze, silver, gold. */
+const MEDAL_COLOR = [0x000000, 0xd08040, 0xd8dce6, 0xffc83a];
 const STATE_COLOR: Record<TrekStop["state"], number> = { done: 0xffc94a, next: 0x7fe3ff, open: 0xffe3a0, locked: 0x3a3f58 };
 
 /** A soft round star. */
@@ -284,7 +288,21 @@ export class TrekScene {
     });
     this.rings!.instanceColor!.needsUpdate = true;
     this.tiles!.instanceColor!.needsUpdate = true;
+    // Each stone's best medal hangs as a coin below its front; none, none shown.
+    const dummy = new Object3D();
+    stops.forEach((s, i) => {
+      const p = this.points[i];
+      dummy.position.set(p.x, p.y - 0.42, p.z + 0.66);
+      dummy.rotation.set(Math.PI / 2, 0, 0.35);
+      dummy.scale.setScalar(s.medal ? 1 : 0);
+      dummy.updateMatrix();
+      this.coins!.setMatrixAt(i, dummy.matrix);
+      this.coins!.setColorAt(i, c.set(MEDAL_COLOR[s.medal ?? 0]));
+    });
+    this.coins!.instanceMatrix.needsUpdate = true;
+    this.coins!.instanceColor!.needsUpdate = true;
   }
+  private coins?: InstancedMesh;
 
   private build() {
     for (const o of [...this.track.children]) {
@@ -328,7 +346,10 @@ export class TrekScene {
       dummy.updateMatrix();
       stones.setMatrixAt(i, dummy.matrix);
     });
-    this.track.add(tiles, rocks, rings, stones);
+    const coins = new InstancedMesh(new CylinderGeometry(0.2, 0.2, 0.05, 20), new MeshStandardMaterial({ metalness: 0.9, roughness: 0.3, emissive: 0x332200, emissiveIntensity: 0.4 }), n);
+    coins.setColorAt(0, new Color());
+    this.coins = coins;
+    this.track.add(tiles, rocks, rings, stones, coins);
     this.tiles = tiles;
     this.rings = rings;
     // A gate at the start of each stage: two glowing pillars, turned a little toward the camera, with a crossbar and a cloth banner between them (stage and rating) that stirs in the wind.

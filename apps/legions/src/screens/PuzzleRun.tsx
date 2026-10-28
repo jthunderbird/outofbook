@@ -11,7 +11,7 @@ import LegionsBoard from "@outofbook/legions/LegionsBoard";
 import type { Side } from "@outofbook/legions/figures";
 import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
-import { CHALLENGES, TREK_XP, challengeXp, clock, drawPuzzles, findChallenge, worldOf, type Puzzle, type Tally } from "../puzzles";
+import { CHALLENGES, MEDAL_NAMES, TREK_XP, challengeXp, clock, drawPuzzles, findChallenge, medalFor, medalTimes, worldOf, type Medal, type Puzzle, type Tally } from "../puzzles";
 import { award, getProfile, myLook, myMode, owns, update, useProfile, type Reward } from "../profile";
 import { Check, Clock, LockOpen, RotateCcw, Trophy, Volume2, VolumeX, X } from "lucide-react";
 
@@ -40,6 +40,9 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
   const [complete, setComplete] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const started = useRef(Date.now());
+  /** A retry was spent on this challenge (its medal is bronze at best). */
+  const retried = useRef(false);
+  const [medal, setMedal] = useState<{ won: Medal; had: number } | null>(null);
   const recorded = useRef(false);
   const live = useRef(true);
   useEffect(() => {
@@ -98,7 +101,7 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
   }, [left]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Adds this challenge's try to the run's and all-time tallies (once), the pass to the run's progress. */
-  const record = (passed: boolean) => {
+  const record = (passed: boolean, won?: Medal) => {
     if (recorded.current) return;
     recorded.current = true;
     const ms = Date.now() - started.current;
@@ -107,9 +110,12 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
     const first = passed && !before.cleared.includes(c.id);
     const cleared = first ? [...before.cleared, c.id] : before.cleared;
     const finishing = first && !before.finished && CHALLENGES.every((x) => cleared.includes(x.id));
+    const had = before.medals?.[c.id] ?? 0;
+    if (won) setMedal({ won, had });
+    const medals = won && won > had ? { ...before.medals, [c.id]: won } : before.medals;
     update((q) => ({
       ...q,
-      trek: { ...q.trek, cleared, total: add(q.trek.total), run: add(q.trek.run), finished: q.trek.finished || finishing, runs: q.trek.runs + (finishing ? 1 : 0) },
+      trek: { ...q.trek, cleared, medals, total: add(q.trek.total), run: add(q.trek.run), finished: q.trek.finished || finishing, runs: q.trek.runs + (finishing ? 1 : 0) },
     }));
     if (first) {
       // The whole trek done: Retro mode the first time, a large XP lump after.
@@ -154,6 +160,7 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
   const retry = () => {
     if (p.perks.retry <= 0 || state !== "failed") return;
     update((q) => ({ ...q, perks: { ...q.perks, retry: q.perks.retry - 1 } }));
+    retried.current = true;
     if (why === "time") setLeft((l) => l + 30000);
     idx.current++;
     void begin();
@@ -179,7 +186,7 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
       setSolved(n);
       if (n >= c.puzzles) {
         setState("passed");
-        record(true);
+        record(true, medalFor(c, c.seconds * 1000 - left, retried.current));
         return;
       }
       setState("solved");
@@ -307,6 +314,16 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
             <div className="muted">
               {c.puzzles} puzzles with {clock(left)} to spare
             </div>
+            {medal && (
+              <div className={`medal-won m${medal.won}`}>
+                <span className="coin" /> {MEDAL_NAMES[medal.won]} medal{medal.had > medal.won ? ` (you hold ${MEDAL_NAMES[medal.had].toLowerCase()} here)` : ""}
+              </div>
+            )}
+            {medal && medal.won < 3 && (
+              <div className="muted small">
+                {retried.current ? "A retry was spent: bronze at best. " : ""}Gold within {clock(medalTimes(c).gold * 1000)}, silver within {clock(medalTimes(c).silver * 1000)}.
+              </div>
+            )}
             {complete && (
               <div className="unlock">
                 <Trophy size={16} style={{ verticalAlign: -3 }} /> Every challenge passed

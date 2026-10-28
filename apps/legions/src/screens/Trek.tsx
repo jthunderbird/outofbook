@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TrekScene, type TrekStop } from "@outofbook/legions/trek";
 import { tribe } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
-import { CHALLENGES, STAGES, challengeOpen, clock, duration, nextChallenge, NEW_TALLY, worldOf, type Trek as TrekState } from "../puzzles";
+import { CHALLENGES, MEDAL_NAMES, STAGES, challengeOpen, clock, duration, medalCounts, medalTimes, nextChallenge, NEW_TALLY, worldOf, type Trek as TrekState } from "../puzzles";
 import { myLook, update, useProfile } from "../profile";
 import { ArrowLeft, Check, Clock, Lock, Play, Puzzle, RotateCcw, Trophy, X } from "lucide-react";
 
@@ -33,6 +33,7 @@ export function Trek({ go }: { go: (s: Screen) => void }) {
       CHALLENGES.map((x, i) => ({
         stage: x.stage,
         state: t.cleared.includes(x.id) ? "done" : i === place && !t.finished ? "next" : challengeOpen(t, x) ? "open" : "locked",
+        medal: t.medals?.[x.id] ?? 0,
       })),
     [t, place],
   );
@@ -99,7 +100,14 @@ export function Trek({ go }: { go: (s: Screen) => void }) {
           </span>
           <span>Rated about {c.rating}</span>
         </div>
-        <div className="muted small">Solve every puzzle before the clock runs out. One wrong move and the challenge is lost.</div>
+        <div className="muted small">
+          Solve every puzzle before the clock runs out. One wrong move and the challenge is lost. Gold within {clock(medalTimes(c).gold * 1000)}, silver within {clock(medalTimes(c).silver * 1000)}.
+        </div>
+        {!!t.medals?.[c.id] && (
+          <div className={`medal-won m${t.medals[c.id]}`}>
+            <span className="coin" /> Best: {MEDAL_NAMES[t.medals[c.id]]}
+          </div>
+        )}
         <button className="btn gold" disabled={!open} onClick={start}>
           {open ? <Play size={20} /> : <Lock size={20} />} {!open ? "Pass the challenge before" : done ? "Play again" : "Start the challenge"}
         </button>
@@ -129,6 +137,7 @@ export function Trek({ go }: { go: (s: Screen) => void }) {
 }
 
 function Tallies({ t }: { t: TrekState }) {
+  const m = medalCounts(t);
   return (
     <div className="trek-tallies" title={`All runs: ${duration(t.total.ms)}, ${t.total.played} played, ${t.total.passed} passed, ${t.total.failed} failed`}>
       <span>
@@ -143,6 +152,11 @@ function Tallies({ t }: { t: TrekState }) {
       <span className="bad">
         <X size={14} /> {t.run.failed}
       </span>
+      {[3, 2, 1].map((k) => (
+        <span key={k} className={`medal-count m${k}`} title={`${MEDAL_NAMES[k]} medals`}>
+          <span className="coin" /> {m[k]}
+        </span>
+      ))}
       {t.runs > 0 && (
         <span className="all muted">
           All runs: {duration(t.total.ms)} · {t.total.passed}/{t.total.played}
