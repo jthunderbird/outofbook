@@ -13,12 +13,12 @@ export function Campaign({ go }: { go: (s: Screen) => void }) {
         </button>
         <h2>Campaign</h2>
       </div>
-      <div className="grid">
+      <div className="grid even">
         {CHAPTERS.map((c, i) => {
           const open = chapterOpen(i, p.won);
           const beaten = c.battles.every((b) => p.won.includes(b.id));
           return (
-            <div key={c.tribe} className={`card${open ? "" : " locked"}`} style={{ ["--i" as string]: i }}>
+            <div key={c.tribe} className={`card chapter${open ? "" : " locked"}`} style={{ ["--i" as string]: i }}>
               <h3>
                 {c.name}{" "}
                 {beaten && (
@@ -49,15 +49,14 @@ export function Campaign({ go }: { go: (s: Screen) => void }) {
                   );
                 })}
               </div>
-              {!beaten && (
-                <div className="muted" style={{ marginTop: 10, fontSize: 13 }}>
-                  Beat the boss to unlock this tribe.
-                </div>
-              )}
+              {/* Kept in place when beaten (hidden), so every chapter's card is the same size. */}
+              <div className="muted" style={{ marginTop: 10, fontSize: 13, visibility: beaten ? "hidden" : "visible" }}>
+                Beat the boss to unlock this tribe.
+              </div>
             </div>
           );
         })}
-        <div className="card locked" style={{ ["--i" as string]: CHAPTERS.length }}>
+        <div className="card chapter locked" style={{ ["--i" as string]: CHAPTERS.length }}>
           <h3>More tribes</h3>
           <div className="muted">New tribes join the campaign one by one, each stronger than the last.</div>
         </div>

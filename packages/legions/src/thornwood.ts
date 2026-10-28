@@ -18,7 +18,6 @@ import {
   SphereGeometry,
   SRGBColorSpace,
   TextureLoader,
-  TorusGeometry,
   TubeGeometry,
   Vector3,
   type Texture,
@@ -42,7 +41,7 @@ const BARK = new Color(0x4a3220);
 const SAWDUST = 0xc8a878;
 
 function thornFigure(role: Role, side: Side): Fig {
-  const f = modelFig(MODEL[role], role, side, HEIGHT[role], { light: "birch", turn: role === "n" ? STAG_TURN : 0 });
+  const f = modelFig(MODEL[role], role, side, HEIGHT[role], { tint: { w: "spring", b: "bark" }, turn: role === "n" ? STAG_TURN : 0 });
   // Until the models load, the wooden starter set stands in.
   if (!f) return staunton.figure(role, side);
   f.root.rotation.y = side === "w" ? Math.PI : 0;
@@ -263,9 +262,10 @@ class Grove extends Actor {
   // ---------- Bishops ----------
 
   /**
-   * Thornpriests sink into the ground and travel under the board as roots, a
-   * ridge of them rippling along the diagonal, and grow up again on their
-   * square. To take, thorns burst up round the piece first and crush it under.
+   * Thornpriests sink into the ground and tunnel under the board: a ridge of
+   * earth heaves up and runs along the diagonal, and shoots spring up in its
+   * wake. They grow up again on their square. To take, thorns burst up round
+   * the piece first and crush it under.
    */
   private async burrow(f: Fig, to: string, victim?: Fig) {
     const a = f.root.position.clone();
@@ -275,10 +275,7 @@ class Grove extends Actor {
     this.sound.play("grind", { gain: 0.35, rate: 1.4 });
     this.leaves(a.clone().setY(0.4), 8, { speed: 0.8, up: 1 });
     await tween(this.clock, 420, (t) => (f.root.position.y = -f.height * 1.05 * t), ease.in);
-    const dist = a.distanceTo(b);
-    const n = Math.max(2, Math.round(dist / 0.32));
-    for (let i = 1; i <= n; i++) void this.root(this.along(a, b, i / n), b.clone().sub(a), (i * 520) / n);
-    await wait(this.clock, 560);
+    await this.tunnel(a, b);
     if (victim) {
       this.sound.play("slash", { gain: 0.4, rate: 0.7 });
       await this.thorns(victim, f.side);
@@ -291,19 +288,59 @@ class Grove extends Actor {
     await this.settle(f);
   }
 
-  /** One arched root breaking the surface at p (across dir) after delay, and sinking back. */
-  private async root(p: Vector3, dir: Vector3, delay: number) {
-    await wait(this.clock, delay);
-    const m = new Mesh(new TorusGeometry(0.22, 0.05, 6, 14, Math.PI), new MeshStandardMaterial({ color: 0x5a4028, roughness: 0.95 }));
-    m.position.set(p.x, -0.12, p.z);
-    m.rotation.y = Math.atan2(dir.x, dir.z);
-    this.scene.add(m);
-    this.fx.dust(p, 3, 0x5a4630);
-    await tween(this.clock, 260, (t) => (m.position.y = -0.12 + 0.1 * t), ease.out);
-    await tween(this.clock, 420, (t) => (m.position.y = -0.2 * t), ease.in);
-    m.removeFromParent();
-    m.geometry.dispose();
-    (m.material as MeshStandardMaterial).dispose();
+  /** A heave of earth running under the board from a to b, kicking up dirt, with shoots springing up behind it. */
+  private async tunnel(a: Vector3, b: Vector3) {
+    const dir = b.clone().sub(a);
+    const dist = dir.length();
+    const earth = new MeshStandardMaterial({ color: 0x4a3524, roughness: 1 });
+    const mound = new Mesh(new SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), earth);
+    mound.scale.set(0.3, 0.001, 0.42);
+    mound.rotation.y = Math.atan2(dir.x, dir.z);
+    this.scene.add(mound);
+    let next = 0.25;
+    await tween(
+      this.clock,
+      Math.max(500, dist * 330),
+      (t) => {
+        const p = this.along(a, b, t);
+        mound.position.set(p.x, 0, p.z);
+        // Rises out of the start, runs low and rough, sinks into the end.
+        const h = 0.13 * Math.min(1, t * 6, (1 - t) * 6) * (0.85 + 0.15 * Math.sin(t * 40));
+        mound.scale.y = Math.max(0.001, h);
+        if (Math.random() < 0.6)
+          this.fx.spawn(p.clone().setY(0.08), {
+            color: Math.random() < 0.5 ? 0x5a4630 : 0x3a2a1c,
+            size: 0.03,
+            vel: new Vector3((Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 1.2),
+            life: 450,
+          });
+        if (t * dist >= next) {
+          next += 0.3;
+          this.sprout(this.along(a, b, Math.max(0, t - 0.08)));
+        }
+      },
+      ease.linear,
+    );
+    mound.removeFromParent();
+    mound.geometry.dispose();
+    earth.dispose();
+  }
+
+  /** A few small leaves springing up at p and withering back after a moment. */
+  private sprout(p: Vector3) {
+    const mats = leafMaterials();
+    for (let i = 0; i < 3; i++) {
+      const m = new Mesh(leafGeo, mats[Math.floor(Math.random() * 4) * 4]);
+      m.position.set(p.x + (Math.random() - 0.5) * 0.25, 0, p.z + (Math.random() - 0.5) * 0.25);
+      m.rotation.set(-0.3 + Math.random() * 0.6, Math.random() * Math.PI, 0);
+      this.scene.add(m);
+      const size = 0.12 + Math.random() * 0.06;
+      void tween(this.clock, 1500, (t) => {
+        const k = Math.max(0.001, Math.min(1, t * 5, (1 - t) * 3));
+        m.scale.setScalar(size * k);
+        m.position.y = (size * k) / 2;
+      }).then(() => m.removeFromParent());
+    }
   }
 
   // ---------- Rooks ----------
@@ -347,54 +384,77 @@ class Grove extends Actor {
 
   // ---------- Queen ----------
 
-  /** The Dryad Queen glides on a carpet of vines and petals. To take, a flytrap flower swallows the piece. */
+  /**
+   * The Dryad Queen walks on a carpet of vines: two thorny vines grow along the
+   * board beside her, weaving, blossoms opening in her steps; they wither after
+   * she passes. To take, a flytrap flower swallows the piece.
+   */
   private async bloom(f: Fig, to: string, victim?: Fig) {
     const a = f.root.position.clone();
     const b = squareAt(to);
-    await this.turn(f, Math.atan2(b.x - a.x, b.z - a.z));
-    this.sound.play("whoosh", { gain: 0.4, rate: 0.7 });
     const dist = a.distanceTo(b);
-    const end = victim ? this.along(a, b, Math.max(0, 1 - 0.9 / dist)) : b;
-    let laid = 0;
-    const lay = (to: Vector3) => {
-      // A strip of vine every half square, growing along the path.
-      while (laid + 0.5 <= a.distanceTo(to)) {
-        laid += 0.5;
-        void this.vineStrip(this.along(a, b, (laid - 0.25) / dist), b.clone().sub(a));
-      }
+    const vines = this.vineCarpet(a, b, f.side);
+    this.sound.play("grind", { gain: 0.25, rate: 1.8 });
+    const steps = (at: Vector3) => {
+      this.flowers(at, f.side, 2);
+      vines.grow(Math.min(1, at.distanceTo(a) / dist + 0.12));
     };
-    await tween(
-      this.clock,
-      Math.max(400, end.distanceTo(a) * 300),
-      (t) => {
-        f.root.position.set(a.x + (end.x - a.x) * t, 0.08 * Math.sin(Math.PI * t), a.z + (end.z - a.z) * t);
-        lay(f.root.position);
-        if (Math.random() < 0.3) this.flowers(f.root.position.clone(), f.side, 1);
-      },
-      ease.inOut,
-    );
     if (victim) {
+      await this.walk(f, b, 420, { speed: 0.9, onStep: steps, stopShort: 0.9 });
+      vines.grow(1);
       this.sound.play("order", { gain: 0.6, rate: 0.7 });
       await this.strike(f, "Charged_Spell_Cast", 0.45, 1.3);
       await this.flytrap(victim);
-      await tween(this.clock, 380, (t) => f.root.position.lerpVectors(end, b, t), ease.inOut);
     }
-    f.root.position.y = 0;
+    await this.walk(f, b, 420, { speed: 0.9, onStep: steps });
+    vines.grow(1);
+    void vines.wither();
     await this.settle(f);
   }
 
-  /** A strip of thorny vine lying along dir at p, growing out and withering away. */
-  private async vineStrip(p: Vector3, dir: Vector3) {
-    const t = art("vine");
-    const m = new Mesh(leafGeo, new MeshBasicMaterial({ map: t, transparent: true, alphaTest: 0.3, side: DoubleSide }));
-    m.position.set(p.x, 0.015, p.z);
-    m.rotation.set(-Math.PI / 2, 0, -Math.atan2(dir.z, dir.x));
-    this.scene.add(m);
-    await tween(this.clock, 260, (k) => m.scale.set(0.62 * Math.max(0.01, k), 0.34, 1), ease.out);
-    await wait(this.clock, 900);
-    await tween(this.clock, 500, (k) => m.scale.set(0.62, 0.34 * (1 - k) + 0.001, 1));
-    m.removeFromParent();
-    (m.material as MeshBasicMaterial).dispose();
+  /** Two thorny vines along the board from a to b, either side of the path, weaving; grown by fraction, withered when done. */
+  private vineCarpet(a: Vector3, b: Vector3, side: Side) {
+    const dir = b.clone().sub(a);
+    const across = new Vector3(-dir.z, 0, dir.x).normalize();
+    const tex = art("vine").clone();
+    tex.wrapS = RepeatWrapping;
+    tex.repeat.set(Math.max(1, dir.length() * 2.5), 1);
+    const mat = new MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.35, side: DoubleSide, color: side === "w" ? 0xd8ffc0 : 0xffffff });
+    const vines = [-1, 1].map((k) => {
+      const pts: Vector3[] = [];
+      for (let i = 0; i <= 24; i++) {
+        const s = i / 24;
+        const w = (0.2 + 0.1 * Math.sin(s * Math.PI * 6 + k)) * k;
+        pts.push(
+          this.along(a, b, s)
+            .addScaledVector(across, w * Math.min(1, s * 8, (1 - s) * 8))
+            .setY(0.04),
+        );
+      }
+      const geo = new TubeGeometry(new CatmullRomCurve3(pts), 64, 0.045, 5);
+      geo.setDrawRange(0, 0);
+      const m = new Mesh(geo, mat);
+      this.scene.add(m);
+      return m;
+    });
+    const total = vines[0].geometry.index!.count;
+    let grown = 0;
+    return {
+      grow: (k: number) => {
+        grown = Math.max(grown, k);
+        for (const m of vines) m.geometry.setDrawRange(0, Math.floor((total * grown) / 30) * 30);
+      },
+      wither: async () => {
+        await wait(this.clock, 700);
+        await tween(this.clock, 700, (t) => vines.forEach((m) => (m.position.y = -0.1 * t)));
+        for (const m of vines) {
+          m.removeFromParent();
+          m.geometry.dispose();
+        }
+        mat.dispose();
+        tex.dispose();
+      },
+    };
   }
 
   /** A giant flower opens under the piece, snaps shut over it, and sinks away with it. */

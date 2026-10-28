@@ -16,6 +16,8 @@ export interface Profile {
   /** Campaign battles won (ids from campaign.ts). */
   won: string[];
   sound: boolean;
+  /** The player's name in games; a Lichess login's name later. */
+  name: string;
   /** Glow on lightning, fire and bright light (bloom); off for slower phones. */
   glow: boolean;
   /** Levels already rewarded (perk charges are given once per level). */
@@ -25,11 +27,12 @@ export interface Profile {
 const KEY = "legions.profile";
 const FRESH: Profile = {
   xp: 0,
-  owned: ["tribe:staunton", "court:night"],
-  equipped: { tribe: "staunton", court: "night" },
+  owned: ["tribe:staunton", "court:staunton", "court:night"],
+  equipped: { tribe: "staunton", court: "staunton" },
   perks: { hint: 3, takeback: 3 },
   won: [],
   sound: true,
+  name: "Player",
   glow: true,
   rewardedLevel: 1,
 };
@@ -54,6 +57,8 @@ function load(): Profile {
       saved.equipped.court ??= saved.equipped.background;
       delete saved.equipped.background;
     }
+    // Every player owns the starter tribe's home, the Tournament Hall.
+    if (saved?.owned && !saved.owned.includes("court:staunton")) saved.owned.push("court:staunton");
     if (saved) return { ...FRESH, ...saved, equipped: { ...FRESH.equipped, ...saved.equipped }, perks: { ...FRESH.perks, ...saved.perks } };
   } catch {
     /* private mode or bad data: start fresh */

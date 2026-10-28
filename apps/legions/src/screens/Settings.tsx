@@ -1,10 +1,10 @@
 import { useState } from "react";
 import type { Screen } from "../App";
-import { resetProfile, update, useProfile } from "../profile";
+import { resetProfile } from "../profile";
 import { ArrowLeft } from "lucide-react";
+import { GameSettings } from "../components/GameSettings";
 
 export function Settings({ go }: { go: (s: Screen) => void }) {
-  const p = useProfile();
   const [reset, setReset] = useState(false);
   return (
     <div className="screen" data-testid="settings">
@@ -15,19 +15,7 @@ export function Settings({ go }: { go: (s: Screen) => void }) {
         <h2>Settings</h2>
       </div>
       <div className="panel" style={{ width: "min(520px, 100%)", margin: "0 auto" }}>
-        <div className="toggle">
-          <span>Sound</span>
-          <button className={`switch${p.sound ? " on" : ""}`} aria-label="Sound" aria-pressed={p.sound} onClick={() => update((q) => ({ ...q, sound: !q.sound }))} />
-        </div>
-        <div className="toggle">
-          <span>
-            Glow effects
-            <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>
-              Lightning, fire and magic glow. Turn off if the game runs slowly.
-            </div>
-          </span>
-          <button className={`switch${p.glow ? " on" : ""}`} aria-label="Glow effects" aria-pressed={p.glow} onClick={() => update((q) => ({ ...q, glow: !q.glow }))} />
-        </div>
+        <GameSettings />
         <div className="toggle">
           <span>
             Lichess account

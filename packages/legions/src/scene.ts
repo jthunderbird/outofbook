@@ -91,6 +91,8 @@ export class LegionsScene {
   /** The red glow under a king in check (always in the scene, dark when not, so no shader recompiles). */
   private checkLight = new PointLight(0xff2020, 0, 2.6, 1.5);
   private checkGlow: Mesh[] = [];
+  /** The key light, over the shoulder of the side the board is seen from (setOrientation), so polished squares never glare back. */
+  private sun = new DirectionalLight(0xfff1dc, 2.4);
   private pulse = 0;
   private raf = 0;
   private ro: ResizeObserver;
@@ -145,8 +147,7 @@ export class LegionsScene {
     pmrem.dispose();
 
     this.scene.add(new HemisphereLight(0xcfd8ff, 0x1a2038, 0.8));
-    const sun = new DirectionalLight(0xfff1dc, 2.4);
-    sun.position.set(4, 12, 6);
+    const sun = this.sun;
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
     Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 30 });
@@ -239,6 +240,7 @@ export class LegionsScene {
     this.orientation = o;
     const s = o === "w" ? 1 : -1;
     this.camera.position.set(0, 12.6, 9.4 * s);
+    this.sun.position.set(4 * s, 12, 6 * s);
     this.controls.target.set(0, 0, 0.5 * s);
     this.controls.update();
     this.drawLabels();
@@ -306,7 +308,7 @@ export class LegionsScene {
     }
     const c = (this.composer = new EffectComposer(this.renderer));
     c.addPass(new RenderPass(this.scene, this.camera));
-    c.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.7, 0.35, 1.5));
+    c.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.5, 0.35, 1.5));
     c.addPass(new OutputPass());
     this.resize();
   }

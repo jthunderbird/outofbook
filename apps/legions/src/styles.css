@@ -376,6 +376,19 @@ button {
   margin-bottom: 10px;
   border: 1px solid var(--edge);
 }
+/* Cards of one height in each row; a chapter's battles sit at its foot. */
+.grid.even {
+  align-items: stretch;
+  grid-auto-rows: 1fr;
+}
+.card.chapter {
+  display: flex;
+  flex-direction: column;
+}
+.card.chapter .battles {
+  margin-top: auto;
+  padding-top: 12px;
+}
 .battles {
   display: flex;
   flex-direction: column;
@@ -387,95 +400,155 @@ button {
 }
 
 /* ---------- Game ---------- */
+/* The scene fills the screen. Over it: the opponent's banner on top, the
+   player's at the foot, the board's place between (as large as the screen
+   allows), and a slim column of buttons on the right edge. */
 .game {
   position: relative;
   z-index: 1;
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
-  --board: min(100vw - 16px, 100dvh - 200px);
+  padding: max(6px, env(safe-area-inset-top)) calc(60px + env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  --board: min(100vw - 76px, 100dvh - 196px);
+  pointer-events: none;
 }
-/* The 3D scene fills the screen behind the board's place and the panel. */
 .game .stage {
   position: fixed;
   inset: 0;
   z-index: 0;
   --board-radius: 0;
-}
-/* The board's place: the scene frames the board here; taps go through to it. */
-.game .board {
-  width: var(--board);
-  height: var(--board);
-  flex: none;
-  pointer-events: none;
-}
-.game .side {
-  position: relative;
-  z-index: 1;
-}
-/* The game screen lies over the scene: only its panel and dialogs take taps. */
-.game {
-  pointer-events: none;
-}
-.game .stage,
-.game .side,
-.game .overlay {
   pointer-events: auto;
 }
-.game .side {
+.game .board {
+  grid-row: 2;
   width: var(--board);
+  height: var(--board);
+  pointer-events: none;
+}
+.banner.top {
+  grid-row: 1;
+}
+.banner.bottom {
+  grid-row: 3;
+}
+.game .overlay,
+.game .rail {
+  pointer-events: auto;
+}
+.banner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-shadow: 0 2px 6px #000c;
+}
+.banner .sub {
+  font-size: 13px;
+}
+.tribe-banner img {
+  display: block;
+  height: clamp(40px, 9dvh, 84px);
+  max-width: min(78vw, 420px);
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px #000a);
+  transition: filter 0.3s;
+}
+.tribe-banner.on img {
+  filter: drop-shadow(0 0 10px rgb(255 211 107 / 0.75)) drop-shadow(0 4px 10px #000a);
+}
+.tribe-title,
+.player-name {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #fff3cf 0%, #e8b84a 55%, #9a6a18 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 3px #000d);
+}
+.tribe-title {
+  font-size: clamp(26px, 5.5dvh, 44px);
+}
+.tribe-title.t-staunton {
+  font-style: italic;
+}
+.player-name {
+  font-size: clamp(20px, 3.6dvh, 30px);
+  transition: filter 0.3s;
+}
+.player-name.on {
+  filter: drop-shadow(0 0 8px rgb(255 211 107 / 0.8)) drop-shadow(0 2px 3px #000d);
+}
+.thinking {
+  color: var(--gold);
+}
+.captured {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  filter: drop-shadow(0 2px 3px #000b);
+}
+.captured .stack {
+  margin-left: -9px;
+}
+.captured .lead {
+  margin-left: 6px;
+  color: var(--gold);
+  font-size: 15px;
+}
+.rail {
+  position: fixed;
+  z-index: 2;
+  right: max(8px, env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.who {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  background: var(--panel);
+.btn.mini {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 13px;
+  justify-content: center;
+}
+.btn.mini .badge {
+  top: -6px;
+  right: -6px;
+  transform: scale(0.85);
+}
+input.text {
+  font: inherit;
+  color: var(--ink);
+  background: rgb(0 0 0 / 0.35);
   border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 8px 10px;
+  width: min(220px, 50vw);
+  user-select: text;
 }
-.who .name {
-  font-size: 17px;
-}
-.who .sub {
-  font-size: 13px;
-}
-.who .turn {
-  margin-left: auto;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #fff3;
-}
-.who .turn.on {
-  background: var(--good);
-  box-shadow: 0 0 10px var(--good);
-}
-.actions {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-/* Wide enough for the board and a side panel next to it: landscape, open foldables, desktop. */
-@media (min-aspect-ratio: 1/1) and (min-width: 640px) {
+
+/* Portrait (slab phones): the board takes the full width; the buttons go in a row under it. */
+@media (max-aspect-ratio: 1/1) {
   .game {
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+    --board: min(100vw - 16px, 100dvh - 250px);
+  }
+  .rail {
+    top: auto;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    right: 50%;
+    transform: translateX(50%);
     flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    --board: min(100dvh - 24px, 100vw - 360px);
-  }
-  .game .side {
-    width: 320px;
-  }
-  .actions {
-    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -564,6 +637,30 @@ button {
 }
 .switch.on::after {
   left: 27px;
+}
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.choices button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: rgb(0 0 0 / 0.3);
+  cursor: pointer;
+}
+.choices button.on {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgb(255 211 107 / 0.3), rgb(201 138 28 / 0.25));
+  color: #fff6dc;
+}
+.choices button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 .seg {
   display: flex;

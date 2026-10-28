@@ -7,7 +7,9 @@ import {
   AdditiveBlending,
   BackSide,
   Box3,
+  BoxGeometry,
   BufferGeometry,
+  CanvasTexture,
   CircleGeometry,
   Color,
   CylinderGeometry,
@@ -16,14 +18,20 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   MirroredRepeatWrapping,
+  Path,
+  PointLight,
   RepeatWrapping,
   ShaderMaterial,
-  SpriteMaterial,
+  Shape,
+  ShapeGeometry,
   Sprite,
+  SpriteMaterial,
   SRGBColorSpace,
   TextureLoader,
+  TorusGeometry,
   Vector3,
   type Scene,
   type Texture,
@@ -32,6 +40,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BACKGROUNDS, backgroundTexture } from "./backgrounds";
 import type { Board } from "./board";
 import { glowMap } from "./figures";
+import { woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
 
 export interface Court {
@@ -345,7 +354,7 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
     darkVeinI: 1,
     lightVeinI: 1.2,
     lightTint: 0xd4d9e4,
-    rough: [0.22, 0.3],
+    rough: [0.32, 0.4],
     shader: (m) => veinShader(m, vu),
   });
   // The walls: a carved basalt frieze of storm runes inlaid with gold.
@@ -438,71 +447,95 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
 
 // ---------- The Thornwood's home: Heartwood Grove ----------
 
-/** The moss's root veins breathe a soft green, a slow wave of light passing through now and then. */
-function rootVeins(m: MeshStandardMaterial, u: { veinTime: { value: number }; [k: string]: { value: unknown } }) {
-  m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, u);
-    sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vWorld;")
-      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWorld;\nuniform float veinTime;").replace(
-      "#include <emissivemap_fragment>",
-      `#include <emissivemap_fragment>
-        {
-          float w = pow(0.5 + 0.5 * sin(dot(vWorld.xz, vec2(0.6, 0.8)) * 0.7 - veinTime * 0.6), 5.0);
-          totalEmissiveRadiance *= 0.55 + 0.25 * sin(veinTime * 0.9) + 1.1 * w;
-        }`,
-    );
-  };
-  m.customProgramCacheKey = () => "grove-veins";
+/** A model placed on the forest floor at x, z, height H, turned by turn. */
+function plant(group: Group, url: string | undefined, x: number, z: number, H: number, turn: number, floor: number) {
+  if (!url) return;
+  let p = props.get(url);
+  if (!p) {
+    p = new GLTFLoader().loadAsync(url).then((g) => g.scene as unknown as Group);
+    props.set(url, p);
+  }
+  void p.then((src) => {
+    if (!group.parent) return;
+    const o = src.clone();
+    o.traverse((c) => {
+      c.castShadow = true;
+      c.receiveShadow = true;
+    });
+    o.rotation.y = turn;
+    o.updateMatrixWorld(true);
+    const box = new Box3().setFromObject(o);
+    const c0 = box.getCenter(new Vector3());
+    const k = H / (box.max.y - box.min.y);
+    o.scale.setScalar(k);
+    o.position.set(x - c0.x * k, floor - box.min.y * k, z - c0.z * k);
+    group.add(o);
+  });
 }
 
+/**
+ * Heartwood Grove: the board is a raised bed of earth in a forest clearing,
+ * its squares meadow grass and bare forest soil. Old oaks stand round it on the
+ * forest floor with ferns and undergrowth at their feet; beyond, the painted
+ * forest in late-afternoon sun, pollen drifting and leaves falling.
+ */
 function heartwoodGrove(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
-  const vu = { veinTime: { value: 0 } };
+  const FLOOR = -1.38;
 
-  // Moss-grown stone with glowing root veins, and pale birch.
-  dressSquares(group, board, {
-    dark: art("thornwood", "moss.webp"),
-    light: art("thornwood", "birch.webp"),
-    darkGlow: art("thornwood", "moss-veins.webp"),
-    darkVein: 0x7dff8a,
-    lightVein: 0,
-    darkVeinI: 1,
-    lightVeinI: 0,
-    // A warmer, darker birch than the raw wood, so it does not glare.
-    lightTint: 0xd8cbb0,
-    rough: [0.75, 0.85],
-    shader: (m) => rootVeins(m, vu),
+  dressSquares(group, board, { dark: art("thornwood", "dirt.webp"), light: art("thornwood", "grass.webp"), darkVein: 0, lightVein: 0, darkVeinI: 0, lightVeinI: 0, rough: [0.95, 1] });
+  // The bed's sides are earth, its rim grass.
+  dressWalls(group, board, art("thornwood", "dirt.webp"), art("thornwood", "grass.webp"), 0xb8c8a0);
+
+  // The forest floor, out to the painted forest.
+  const floor = new MeshStandardMaterial({ color: 0x8a7a60, roughness: 1 });
+  void texture(art("thornwood", "floor.webp")).then((t) => {
+    t.wrapS = t.wrapT = RepeatWrapping;
+    t.repeat.set(26, 26);
+    floor.map = t;
+    floor.needsUpdate = true;
   });
-  // The walls: a carved band of roots, oak leaves and acorns.
-  dressWalls(group, board, art("thornwood", "frieze.webp"), art("thornwood", "moss.webp"), 0x9aa890);
-  // Standing stones at the corners, their runes glowing.
-  const runes = corners(group, art("thornwood", "stone.glb"), 1.7, { color: 0x60ff90, at: 0.55, size: 0.55 });
+  const ground = new Mesh(new CircleGeometry(50, 48).rotateX(-Math.PI / 2), floor);
+  ground.position.y = FLOOR;
+  ground.receiveShadow = true;
+  const { dome } = skyDome(art("thornwood", "forest.webp"), 0xd8d8c8);
+  group.add(ground, dome);
 
-  // The forest round about, mist below.
-  const { dome } = skyDome(art("thornwood", "sky.webp"), 0xa8b4ac);
-  const mist = sea([0.008, 0.02, 0.016], [0.05, 0.1, 0.08], [0, 0, 0], -5);
-  group.add(dome, mist);
-  const moon = new DirectionalLight(0xa8c4ff, 0.35);
-  moon.position.set(-8, 12, -10);
-  group.add(moon);
+  // Oaks along both flanks and in the far distance, undergrowth all round; nothing tall on the sides the players look across.
+  for (const [x, z, h] of [
+    [-7.2, -3.6, 4.6],
+    [-7.8, 1.2, 5.2],
+    [-6.8, 5.4, 4.2],
+    [7.4, -4.8, 5],
+    [7.0, 0.4, 4.4],
+    [7.9, 4.6, 5.4],
+    [-13, -11, 6.5],
+    [12, -12, 6.8],
+    [-12, 12, 6.2],
+    [13, 11, 6.6],
+  ])
+    plant(group, art("thornwood", "tree.glb"), x, z, h, Math.random() * Math.PI * 2, FLOOR);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + Math.random() * 0.2;
+    const r = 5.6 + Math.random() * 1.2;
+    plant(group, art("thornwood", "bush.glb"), Math.cos(a) * r, Math.sin(a) * r, 0.9 + Math.random() * 0.5, Math.random() * Math.PI * 2, FLOOR);
+  }
+  const sun = new DirectionalLight(0xffd9a0, 0.6);
+  sun.position.set(-10, 9, -6);
+  group.add(sun);
   const prevBg = scene.background;
-  scene.background = new Color(0x020604);
+  scene.background = new Color(0x1c2414);
 
-  // Fireflies drifting about the board, blinking.
-  const flies: { s: Sprite; home: Vector3; phase: number; speed: number }[] = [];
-  const flyMat = new SpriteMaterial({ map: glowMap(), color: new Color(0xd8ff70).multiplyScalar(2.2), blending: AdditiveBlending, depthWrite: false, toneMapped: false });
-  for (let i = 0; i < 36; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = 4.8 + Math.random() * 7;
-    const s = new Sprite(flyMat.clone());
-    s.scale.setScalar(0.12 + Math.random() * 0.08);
-    const home = new Vector3(Math.cos(a) * r, 0.3 + Math.random() * 2.6, Math.sin(a) * r);
-    s.position.copy(home);
+  // Pollen drifting in the sun.
+  const motes: { s: Sprite; home: Vector3; phase: number }[] = [];
+  const moteMat = new SpriteMaterial({ map: glowMap(), color: new Color(0xfff0b0).multiplyScalar(1.4), blending: AdditiveBlending, depthWrite: false, toneMapped: false, opacity: 0.6 });
+  for (let i = 0; i < 40; i++) {
+    const s = new Sprite(moteMat);
+    s.scale.setScalar(0.05 + Math.random() * 0.05);
+    const home = new Vector3((Math.random() - 0.5) * 14, 0.4 + Math.random() * 3.5, (Math.random() - 0.5) * 14);
     group.add(s);
-    flies.push({ s, home, phase: Math.random() * 10, speed: 0.4 + Math.random() * 0.6 });
+    motes.push({ s, home, phase: Math.random() * 20 });
   }
 
   // A few leaves always drifting down over the board.
@@ -525,17 +558,13 @@ function heartwoodGrove(scene: Scene, board: Board): CourtSet {
   }
 
   let t = 0;
-  const mistU = (mist.material as ShaderMaterial).uniforms;
   return {
     update(ms) {
       t += ms;
       const s = t / 1000;
-      mistU.time.value = s * 1.5;
-      vu.veinTime.value = s;
-      for (const f of flies) {
-        const k = s * f.speed + f.phase;
-        f.s.position.set(f.home.x + Math.sin(k * 0.7) * 0.8, f.home.y + Math.sin(k * 1.3) * 0.35, f.home.z + Math.cos(k * 0.6) * 0.8);
-        f.s.material.opacity = Math.max(0, Math.sin(k * 2.1)) ** 2;
+      for (const m of motes) {
+        const k = s * 0.15 + m.phase;
+        m.s.position.set(m.home.x + Math.sin(k * 1.3) * 0.6, m.home.y + Math.sin(k * 0.9) * 0.3, m.home.z + Math.cos(k) * 0.6);
       }
       for (const l of leaves) {
         l.y -= (l.speed * ms) / 1000;
@@ -543,20 +572,146 @@ function heartwoodGrove(scene: Scene, board: Board): CourtSet {
         l.m.position.set(l.x + Math.sin(s * 1.3 + l.spin) * 0.4, l.y, l.z + Math.cos(s + l.spin) * 0.2);
         l.m.rotation.set(s * 1.7 + l.spin, s + l.spin, s * 0.8);
       }
-      for (const r of runes) r.material.opacity = 0.45 + 0.25 * Math.sin(s * 1.2 + r.position.x);
     },
     dispose() {
       group.removeFromParent();
       scene.background = prevBg;
-      flyMat.dispose();
+      moteMat.dispose();
     },
   };
 }
 
+// ---------- The Staunton tribe's home: the Tournament Hall ----------
+
+/** A chess clock, its faces toward the board's side; built in code. */
+function chessClock() {
+  const g = new Group();
+  const body = new MeshPhysicalMaterial({ map: woodTexture("#3a2416", "#1e120a", 21, 1.5), roughness: 0.4, clearcoat: 0.8 });
+  const black = new MeshStandardMaterial({ color: 0x141414, roughness: 0.4 });
+  const face = new MeshStandardMaterial({ color: 0xf2ece0, roughness: 0.6 });
+  const hand = new MeshStandardMaterial({ color: 0x111111 });
+  const box = new Mesh(new BoxGeometry(1.2, 0.55, 0.5), body);
+  box.position.y = 0.275;
+  box.castShadow = true;
+  g.add(box);
+  for (const x of [-0.29, 0.29]) {
+    const f = new Mesh(new CircleGeometry(0.19, 32), face);
+    f.position.set(x, 0.3, 0.252);
+    const h = new Mesh(new BoxGeometry(0.012, 0.15, 0.004), hand);
+    h.position.set(x, 0.36, 0.256);
+    h.rotation.z = x < 0 ? 0.6 : -1.9;
+    const rim = new Mesh(new TorusGeometry(0.19, 0.012, 6, 32), black);
+    rim.position.set(x, 0.3, 0.252);
+    g.add(f, h, rim);
+    const button = new Mesh(new CylinderGeometry(0.06, 0.06, x < 0 ? 0.1 : 0.04, 16), black);
+    button.position.set(x, 0.55 + (x < 0 ? 0.05 : 0.02), 0);
+    g.add(button);
+  }
+  return g;
+}
+
+/**
+ * The Tournament Hall: a wooden board of maple and walnut on a long walnut
+ * table, a chess clock beside it, under a warm lamp in a dim hall; far off,
+ * the lights of the other tables.
+ */
+function tournamentHall(scene: Scene, board: Board): CourtSet {
+  const group = new Group();
+  scene.add(group);
+  const TABLE = -0.11;
+  const maple = woodTexture("#e8d2a4", "#c8a26a", 5, 1.4);
+  const walnut = woodTexture("#6e4628", "#3c2413", 7, 1.4);
+  for (const sq of board.squares.values()) {
+    const light = sq.userData.light as boolean;
+    const t = (light ? maple : walnut).clone();
+    t.repeat.set(0.4, 0.4);
+    t.offset.set(Math.random() * 0.6, Math.random() * 0.6);
+    // Squares of alternate grain, as on an inlaid board.
+    t.center.set(0.5, 0.5);
+    t.rotation = ((Math.round(sq.position.x + sq.position.z) & 1) * Math.PI) / 2;
+    (sq.material as MeshStandardMaterial).dispose();
+    sq.material = new MeshPhysicalMaterial({ map: t, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.35 });
+  }
+  const frame = new MeshPhysicalMaterial({ map: woodTexture("#4a2c18", "#24140a", 11, 1), roughness: 0.4, clearcoat: 0.6 });
+  for (const w of board.walls) {
+    (w.material as MeshStandardMaterial).dispose();
+    w.material = frame;
+  }
+
+  // The table: walnut, with a square hole where the board stands (so a pit can still open in it).
+  const top = new Shape();
+  top.moveTo(-16, -9);
+  top.lineTo(16, -9);
+  top.lineTo(16, 9);
+  top.lineTo(-16, 9);
+  top.closePath();
+  const hole = new Path();
+  hole.moveTo(-4.7, -4.7);
+  hole.lineTo(-4.7, 4.7);
+  hole.lineTo(4.7, 4.7);
+  hole.lineTo(4.7, -4.7);
+  hole.closePath();
+  top.holes.push(hole);
+  const tableTex = woodTexture("#86552e", "#4e2e16", 13, 0.8).clone();
+  tableTex.repeat.set(0.12, 0.12);
+  const table = new Mesh(new ShapeGeometry(top).rotateX(-Math.PI / 2), new MeshPhysicalMaterial({ map: tableTex, roughness: 0.65, clearcoat: 0.12, clearcoatRoughness: 0.5 }));
+  table.position.y = TABLE;
+  table.receiveShadow = true;
+  group.add(table);
+  const clock = chessClock();
+  clock.position.set(6.1, TABLE, 0);
+  clock.rotation.y = -Math.PI / 2;
+  group.add(clock);
+
+  // A warm lamp overhead; far off, the other tables' lamps, soft and out of focus.
+  const lamp = new PointLight(0xffd8a0, 18, 30, 1.6);
+  lamp.position.set(0, 9, 0);
+  group.add(lamp);
+  const glowMat = new SpriteMaterial({ map: glowMap(), color: new Color(0xffc880), blending: AdditiveBlending, depthWrite: false, opacity: 0.5 });
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 22 + Math.random() * 14;
+    const s = new Sprite(glowMat);
+    s.position.set(Math.cos(a) * r, 2 + Math.random() * 6, Math.sin(a) * r);
+    s.scale.setScalar(1.5 + Math.random() * 2);
+    group.add(s);
+  }
+  const prevBg = scene.background;
+  scene.background = hallGradient();
+  return {
+    update() {},
+    dispose() {
+      group.removeFromParent();
+      scene.background = prevBg;
+      glowMat.dispose();
+    },
+  };
+}
+
+let hallBg: CanvasTexture | null = null;
+/** The hall in the dark: warm brown overhead, near black below. */
+function hallGradient() {
+  if (hallBg) return hallBg;
+  const c = document.createElement("canvas");
+  c.width = 4;
+  c.height = 256;
+  const g = c.getContext("2d")!;
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, "#2a1d14");
+  grad.addColorStop(0.6, "#120c08");
+  grad.addColorStop(1, "#060403");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 4, 256);
+  hallBg = new CanvasTexture(c);
+  hallBg.colorSpace = SRGBColorSpace;
+  return hallBg;
+}
+
 export const COURTS: Court[] = [
+  { id: "staunton", name: "Tournament Hall", tribe: "staunton", top: "#4a3020", bottom: "#060403", dress: tournamentHall },
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
-  { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "sky.webp"), dress: heartwoodGrove },
+  { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
 ];
 
 export const court = (id: string) => COURTS.find((c) => c.id === id) ?? COURTS[0];

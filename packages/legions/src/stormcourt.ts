@@ -505,7 +505,7 @@ class Acts extends Actor {
     const from = f.middle();
     f.root.visible = false;
     this.fx.burst(from, color, 26, { glow: true, speed: 2.6, size: 0.035, life: 350, gravity: 0 });
-    this.flashAt(from, color, 35);
+    this.flashAt(from, color, 20);
     this.sound.play("thunder", { gain: victim ? 0.6 : 0.8 });
     this.shake = 90;
     const end = victim ? victim.middle() : b.clone().setY(0.5);
@@ -557,7 +557,7 @@ class Acts extends Actor {
     const n = Math.max(6, Math.round(a.distanceTo(b) * 3.5));
     for (let i = 0; i < 3; i++) {
       const bolt = this.bolt(a, b, color, n, 0.4);
-      this.flash.intensity = Math.max(this.flash.intensity, 18);
+      this.flash.intensity = Math.max(this.flash.intensity, 11);
       this.flash.position.copy(a).lerp(b, 0.5).setY(1.2);
       await wait(this.clock, 60);
       if (i < 2) bolt.remove();
@@ -580,7 +580,7 @@ class Acts extends Actor {
       if (i % 3 === 0) this.sound.play("zap", { gain: 0.5, rate: 0.9 + Math.random() * 0.3 });
       wrap(0.4 + Math.random() * 0.5);
       const arcs = [this.bolt(on(), on(), color, 4, 0.12), this.bolt(on(), on(), color, 4, 0.12)];
-      this.flash.intensity = 8 + Math.random() * 10;
+      this.flash.intensity = 5 + Math.random() * 6;
       await wait(this.clock, 55);
       for (const x of arcs) x.remove();
     }
@@ -588,7 +588,7 @@ class Acts extends Actor {
     // The stroke from above, and down it goes.
     const top = v.middle().setY(v.height);
     const stroke = this.bolt(top.clone().setY(3.2), top, color, 7, 0.25);
-    this.flashAt(top, color, 40);
+    this.flashAt(top, color, 24);
     this.sound.play("thunder", { gain: 0.9, rate: 1.15 });
     this.die(v);
     this.shake = 200;
@@ -630,9 +630,11 @@ class Acts extends Actor {
     const b = squareAt(to);
     const dist = a.distanceTo(b);
     const ms = Math.max(500, dist * 170);
-    f.floating = true;
+    // She turns to her way, rises, leans into the glide with her gown swaying, and trails embers.
+    await this.turn(f, Math.atan2(b.x - a.x, b.z - a.z), 220);
     this.sound.play("whoosh", { gain: 0.5, rate: 0.8 });
-    const lift = (s: number) => Math.sin(Math.PI * s) * 0.18;
+    const lift = (s: number) => Math.sin(Math.PI * s) * 0.22;
+    let last = 0;
     const path = (from: number, until: number, ms: number) =>
       tween(
         this.clock,
@@ -640,16 +642,34 @@ class Acts extends Actor {
         (t) => {
           const s = from + (until - from) * t;
           f.root.position.copy(this.along(a, b, s)).setY(lift(s));
+          // Lean with her speed: forward setting off, upright again as she arrives.
+          const v = Math.abs(s - last) * 60;
+          last = s;
+          f.body.rotation.x = Math.min(0.22, v * 1.6);
+          f.body.rotation.z = Math.sin(t * Math.PI * 3) * 0.06;
+          if (Math.random() < 0.5)
+            this.fx.spawn(f.root.position.clone().add(new Vector3((Math.random() - 0.5) * 0.4, 0.1 + Math.random() * 0.3, (Math.random() - 0.5) * 0.4)), {
+              color: Math.random() < 0.5 ? 0xff7a20 : 0xffc040,
+              size: 0.025,
+              vel: new Vector3((Math.random() - 0.5) * 0.4, 0.5 + Math.random() * 0.6, (Math.random() - 0.5) * 0.4),
+              life: 500,
+              gravity: -0.5,
+              glow: true,
+            });
         },
         ease.inOut,
       );
     if (victim) {
       const s = Math.max(0, 1 - 0.85 / dist);
       await path(0, s, ms * s + 1);
+      f.body.rotation.set(0, 0, 0);
       await this.burn(victim);
+      last = s;
       await path(s, 1, Math.max(300, ms * (1 - s)));
     } else await path(0, 1, ms);
-    f.floating = false;
+    f.body.rotation.set(0, 0, 0);
+    f.root.position.y = 0;
+    await this.turn(f, this.restFacing(f));
   }
 
   // ---------- Dying ----------
@@ -835,14 +855,14 @@ class Acts extends Actor {
     const pillar = flame(0.75, 0.001, 1.8);
     pillar.position.set(p.x, -1.15, p.z);
     fire.add(pillar);
-    this.flash.intensity = 25;
+    this.flash.intensity = 15;
     this.sound.play("roar", { gain: 0.8 });
     this.shake = 140;
     void tween(this.clock, 260, (t) => (pillar.scale.y = Math.max(0.001, 2.3 * t)), ease.out).then(() => tween(this.clock, 640, (t) => (pillar.scale.y = Math.max(0.001, 2.3 * (1 - t))), ease.in));
     void this.char(v, 1, 200);
     await tween(this.clock, 550, (t) => v.body.scale.setScalar(Math.max(0.01, 1 - t)));
     v.root.removeFromParent();
-    void tween(this.clock, 400, (t) => (this.flash.intensity = 25 * (1 - t)));
+    void tween(this.clock, 400, (t) => (this.flash.intensity = 15 * (1 - t)));
     void tween(this.clock, 380, (t) => grow(1 - t), ease.in);
     this.sound.play("slam", { gain: 0.6, delay: 300 });
     await pit.close(400);

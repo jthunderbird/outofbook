@@ -1,19 +1,26 @@
+// Quick play: a single battle with everything chosen: the tribe you lead, the
+// tribe you face, the stage (court) to fight on, your side and Maia's strength.
+// Your tribe and stage are remembered as your equipped ones; tribes and courts
+// not yet won are shown locked.
 import { useState } from "react";
 import type { Side } from "@outofbook/legions/figures";
+import { COURTS } from "@outofbook/legions/courts";
 import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
-import { owns, useProfile } from "../profile";
-import { ArrowLeft, Swords } from "lucide-react";
+import { owns, update, useProfile } from "../profile";
+import { ArrowLeft, Lock, Swords } from "lucide-react";
 
 export function QuickPlay({ go }: { go: (s: Screen) => void }) {
   const p = useProfile();
   const [elo, setElo] = useState(1100);
   const [side, setSide] = useState<Side | "random">("random");
   const [opp, setOpp] = useState("stormcourt");
+  const mine = owns(p, `tribe:${p.equipped.tribe}`) ? p.equipped.tribe : "staunton";
+  const court = owns(p, `court:${p.equipped.court}`) ? p.equipped.court : "staunton";
   const start = () =>
     go({
       name: "game",
-      setup: { nonce: Date.now(), opponentTribe: opp, elo, side: side === "random" ? (Math.random() < 0.5 ? "w" : "b") : side, title: "Quick play" },
+      setup: { nonce: Date.now(), opponentTribe: opp, myTribe: mine, court, elo, side: side === "random" ? (Math.random() < 0.5 ? "w" : "b") : side, title: "Quick play" },
     });
   return (
     <div className="screen" data-testid="quick">
@@ -23,14 +30,46 @@ export function QuickPlay({ go }: { go: (s: Screen) => void }) {
         </button>
         <h2>Quick play</h2>
       </div>
-      <div className="panel" style={{ width: "min(520px, 100%)", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="panel" style={{ width: "min(620px, 100%)", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
         <div>
-          <div style={{ marginBottom: 8 }}>
-            Opponent strength: <span style={{ color: "var(--gold)" }}>{elo}</span>
+          <div style={{ marginBottom: 8 }}>Your tribe</div>
+          <div className="choices">
+            {Object.values(TRIBES).map((t) => {
+              const have = owns(p, `tribe:${t.id}`);
+              return (
+                <button key={t.id} className={mine === t.id ? "on" : ""} disabled={!have} onClick={() => update((q) => ({ ...q, equipped: { ...q.equipped, tribe: t.id } }))}>
+                  {!have && <Lock size={14} />} {t.name}
+                </button>
+              );
+            })}
           </div>
-          <input type="range" min={600} max={2600} step={50} value={elo} onChange={(e) => setElo(+e.target.value)} />
-          <div className="muted" style={{ fontSize: 13 }}>
-            Maia plays like a human of this rating.
+          {Object.values(TRIBES).some((t) => !owns(p, `tribe:${t.id}`)) && (
+            <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+              Win a tribe in the campaign to lead it.
+            </div>
+          )}
+        </div>
+        <div>
+          <div style={{ marginBottom: 8 }}>Opponent</div>
+          <div className="choices">
+            {Object.values(TRIBES).map((t) => (
+              <button key={t.id} className={opp === t.id ? "on" : ""} onClick={() => setOpp(t.id)}>
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={{ marginBottom: 8 }}>Stage</div>
+          <div className="choices">
+            {COURTS.map((c) => {
+              const have = owns(p, `court:${c.id}`);
+              return (
+                <button key={c.id} className={court === c.id ? "on" : ""} disabled={!have} onClick={() => update((q) => ({ ...q, equipped: { ...q.equipped, court: c.id } }))}>
+                  {!have && <Lock size={14} />} {c.name}
+                </button>
+              );
+            })}
           </div>
         </div>
         <div>
@@ -50,17 +89,12 @@ export function QuickPlay({ go }: { go: (s: Screen) => void }) {
           </div>
         </div>
         <div>
-          <div style={{ marginBottom: 8 }}>Opponent tribe</div>
-          <div className="seg">
-            {Object.values(TRIBES).map((t) => (
-              <button key={t.id} className={opp === t.id ? "on" : ""} onClick={() => setOpp(t.id)}>
-                {t.name}
-              </button>
-            ))}
+          <div style={{ marginBottom: 8 }}>
+            Opponent strength: <span style={{ color: "var(--gold)" }}>{elo}</span>
           </div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-            You lead {TRIBES[p.equipped.tribe]?.name ?? "your tribe"}
-            {owns(p, "tribe:stormcourt") ? "" : ". Win the Stormcourt in the campaign to lead it."}
+          <input type="range" min={500} max={2600} step={50} value={elo} onChange={(e) => setElo(+e.target.value)} />
+          <div className="muted" style={{ fontSize: 13 }}>
+            Maia plays like a human of this rating.
           </div>
         </div>
         <button className="btn gold" onClick={start} style={{ justifyContent: "center" }}>

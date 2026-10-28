@@ -1,9 +1,9 @@
 // Modelled figures (glTF made with Meshy AI, packed by scripts/pack-model.mjs):
-// loaded once per tribe, when a tribe first takes the board, and cloned per piece. Rigged ones get their own animation mixer and
-// idle in place. One model serves both sides: light pieces are recolored in the
-// shader (dark cloth to ivory, or bark to birch; gold kept). Each stands centered
-// on its square. Until a model has loaded, its tribe draws a code-built figure
-// instead; loadModels tells the scene when to rebuild with the models.
+// loaded once per tribe, when a tribe first takes the board, and cloned per
+// piece. Rigged ones get their own animation mixer and idle in place. One model
+// serves both sides, recolored in the shader per side (recolor). Each stands
+// centered on its square. Until a model has loaded, its tribe draws a
+// code-built figure instead; loadModels tells the scene when to rebuild.
 import { AnimationMixer, Box3, Quaternion, Vector3, type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D, type SkinnedMesh } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
@@ -72,12 +72,27 @@ export function loadModels(prefix: string): Promise<void> {
 }
 
 /**
- * Light side: dark cloth and metal become ivory and silver, keeping their shading;
- * warm saturated colors (gold trim, fire) stay as they are.
+ * Recolors a side's figures in the shader, keeping their shading:
+ * - ivory (the Stormcourt's light side): dark cloth and metal to ivory and silver;
+ * - spring (the Thornwood's light side): everything to a light leaf green;
+ * - bark (the Thornwood's dark side): toward a deep brown.
+ * Bright, saturated warm colors (gold trim, fire, blossoms) are kept.
  */
-function lighten(m: Material, mode: Light) {
+function recolor(m: Material, mode: Tint) {
   const s = m as MeshStandardMaterial;
   if (!s.isMeshStandardMaterial) return;
+  const body = {
+    ivory: `float warm = smoothstep(0.3, 0.55, sat) * step(c.b, c.g) * step(c.g, c.r * 1.05);
+        vec3 ivory = vec3(0.93, 0.89, 0.8) * (0.42 + 0.95 * sqrt(l));
+        diffuseColor.rgb = mix(ivory, c, warm);`,
+    // Linear in brightness (not its square root) so the detail keeps its contrast.
+    spring: `float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
+        vec3 spring = vec3(0.66, 0.9, 0.46) * (0.16 + 1.35 * l);
+        diffuseColor.rgb = mix(spring, c, keep);`,
+    bark: `float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
+        vec3 bark = vec3(0.6, 0.4, 0.24) * (0.12 + 1.15 * l);
+        diffuseColor.rgb = mix(mix(c, bark, 0.7), c, keep);`,
+  }[mode];
   s.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace(
       "#include <map_fragment>",
@@ -87,35 +102,23 @@ function lighten(m: Material, mode: Light) {
         float l = dot(c, vec3(0.299, 0.587, 0.114));
         float mx = max(c.r, max(c.g, c.b));
         float sat = mx > 0.0 ? (mx - min(c.r, min(c.g, c.b))) / mx : 0.0;
-        ${
-          mode === "birch"
-            ? `// Bark to pale birch, leaves and moss to spring green; gold and blossoms kept.
-        // Only bright saturated warm colors (gold, blossoms) are kept; bark is darker and turns.
-        float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
-        float green = smoothstep(0.15, 0.3, sat) * step(c.r * 1.05, c.g) * step(c.b, c.g);
-        vec3 birch = vec3(0.92, 0.87, 0.74) * (0.45 + 0.9 * sqrt(l));
-        vec3 spring = vec3(0.55, 0.85, 0.35) * (0.5 + 1.1 * sqrt(l));
-        diffuseColor.rgb = mix(mix(birch, spring, green), c, keep);`
-            : `float warm = smoothstep(0.3, 0.55, sat) * step(c.b, c.g) * step(c.g, c.r * 1.05);
-        vec3 ivory = vec3(0.93, 0.89, 0.8) * (0.42 + 0.95 * sqrt(l));
-        diffuseColor.rgb = mix(ivory, c, warm);`
-        }
+        ${body}
       }`,
     );
   };
-  s.customProgramCacheKey = () => `legions-light-${mode}`;
+  s.customProgramCacheKey = () => `legions-tint-${mode}`;
 }
 
-/** How a model is lightened for the light side. */
-export type Light = "ivory" | "birch";
+/** How a side's figures are recolored. */
+export type Tint = "ivory" | "spring" | "bark";
 
 export interface ModelOptions {
   /** Turns a model that does not face +z. */
   turn?: number;
   /** The idle clip, if not "Idle". */
   idle?: string;
-  /** The light side's recolor (ivory by default). */
-  light?: Light;
+  /** Each side's recolor: the light side ivory unless given, the dark side as modelled unless given. */
+  tint?: { w?: Tint; b?: Tint };
 }
 
 /** A figure from a loaded model, height tall, centered and idling; null until the model has loaded. */
@@ -144,7 +147,8 @@ export function modelFig(name: string, role: Role, side: Side, height: number, o
   });
   f.body.add(model);
   f.mats = ownMaterials(f.body);
-  if (side === "w") f.mats.forEach((m) => lighten(m, o.light ?? "ivory"));
+  const tint = side === "w" ? (o.tint?.w ?? "ivory") : o.tint?.b;
+  if (tint) f.mats.forEach((m) => recolor(m, tint));
   if (m.clips.size) {
     const idle = o.idle && m.clips.has(o.idle) ? o.idle : m.clips.has("Idle") ? "Idle" : [...m.clips.keys()][0];
     f.anim = { mixer: new AnimationMixer(model), clips: m.clips, idle, hand: model.getObjectByName("RightHand") ?? undefined };
