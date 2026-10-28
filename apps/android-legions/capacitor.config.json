@@ -1,0 +1,18 @@
+{
+  "appId": "com.jthunderbird.chesslegions",
+  "appName": "Chess Legions",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "errorPath": "webview-too-old.html"
+  },
+  "android": {
+    "backgroundColor": "#120D22",
+    "minWebViewVersion": 100
+  },
+  "plugins": {
+    "SystemBars": {
+      "style": "DARK"
+    }
+  }
+}

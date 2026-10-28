@@ -1,0 +1,20 @@
+{
+  "name": "@outofbook/android-legions",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.1.0",
+  "description": "Chess Legions as an Android app with the game bundled inside (Capacitor): plays offline against Maia.",
+  "scripts": {
+    "web": "node build-web.mjs",
+    "sync": "npm run web && cap sync android",
+    "apk": "npm run sync && cd android && ./gradlew assembleRelease bundleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

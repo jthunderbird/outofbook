@@ -17,7 +17,9 @@ function howToGet(id: ItemId) {
   if (level) return `Reach level ${level}`;
   if (id === "tribe:stormcourt" || id === "court:stormcourt") return "Beat the Storm King in the campaign";
   if (id === "tribe:thornwood" || id === "court:thornwood") return "Beat the Elder Oak in the campaign";
+  if (id === "tribe:epoch-drifters" || id === "court:epoch-drifters") return "Beat the Princess in the campaign";
   if (id === "court:epoch-flat") return "Buy with credits (coming soon)";
+  if (id === "mode:retro") return "Beat the puzzle challenges";
   return "Coming soon";
 }
 

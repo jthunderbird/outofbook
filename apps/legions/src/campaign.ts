@@ -54,6 +54,19 @@ export const CHAPTERS: Chapter[] = [
     ],
     reward: ["tribe:thornwood", "court:thornwood"],
   },
+  {
+    tribe: "epoch-drifters",
+    name: "The Epoch Drifters",
+    court: "epoch-drifters",
+    story: "Heroes who drifted out of an old cartridge and through the ages. A dragon that burns, a cleric who calls down light, and a princess who throws her enemies over the horizon.",
+    tier: 3,
+    battles: [
+      { id: "epoch-1", name: "Press start", elo: 800, side: "w" },
+      { id: "epoch-2", name: "The dragon's roost", elo: 875, side: "b" },
+      { id: "epoch-3", name: "The Princess", elo: 950, side: "w", boss: true },
+    ],
+    reward: ["tribe:epoch-drifters", "court:epoch-drifters"],
+  },
 ];
 
 /** A chapter opens when the one before it is beaten. */

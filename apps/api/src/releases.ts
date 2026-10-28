@@ -19,6 +19,10 @@ const APPS: Record<string, { name: string; about: string }> = {
     name: "OutOfBook (web app)",
     about: "A small app that opens outofbook.net full screen. Always up to date; needs one start online, then the bots work offline too.",
   },
+  legions: {
+    name: "Chess Legions",
+    about: "The 3D chess game: tribes of pieces that fight out every move, a campaign of battles to win them, and an opponent that plays like a human. Works offline.",
+  },
 };
 
 export interface Release {
