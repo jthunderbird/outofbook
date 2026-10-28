@@ -951,6 +951,8 @@ input[type="range"] {
   position: fixed;
   inset: 0;
   z-index: 0;
+  /* The screen over it lets touches through; the world takes them. */
+  pointer-events: auto;
 }
 .trek-stage::after {
   content: "";
@@ -1144,4 +1146,87 @@ input[type="range"] {
     padding: 5px 9px;
     font-size: 12px;
   }
+}
+
+/* ---------- Collection: the bedroom wall of shelves behind, the item's card over it ---------- */
+.collection-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+}
+.screen.collection {
+  pointer-events: none;
+  overflow: hidden;
+}
+.screen.collection button {
+  pointer-events: auto;
+}
+.screen.collection .topbar,
+.collection-card,
+.collection-hint {
+  position: relative;
+  z-index: 2;
+}
+.collection-count {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(14 10 36 / 0.7);
+  border: 1px solid var(--edge);
+  font-size: 14px;
+  color: var(--gold);
+}
+.shelf-lock {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 140px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--gold);
+  text-shadow:
+    0 1px 3px #000,
+    0 0 8px #000;
+}
+.collection-card {
+  margin-top: auto;
+  align-self: center;
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 22px;
+  background: rgb(14 10 36 / 0.85);
+  border: 1px solid var(--edge);
+  text-align: center;
+}
+.collection-card h3 {
+  margin: 0;
+}
+.collection-card > .btn.small:not(.close) {
+  width: min(320px, 100%);
+  justify-content: center;
+}
+.collection-card .close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 0;
+  padding: 6px;
+}
+.collection-hint {
+  margin-top: auto;
+  align-self: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgb(14 10 36 / 0.7);
 }
