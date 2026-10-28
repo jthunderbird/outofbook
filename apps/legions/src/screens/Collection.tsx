@@ -10,7 +10,7 @@ import { COLORS, FINISHES } from "@outofbook/legions/looks";
 import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { LEVEL_UNLOCKS, owns, update, useProfile, type ItemId, type Profile } from "../profile";
-import { ArrowLeft, Lock, X } from "lucide-react";
+import { ArrowLeft, Lock, Trophy, X } from "lucide-react";
 
 const ABOUT: Record<string, string> = {
   "tribe:staunton": "A classic wooden set. Pieces slide, the knight hops, and a capture knocks the other piece flat.",
@@ -27,6 +27,7 @@ const ABOUT: Record<string, string> = {
   "finish:neon": "Your tribe dark, outlined in glowing neon.",
   "finish:chocolate": "Your tribe in milk and dark chocolate.",
   "color:original": "Your tribe's own colors.",
+  "outfit:80s": "Big hair, neon and shades for whichever tribe you lead. Being made.",
 };
 const KIND_ABOUT: Record<string, string> = {
   color: "Your tribe in this color (a light and a dark shade), with any finish.",
@@ -56,6 +57,8 @@ function shelves(p: Profile): { rows: ShelfRow[]; modes: ShelfItem[] } {
       { title: "Courts", kind: "pictures", items: COURTS.map((c) => item(`court:${c.id}`, c.name, p.equipped.court === c.id)) },
       { title: "Finishes", kind: "figures", items: [{ id: "original", name: "Original" }, ...FINISHES].map((f) => item(`finish:${f.id}`, f.name, p.equipped.finish === f.id)) },
       { title: "Colors", kind: "figures", items: [{ id: "original", name: "Original" }, ...COLORS].map((c) => item(`color:${c.id}`, c.name, p.equipped.color === c.id)) },
+      // Outfits fit every tribe; the first is a placeholder until it is made.
+      { title: "Outfits", kind: "figures", items: [item("outfit:80s", "80s", false)] },
     ],
     modes: [item("mode:noir", "Noir", p.mode === "noir"), item("mode:retro", "Retro mode", p.retro), item("mode:sketch", "Sketch", p.mode === "sketch")],
   };
@@ -102,6 +105,9 @@ export function Collection({ go }: { go: (s: Screen) => void }) {
         </button>
         <h2>Collection</h2>
         <div className="spacer" />
+        <button className="btn dark small trophy-btn" onClick={() => go({ name: "trophies" })}>
+          <Trophy size={16} /> Trophies
+        </button>
         <span className="collection-count">
           {owned} of {all.length} won
         </span>

@@ -4,8 +4,9 @@
 // light and shade (its luminance) is kept and recolored, so the same look works
 // on every tribe, modelled or pixel, and on tribes still to come. No new
 // models, no new textures.
-import { Color, Material, Mesh, MeshStandardMaterial, type Object3D } from "three";
-import type { Side } from "./figures";
+import { Color, Material, Mesh, MeshStandardMaterial } from "three";
+import type { Fig, Side } from "./figures";
+import { wearOutfit } from "./outfits";
 
 export interface Finish {
   id: string;
@@ -46,26 +47,19 @@ export const COLORS: PieceColor[] = [
 export interface Look {
   finish?: string;
   color?: string;
+  /** An outfit worn over the figures (outfits.ts; a trial in code). */
+  outfit?: string;
 }
-
-const key = (l: Look, side: Side) => `${l.finish ?? ""}|${l.color ?? ""}|${side}`;
-/** The materials made for each look, by the original material: figures share them as they share their originals. */
-const made = new WeakMap<Material, Map<string, Material>>();
 
 /** The look's shader: recolors the picture after its texture is read (and, for neon, lights its rim). */
 function lookMaterial(m: Material, look: Look, side: Side, unlit: boolean): Material {
-  let byLook = made.get(m);
-  if (!byLook) made.set(m, (byLook = new Map()));
-  const k = key(look, side) + (unlit ? "u" : "");
-  let out = byLook.get(k);
-  if (out) return out;
   const finish = FINISHES.find((f) => f.id === look.finish);
   const color = COLORS.find((c) => c.id === look.color);
   const i = side === "w" ? 0 : 1;
   const tint = new Color(color ? color.tint[i] : finish ? finish.tint[i] : 0xffffff);
   // Neon's rim needs light: unlit pictures (pixel sprites) take its color only.
   const kind = finish && !(unlit && finish.kind === 4) ? finish.kind : 0;
-  out = m.clone();
+  const out = m.clone();
   const lit = out as MeshStandardMaterial;
   if (finish && lit.isMeshStandardMaterial) {
     if (finish.metalness !== undefined) lit.metalness = finish.metalness;
@@ -112,18 +106,30 @@ function lookMaterial(m: Material, look: Look, side: Side, unlit: boolean): Mate
       );
   };
   out.customProgramCacheKey = () => `look${kind}`;
-  byLook.set(k, out);
   return out;
 }
 
-/** Dresses a figure in a look (none: as it was made). Called once, when the figure is made. */
-export function dressFigure(root: Object3D, look: Look | undefined, side: Side) {
-  if (!look || (!look.finish && !look.color)) return;
-  root.traverse((o) => {
+/**
+ * Dresses a figure in a look (none: as it was made), and in an outfit if the
+ * look has one. Called once, when the figure is made. The figure owns its
+ * materials (kills fade and cut them), so each gets its own dressed copy.
+ */
+export function dressFigure(f: Fig, look: Look | undefined, side: Side) {
+  if (!look) return;
+  if (look.outfit) wearOutfit(f, look.outfit);
+  if (!look.finish && !look.color) return;
+  const swap = new Map<Material, Material>();
+  // Soft see-through extras (a shadow blob, a glow) keep their own colors.
+  const one = (m: Material) => {
+    if (!("map" in m) || (m.transparent && !m.depthWrite)) return m;
+    let d = swap.get(m);
+    if (!d) swap.set(m, (d = lookMaterial(m, look, side, !(m as MeshStandardMaterial).isMeshStandardMaterial)));
+    return d;
+  };
+  f.root.traverse((o) => {
     const mesh = o as Mesh;
     if (!mesh.isMesh || o.userData.noLook) return;
-    // Soft see-through extras (a shadow blob, a glow) keep their own colors.
-    const one = (m: Material) => (!("map" in m) || (m.transparent && !m.depthWrite) ? m : lookMaterial(m, look, side, !(m as MeshStandardMaterial).isMeshStandardMaterial));
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(one) : one(mesh.material);
   });
+  f.mats = f.mats.map((m) => swap.get(m) ?? m);
 }

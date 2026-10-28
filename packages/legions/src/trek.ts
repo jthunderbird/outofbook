@@ -528,7 +528,7 @@ export class TrekScene {
     if (this.gone) return;
     if (this.hero) this.hero.root.removeFromParent();
     const f = tribe.figure("k", "b");
-    dressFigure(f.root, look, "b");
+    dressFigure(f, look, "b");
     f.root.scale.setScalar(0.62);
     this.scene.add(f.root);
     this.hero = f;

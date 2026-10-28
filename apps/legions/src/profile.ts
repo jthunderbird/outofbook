@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 import { MODES, type Mode } from "@outofbook/legions/modes";
 import { NEW_TREK, type Trek } from "./puzzles";
 
-export type ItemKind = "tribe" | "court" | "mode" | "finish" | "color";
+export type ItemKind = "tribe" | "court" | "mode" | "finish" | "color" | "outfit";
 /** "tribe:staunton", "court:night", "mode:retro", "finish:gold", "color:ruby", ... (a court is a board with its scenery; a mode a way of drawing the game; a finish and a color the look of the player's own pieces). */
 export type ItemId = `${ItemKind}:${string}`;
 

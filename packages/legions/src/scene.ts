@@ -753,7 +753,7 @@ export class LegionsScene {
       let f = this.figs.get(sq);
       if (!f) {
         f = this.tribes[w.side].figure(w.role, w.side);
-        dressFigure(f.root, this.looks[w.side], w.side);
+        dressFigure(f, this.looks[w.side], w.side);
         this.figs.set(sq, f);
         this.live.add(f);
         this.scene.add(f.root);

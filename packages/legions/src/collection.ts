@@ -1,8 +1,8 @@
 // The Collection's room: a wall of a bedroom at night with a shelf for each kind
 // of item (tribes, courts, more later). A tribe stands on its shelf all together
 // (a still of its figures, cut out), a court leans in a frame (a still of it seen
-// steep and tall), and the modes float in front of the window as pixel tokens
-// (Retro mode's gamepad). Locked items are grayed with what unlocks them above.
+// steep and tall), and the modes (skins) float before an 80s poster as tokens
+// (Retro mode's gamepad). Locked items are darkened with what unlocks them above.
 // Drag to look along the shelves, pinch or scroll to zoom, tap an item to pick it.
 //
 // The stills are rendered in the game itself (apps/legions/mockups/shelf.ts) to
@@ -44,7 +44,7 @@ export interface ShelfItem {
   /** "tribe:stormcourt", "court:night", "mode:retro", ... */
   id: string;
   name: string;
-  /** Not won yet: grayed, with note (what unlocks it) above. */
+  /** Not won yet: darkened, with note (what unlocks it) above. */
   locked: boolean;
   note?: string;
   /** In use (the tribe led, the court played on, the mode on). */
@@ -73,8 +73,10 @@ const SIGN_SLOT = 1.35;
 const SHELF_D = 0.55;
 const FLOOR = -2.9;
 /** The window left of the shelves, and the room between the modes floating in front of it. */
-const WIN_W = 2.6;
-const FLOAT_GAP = 1.95;
+const WIN_W = 2.8;
+const FLOAT_GAP = 1.75;
+/** The poster's title band. */
+const POSTER_TITLE = 1.6;
 const LOCK_SVG =
   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
@@ -122,28 +124,116 @@ function wallpaper() {
   return t;
 }
 
-/** The night beyond the window: a deep gradient, stars and a moon. */
-function night() {
-  const [c, g] = canvas(256, 384);
-  const grad = g.createLinearGradient(0, 0, 0, 384);
-  grad.addColorStop(0, "#070a1c");
-  grad.addColorStop(1, "#1d2a52");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 256, 384);
-  for (let i = 0; i < 90; i++) {
-    g.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.7})`;
-    g.fillRect(Math.random() * 256, Math.random() * 300, Math.random() < 0.15 ? 2 : 1, Math.random() < 0.15 ? 2 : 1);
-  }
-  const moon = g.createRadialGradient(170, 90, 4, 170, 90, 60);
-  moon.addColorStop(0, "rgba(255,248,220,0.9)");
-  moon.addColorStop(0.35, "rgba(255,240,200,0.25)");
-  moon.addColorStop(1, "rgba(255,240,200,0)");
-  g.fillStyle = moon;
-  g.fillRect(100, 20, 140, 140);
-  g.fillStyle = "#fff6dc";
+/**
+ * An 80s poster for the skins (the modes), w by h: a neon sunset over a glowing
+ * grid, "Tribal skins!" sprayed across the top with drips and overspray, taped
+ * to the wall at its corners.
+ */
+function poster(w: number, h: number) {
+  const k = 170;
+  const [c, g] = canvas(Math.round(w * k), Math.round(h * k));
+  const W = c.width;
+  const H = c.height;
+  const sky = g.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#14062e");
+  sky.addColorStop(0.55, "#4a0f5c");
+  sky.addColorStop(0.8, "#b0246e");
+  sky.addColorStop(1, "#ff7a3a");
+  g.fillStyle = sky;
+  g.fillRect(0, 0, W, H);
+  // A striped sun low on the horizon, the grid running to it.
+  const hy = H * 0.86;
+  const sun = g.createLinearGradient(0, hy - W * 0.36, 0, hy);
+  sun.addColorStop(0, "#ffe25a");
+  sun.addColorStop(1, "#ff3d8a");
+  g.save();
   g.beginPath();
-  g.arc(170, 90, 18, 0, Math.PI * 2);
-  g.fill();
+  g.arc(W / 2, hy, W * 0.34, Math.PI, 0);
+  g.clip();
+  g.fillStyle = sun;
+  g.fillRect(0, hy - W * 0.36, W, W * 0.36);
+  g.fillStyle = "#4a0f5c";
+  for (let i = 1; i < 7; i++) g.fillRect(0, hy - i * i * 3.2, W, 2 + i * 1.3);
+  g.restore();
+  g.fillStyle = "#12041f";
+  g.fillRect(0, hy, W, H - hy);
+  g.strokeStyle = "#ff3dd8";
+  g.lineWidth = 2;
+  g.shadowColor = "#ff3dd8";
+  g.shadowBlur = 8;
+  for (let i = -8; i <= 8; i++) {
+    g.beginPath();
+    g.moveTo(W / 2 + i * 6, hy);
+    g.lineTo(W / 2 + i * W * 0.16, H);
+    g.stroke();
+  }
+  for (let j = 1; j < 6; j++) {
+    const y = hy + (H - hy) * Math.pow(j / 6, 1.8);
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(W, y);
+    g.stroke();
+  }
+  g.shadowBlur = 0;
+  // Stars over the sky.
+  for (let i = 0; i < 70; i++) {
+    g.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.6})`;
+    g.fillRect(Math.random() * W, Math.random() * hy * 0.7, 2, 2);
+  }
+  // The title, sprayed: overspray mist, a dark outline, the hot color, drips.
+  const lines = ["Tribal", "skins!"];
+  const size = W * 0.22;
+  g.font = `900 ${size}px "Arial Black", Impact, sans-serif`;
+  g.textAlign = "center";
+  g.textBaseline = "alphabetic";
+  lines.forEach((t, i) => {
+    const x = W / 2;
+    const y = size * (1.05 + i * 0.95);
+    for (let n = 0; n < 500; n++) {
+      g.fillStyle = `rgba(80,240,255,${Math.random() * 0.25})`;
+      g.fillRect(x + (Math.random() - 0.5) * W * 0.95, y - Math.random() * size, 2, 2);
+    }
+    g.save();
+    g.translate(x, y);
+    g.rotate(-0.06);
+    g.lineJoin = "round";
+    g.lineWidth = size * 0.16;
+    g.strokeStyle = "#0a0218";
+    g.strokeText(t, 0, 0);
+    g.lineWidth = size * 0.06;
+    g.strokeStyle = "#4ff0ff";
+    g.shadowColor = "#4ff0ff";
+    g.shadowBlur = 14;
+    g.strokeText(t, 0, 0);
+    g.shadowBlur = 0;
+    g.fillStyle = "#ff2fa8";
+    g.fillText(t, 0, 0);
+    g.fillStyle = "#ff2fa8";
+    const tw = g.measureText(t).width;
+    for (let d = 0; d < 7; d++) {
+      const dx = -tw / 2 + Math.random() * tw;
+      const len = size * (0.12 + Math.random() * 0.35);
+      g.fillRect(dx, -size * 0.04, 3, len);
+      g.beginPath();
+      g.arc(dx + 1.5, len - size * 0.04, 3.5, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+  });
+  // Tape at the corners.
+  g.fillStyle = "rgba(240,232,200,0.75)";
+  for (const [x, y, a] of [
+    [0, 0, -0.7],
+    [W, 0, 0.7],
+    [0, H, 0.7],
+    [W, H, -0.7],
+  ]) {
+    g.save();
+    g.translate(x, y);
+    g.rotate(a);
+    g.fillRect(-W * 0.09, -12, W * 0.18, 24);
+    g.restore();
+  }
   return tex(c);
 }
 
@@ -213,19 +303,13 @@ function card(name: string, tall: boolean) {
   return tex(c);
 }
 
-/** A picture's pixels in gray and dimmed, for an item not won yet. */
+/** A picture slightly darkened, for an item not won yet: still plain to see what it is. */
 function grayed(img: HTMLImageElement | HTMLCanvasElement) {
   const [c, g] = canvas(img.width, img.height);
   g.drawImage(img, 0, 0);
-  const d = g.getImageData(0, 0, c.width, c.height);
-  const p = d.data;
-  for (let i = 0; i < p.length; i += 4) {
-    const l = (p[i] * 0.3 + p[i + 1] * 0.59 + p[i + 2] * 0.11) * 0.45;
-    p[i] = l;
-    p[i + 1] = l;
-    p[i + 2] = l * 1.08;
-  }
-  g.putImageData(d, 0, 0);
+  g.globalCompositeOperation = "source-atop";
+  g.fillStyle = "rgba(8,6,16,0.38)";
+  g.fillRect(0, 0, c.width, c.height);
   return c;
 }
 
@@ -392,15 +476,16 @@ export class CollectionScene {
       });
     });
 
-    // The window, as tall as the shelves allow, and the modes floating in front of it, top down.
-    const win = { x: x0 - 2.3, y: 0, h: Math.min(6.4, top - FLOOR - 1.9) };
-    win.y = FLOOR + 1.6 + win.h / 2;
+    // The skins' poster left of the shelves, from the first shelf's height down to just below the last skin's name plate; the skins float in front of it.
+    const win = { x: x0 - 2.3, top: shelfYs[0], h: POSTER_TITLE + floats.length * FLOAT_GAP + 0.05 };
     floats.forEach((item, i) => {
-      const y = win.y + ((floats.length - 1) / 2 - i) * FLOAT_GAP;
+      const y = win.top - POSTER_TITLE - 0.45 - i * FLOAT_GAP;
       const g = new Group();
       g.position.set(win.x, y, 0.9);
-      const mat = new MeshBasicMaterial({ map: this.own(pixelTexture(item.locked ? grayed(tokenCanvas(item.id)) : tokenCanvas(item.id))), transparent: true, toneMapped: false, side: DoubleSide });
-      const m = new Mesh(new PlaneGeometry(1.2, 0.74), mat);
+      const tc = tokenCanvas(item.id);
+      const tt = item.id === "mode:retro" ? pixelTexture(item.locked ? grayed(tc) : tc) : tex(item.locked ? grayed(tc) : tc);
+      const mat = new MeshBasicMaterial({ map: this.own(tt), transparent: true, toneMapped: false, side: DoubleSide });
+      const m = new Mesh(new PlaneGeometry(1.3, 0.81), mat);
       g.add(m);
       if (!item.locked) {
         const halo = new Mesh(
@@ -411,10 +496,10 @@ export class CollectionScene {
         g.add(halo);
       }
       const pl = new Mesh(new PlaneGeometry(1.3, 0.215), new MeshBasicMaterial({ map: this.own(plate(item.name, item.on, item.locked, 1.3)), toneMapped: false }));
-      pl.position.y = -0.55;
+      pl.position.y = -0.6;
       g.add(pl);
       this.room.add(g);
-      this.placed.push({ item, group: g, hit: m, top: new Vector3(win.x, y + 0.45, 0.9), float: y });
+      this.placed.push({ item, group: g, hit: m, top: new Vector3(win.x, y + 0.48, 0.9), float: y });
     });
 
     this.walls(x0, len, top, win);
@@ -465,8 +550,8 @@ export class CollectionScene {
     });
   }
 
-  /** The bedroom round the shelves: papered wall, wainscot, floorboards, a window on the night. */
-  private walls(x0: number, len: number, top: number, win: { x: number; y: number; h: number }) {
+  /** The bedroom round the shelves: papered wall, wainscot, floorboards, the skins' poster. */
+  private walls(x0: number, len: number, top: number, win: { x: number; top: number; h: number }) {
     const paper = this.own(wallpaper());
     const W = len + 40;
     paper.repeat.set(W / 1.6, 30 / 1.6);
@@ -491,30 +576,13 @@ export class CollectionScene {
     const floor = new Mesh(new PlaneGeometry(W, 12).rotateX(-Math.PI / 2), new MeshStandardMaterial({ map: boards, roughness: 0.75 }));
     floor.position.set(x0 + len / 2, FLOOR, 6);
     this.room.add(floor);
-    // The window, left of the shelves.
-    const { x: wx, y: wy, h: wh } = win;
-    const pane = new Mesh(new PlaneGeometry(WIN_W, wh), new MeshBasicMaterial({ map: this.own(night()), toneMapped: false }));
-    pane.position.set(wx, wy, 0.01);
-    this.room.add(pane);
-    const trim = new MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.6 });
-    for (const [w, h, x, yy] of [
-      [WIN_W + 0.3, 0.15, 0, wh / 2 + 0.05],
-      [WIN_W + 0.3, 0.2, 0, -wh / 2 - 0.05],
-      [0.15, wh + 0.2, -WIN_W / 2 - 0.07, 0],
-      [0.15, wh + 0.2, WIN_W / 2 + 0.07, 0],
-      [WIN_W, 0.07, 0, wh * 0.08],
-      [0.07, wh, 0, 0],
-    ]) {
-      const b = new Mesh(new BoxGeometry(w, h, 0.1), trim);
-      b.position.set(wx + x, wy + yy, 0.05);
-      this.room.add(b);
-    }
-    // Moonlight through the window, and a warm lamp over the shelves.
-    const moon = new PointLight(0x9fb4ff, 6, 9, 1.4);
-    moon.position.set(wx + 0.5, wy, 2.5);
+    // The skins' poster, left of the shelves.
+    const art = new Mesh(new PlaneGeometry(WIN_W, win.h), new MeshStandardMaterial({ map: this.own(poster(WIN_W, win.h)), roughness: 0.8 }));
+    art.position.set(win.x, win.top - win.h / 2, 0.01);
+    this.room.add(art);
     const lamp = new PointLight(0xffc27a, 60, 26, 1.5);
     lamp.position.set(x0 + len / 2, top + 0.6, 4);
-    this.room.add(moon, lamp);
+    this.room.add(lamp);
   }
 
   /** The item to show as picked (a glow behind it), or none. */
