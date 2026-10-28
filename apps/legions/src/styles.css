@@ -452,8 +452,8 @@ button {
 }
 .tribe-banner img {
   display: block;
-  height: clamp(40px, 9dvh, 84px);
-  max-width: min(78vw, 420px);
+  height: clamp(56px, 12dvh, 130px);
+  max-width: min(80vw, 480px);
   object-fit: contain;
   filter: drop-shadow(0 4px 10px #000a);
   transition: filter 0.3s;
@@ -474,13 +474,13 @@ button {
   filter: drop-shadow(0 2px 3px #000d);
 }
 .tribe-title {
-  font-size: clamp(26px, 5.5dvh, 44px);
+  font-size: clamp(30px, 6dvh, 56px);
 }
 .tribe-title.t-staunton {
   font-style: italic;
 }
 .player-name {
-  font-size: clamp(20px, 3.6dvh, 30px);
+  font-size: clamp(24px, 4.4dvh, 44px);
   transition: filter 0.3s;
 }
 .player-name.on {
@@ -534,6 +534,44 @@ input.text {
   padding: 8px 10px;
   width: min(220px, 50vw);
   user-select: text;
+}
+
+/* Wide screens (landscape, desktop): the banners stand either side of the board at its upper and lower corners, large, instead of taking its height. */
+@media (min-aspect-ratio: 1/1) and (min-width: 700px) {
+  .game {
+    display: block;
+    padding: 0;
+    --board: min(100dvh - 24px, 100vw - 600px);
+    --side: calc((100vw - var(--board)) / 2 - 24px);
+  }
+  .game .board {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .banner {
+    position: fixed;
+    width: var(--side);
+    max-width: 520px;
+    left: 12px;
+  }
+  .banner.top {
+    top: 14px;
+  }
+  .banner.bottom {
+    bottom: 14px;
+  }
+  .tribe-banner img {
+    height: auto;
+    width: 100%;
+    max-width: none;
+    max-height: 34dvh;
+  }
+  .captured .piece-icon {
+    width: 28px;
+    height: 35px;
+  }
 }
 
 /* Portrait (slab phones): the board takes the full width; the buttons go in a row under it. */

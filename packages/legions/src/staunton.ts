@@ -25,8 +25,16 @@ import { Fig, type Role, type Side } from "./figures";
 import { ease, ownMaterials, tween, wait } from "./fx";
 import type { Stage, Tribe, TribeMove } from "./tribe";
 
-/** Turned boxwood or ebony with a varnished shine; the grain runs up the piece. */
-const wood = (side: Side) => new MeshPhysicalMaterial({ map: pieceWood(side === "w"), roughness: side === "w" ? 0.5 : 0.38, clearcoat: 0.6, clearcoatRoughness: 0.3, metalness: 0 });
+/** Turned boxwood or ebonized wood, French-polished: a visible grain and a deep, glossy shine. */
+const wood = (side: Side) =>
+  new MeshPhysicalMaterial({
+    map: pieceWood(side === "w"),
+    roughness: side === "w" ? 0.34 : 0.26,
+    clearcoat: 1,
+    clearcoatRoughness: 0.1,
+    specularIntensity: 1,
+    metalness: 0,
+  });
 
 function part(geo: BufferGeometry, m: Material, y = 0) {
   const o = new Mesh(geo, m);
@@ -37,112 +45,209 @@ function part(geo: BufferGeometry, m: Material, y = 0) {
 }
 
 /** A turned body from a profile of [radius, height] points, bottom to top. */
-const turned = (pts: [number, number][]) => new LatheGeometry(new SplineCurve(pts.map(([x, y]) => new Vector2(x, y))).getPoints(pts.length * 6), 32);
+const turned = (pts: [number, number][]) => new LatheGeometry(new SplineCurve(pts.map(([x, y]) => new Vector2(x, y))).getPoints(pts.length * 8), 40);
 
-/** The foot every piece stands on: a wide, stepped base with two beads, narrowing into the stem. */
-const BASE: [number, number][] = [
-  [0.001, 0],
-  [0.34, 0],
-  [0.355, 0.03],
-  [0.34, 0.06],
-  [0.3, 0.075],
-  [0.31, 0.1],
-  [0.27, 0.12],
-  [0.28, 0.145],
-  [0.21, 0.17],
-];
-
-/** Tournament Staunton profiles: a slim waist, a collar under each head. */
+/**
+ * The classic Staunton set's proportions, in squares of a 2.25" tournament
+ * board: a 3.75" king is 1.67 squares tall on a 1.5" base, the pawn about half
+ * the king; stems are long, slim and sweep up concavely from a stepped foot,
+ * and every head sits on a collar.
+ */
 const PROFILES: Record<Exclude<Role, "n">, [number, number][]> = {
-  p: [...BASE, [0.15, 0.22], [0.11, 0.32], [0.17, 0.35], [0.18, 0.37], [0.11, 0.4], [0.001, 0.41]],
-  r: [...BASE, [0.22, 0.26], [0.19, 0.5], [0.2, 0.6], [0.26, 0.63], [0.27, 0.66], [0.25, 0.68], [0.25, 0.8], [0.001, 0.8]],
-  b: [...BASE, [0.15, 0.26], [0.095, 0.56], [0.17, 0.6], [0.18, 0.62], [0.1, 0.66], [0.001, 0.67]],
-  q: [...BASE, [0.17, 0.28], [0.1, 0.74], [0.2, 0.79], [0.21, 0.81], [0.12, 0.85], [0.13, 0.9], [0.23, 1.0], [0.21, 1.02], [0.001, 1.02]],
-  k: [...BASE, [0.18, 0.28], [0.11, 0.8], [0.21, 0.85], [0.22, 0.87], [0.13, 0.91], [0.15, 0.95], [0.22, 1.04], [0.2, 1.06], [0.001, 1.07]],
+  p: [
+    [0.001, 0],
+    [0.25, 0],
+    [0.265, 0.025],
+    [0.25, 0.055],
+    [0.205, 0.075],
+    [0.215, 0.1],
+    [0.16, 0.14],
+    [0.105, 0.24],
+    [0.08, 0.34],
+    [0.075, 0.46],
+    [0.1, 0.5],
+    [0.175, 0.54],
+    [0.185, 0.56],
+    [0.17, 0.585],
+    [0.09, 0.6],
+    [0.001, 0.61],
+  ],
+  r: [
+    [0.001, 0],
+    [0.29, 0],
+    [0.305, 0.03],
+    [0.29, 0.065],
+    [0.24, 0.085],
+    [0.25, 0.11],
+    [0.19, 0.16],
+    [0.15, 0.28],
+    [0.135, 0.46],
+    [0.15, 0.55],
+    [0.215, 0.6],
+    [0.225, 0.64],
+    [0.28, 0.7],
+    [0.285, 0.84],
+    [0.255, 0.85],
+    [0.001, 0.85],
+  ],
+  b: [
+    [0.001, 0],
+    [0.29, 0],
+    [0.305, 0.03],
+    [0.29, 0.065],
+    [0.24, 0.085],
+    [0.25, 0.11],
+    [0.19, 0.16],
+    [0.14, 0.3],
+    [0.1, 0.52],
+    [0.09, 0.7],
+    [0.11, 0.76],
+    [0.2, 0.8],
+    [0.21, 0.83],
+    [0.17, 0.86],
+    [0.12, 0.89],
+    [0.001, 0.9],
+  ],
+  q: [
+    [0.001, 0],
+    [0.315, 0],
+    [0.33, 0.03],
+    [0.315, 0.07],
+    [0.26, 0.09],
+    [0.27, 0.115],
+    [0.2, 0.17],
+    [0.15, 0.3],
+    [0.11, 0.55],
+    [0.095, 0.8],
+    [0.11, 0.9],
+    [0.225, 0.96],
+    [0.235, 0.99],
+    [0.15, 1.04],
+    [0.16, 1.1],
+    [0.22, 1.2],
+    [0.245, 1.3],
+    [0.2, 1.31],
+    [0.001, 1.31],
+  ],
+  k: [
+    [0.001, 0],
+    [0.335, 0],
+    [0.35, 0.03],
+    [0.335, 0.07],
+    [0.275, 0.095],
+    [0.285, 0.12],
+    [0.21, 0.18],
+    [0.16, 0.32],
+    [0.115, 0.6],
+    [0.1, 0.88],
+    [0.115, 1.0],
+    [0.235, 1.06],
+    [0.245, 1.09],
+    [0.15, 1.14],
+    [0.165, 1.2],
+    [0.225, 1.3],
+    [0.24, 1.4],
+    [0.2, 1.42],
+    [0.001, 1.42],
+  ],
 };
 
-const SCALE = 1.3;
 /** The figure's height (to its top ornament), for effects that aim at it. */
-const HEIGHT: Record<Role, number> = { p: 0.56 * SCALE, n: 0.82 * SCALE, b: 0.98 * SCALE, r: 0.8 * SCALE, q: 1.12 * SCALE, k: 1.34 * SCALE };
+const HEIGHT: Record<Role, number> = { p: 0.84, n: 1.22, b: 1.32, r: 0.98, q: 1.5, k: 1.68 };
 
+/** A knight's head, carved in profile: an arched neck with a mane, ears, brow, a long muzzle and a flared nostril; it faces +z. */
 function knightHead(m: Material) {
-  // A horse's head in profile, extruded and bevelled; it faces +z.
-  // Chest, throat, jaw, muzzle, the brow, two ears, and the arched neck down the back.
   const s = new Shape();
-  s.moveTo(-0.15, 0);
-  s.lineTo(0.15, 0);
-  s.bezierCurveTo(0.17, 0.1, 0.12, 0.2, 0.1, 0.28);
-  s.bezierCurveTo(0.12, 0.33, 0.2, 0.34, 0.27, 0.36);
-  s.bezierCurveTo(0.31, 0.38, 0.31, 0.45, 0.27, 0.47);
-  s.bezierCurveTo(0.2, 0.5, 0.1, 0.56, 0.04, 0.62);
-  s.lineTo(0.0, 0.71);
-  s.lineTo(-0.03, 0.63);
-  s.lineTo(-0.07, 0.7);
-  s.lineTo(-0.09, 0.6);
-  s.bezierCurveTo(-0.2, 0.5, -0.22, 0.25, -0.15, 0);
-  const g = new ExtrudeGeometry(s, { depth: 0.15, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.045, bevelSegments: 6, curveSegments: 20 });
-  g.translate(0, 0, -0.075);
+  s.moveTo(-0.2, 0);
+  s.lineTo(0.2, 0);
+  // Chest and throat up to the jaw.
+  s.bezierCurveTo(0.22, 0.12, 0.15, 0.22, 0.12, 0.3);
+  s.bezierCurveTo(0.2, 0.31, 0.3, 0.3, 0.38, 0.33);
+  // The muzzle, nostril, and up the nose to the brow.
+  s.bezierCurveTo(0.43, 0.35, 0.44, 0.43, 0.39, 0.46);
+  s.bezierCurveTo(0.32, 0.5, 0.22, 0.6, 0.13, 0.7);
+  // Two ears, then the arched neck down the back with its mane.
+  s.lineTo(0.1, 0.84);
+  s.lineTo(0.05, 0.74);
+  s.lineTo(0.0, 0.85);
+  s.lineTo(-0.04, 0.72);
+  s.bezierCurveTo(-0.14, 0.66, -0.3, 0.5, -0.27, 0.32);
+  s.bezierCurveTo(-0.26, 0.2, -0.24, 0.1, -0.2, 0);
+  const g = new ExtrudeGeometry(s, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 8, curveSegments: 24 });
+  g.translate(0, 0, -0.08);
   g.rotateY(-Math.PI / 2);
   const head = new Group();
   head.add(part(g, m));
   // Eyes, dark either side of the brow.
-  const eye = new MeshStandardMaterial({ color: 0x0a0605, roughness: 0.3 });
-  for (const x of [-0.125, 0.125])
+  const eye = new MeshStandardMaterial({ color: 0x0a0605, roughness: 0.25 });
+  for (const x of [-0.145, 0.145])
     head.add(
-      part(new SphereGeometry(0.022, 10, 8), eye, 0.5)
+      part(new SphereGeometry(0.024, 12, 10), eye, 0.58)
         .translateX(x)
-        .translateZ(0.13),
+        .translateZ(0.2),
     );
   head.position.y = 0.2;
+  // Turned three-quarters, so the horse's profile reads from the front.
+  head.rotation.y = 0.7;
   return head;
+}
+
+/** Evenly spaced small parts round a circle of radius r at height y. */
+function ring(f: Fig, make: () => Mesh, n: number, r: number, y: number, face = false) {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const o = make();
+    o.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+    if (face) o.rotation.y = -a;
+    f.body.add(o);
+  }
 }
 
 function stauntonFigure(role: Role, side: Side): Fig {
   const f = new Fig(role, side, HEIGHT[role]);
   const m = wood(side);
+  const cut = new MeshStandardMaterial({ color: side === "w" ? 0x6a4526 : 0x050303, roughness: 0.7 });
   if (role === "n") {
-    f.body.add(part(turned([...BASE, [0.2, 0.2], [0.001, 0.22]]), m));
+    f.body.add(
+      part(
+        turned([
+          [0.001, 0],
+          [0.29, 0],
+          [0.305, 0.03],
+          [0.29, 0.065],
+          [0.24, 0.085],
+          [0.25, 0.11],
+          [0.2, 0.17],
+          [0.19, 0.22],
+          [0.001, 0.23],
+        ]),
+        m,
+      ),
+    );
     f.body.add(knightHead(m));
   } else f.body.add(part(turned(PROFILES[role]), m));
-  if (role === "p") f.body.add(part(new SphereGeometry(0.12, 24, 16), m, 0.5));
+  if (role === "p") f.body.add(part(new SphereGeometry(0.15, 32, 20), m, 0.7));
   if (role === "b") {
-    f.body.add(part(new SphereGeometry(0.15, 24, 16).scale(1, 1.35, 1), m, 0.8));
-    f.body.add(part(new SphereGeometry(0.04, 12, 8), m, 0.98));
-    // The mitre's cut.
-    const cut = part(new BoxGeometry(0.025, 0.2, 0.34), new MeshStandardMaterial({ color: side === "w" ? 0x5a3e22 : 0x0a0605, roughness: 0.8 }), 0.86);
-    cut.rotation.x = 0.55;
-    f.body.add(cut);
+    // An egg of a head with the mitre's slanted cut and a finial ball.
+    f.body.add(part(new SphereGeometry(0.17, 32, 20).scale(1, 1.4, 1), m, 1.04));
+    f.body.add(part(new SphereGeometry(0.05, 16, 12), m, 1.29));
+    const slit = part(new BoxGeometry(0.03, 0.2, 0.36), cut, 1.1);
+    slit.rotation.x = 0.6;
+    slit.position.z = 0.02;
+    f.body.add(slit);
   }
-  if (role === "r")
-    for (let i = 0; i < 4; i++) {
-      const merlon = part(new BoxGeometry(0.1, 0.09, 0.08), m, 0.84);
-      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      merlon.position.x = Math.cos(a) * 0.19;
-      merlon.position.z = Math.sin(a) * 0.19;
-      merlon.rotation.y = -a;
-      f.body.add(merlon);
-    }
+  if (role === "r") ring(f, () => part(new BoxGeometry(0.13, 0.13, 0.1), m), 6, 0.235, 0.85 + 0.06, true);
   if (role === "q") {
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const bead = part(new SphereGeometry(0.035, 12, 8), m, 1.04);
-      bead.position.x = Math.cos(a) * 0.19;
-      bead.position.z = Math.sin(a) * 0.19;
-      f.body.add(bead);
-    }
-    f.body.add(part(new SphereGeometry(0.07, 16, 10), m, 1.06));
+    // A coronet: a ring of beads on the rim, and a ball above.
+    ring(f, () => part(new SphereGeometry(0.04, 14, 10), m), 9, 0.215, 1.31);
+    f.body.add(part(new SphereGeometry(0.085, 20, 14), m, 1.4));
   }
   if (role === "k") {
-    f.body.add(part(new BoxGeometry(0.06, 0.22, 0.06), m, 1.2));
-    f.body.add(part(new BoxGeometry(0.18, 0.06, 0.06), m, 1.22));
+    // A cross on the crown's flat top.
+    f.body.add(part(new BoxGeometry(0.07, 0.3, 0.07), m, 1.57));
+    f.body.add(part(new BoxGeometry(0.2, 0.07, 0.07), m, 1.6));
   }
-  f.body.add(part(new CylinderGeometry(0.335, 0.335, 0.004, 32), new MeshStandardMaterial({ color: 0x24502c, roughness: 1 }), 0.002));
-  // A touch larger than a real set, so the pieces read from the camera's height.
-  // (Scaled inside body: kills squash and shrink body itself.)
-  const inner = new Group();
-  inner.add(...f.body.children);
-  inner.scale.setScalar(SCALE);
-  f.body.add(inner);
+  f.body.add(part(new CylinderGeometry(0.31, 0.31, 0.004, 40), new MeshStandardMaterial({ color: 0x24502c, roughness: 1 }), 0.002));
   f.mats = ownMaterials(f.body);
   f.root.rotation.y = side === "w" ? Math.PI : 0;
   return f;

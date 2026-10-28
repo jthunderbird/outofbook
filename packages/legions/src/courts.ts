@@ -33,6 +33,7 @@ import {
   TextureLoader,
   TorusGeometry,
   Vector3,
+  type Material,
   type Scene,
   type Texture,
 } from "three";
@@ -40,7 +41,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BACKGROUNDS, backgroundTexture } from "./backgrounds";
 import type { Board } from "./board";
 import { glowMap } from "./figures";
-import { woodTexture } from "./wood";
+import { woodPanel, woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
 
 export interface Court {
@@ -473,6 +474,48 @@ function plant(group: Group, url: string | undefined, x: number, z: number, H: n
   });
 }
 
+/** Cloud shadows drifting over a surface: slow soft patches of shade, by world position and time. */
+function cloudShade(m: Material, u: { cloudTime: { value: number } }, fill?: string) {
+  const s = m as MeshStandardMaterial;
+  s.onBeforeCompile = (sh) => {
+    sh.uniforms.cloudTime = u.cloudTime;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vCloudPos;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvCloudPos = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vCloudPos;
+        uniform float cloudTime;
+        float ch(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float cn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(ch(i), ch(i + vec2(1, 0)), f.x), mix(ch(i + vec2(0, 1)), ch(i + vec2(1, 1)), f.x), f.y); }`,
+      )
+      .replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>
+        ${
+          // Where the model's texture is near black (gaps in the turf), a living green instead.
+          fill
+            ? `{ float lum = dot(diffuseColor.rgb, vec3(0.3, 0.6, 0.1));
+        diffuseColor.rgb = mix(${fill}, diffuseColor.rgb, smoothstep(0.04, 0.22, lum)); }`
+            : ""
+        }`,
+      )
+      .replace(
+        "#include <opaque_fragment>",
+        `{
+          vec2 p = vCloudPos.xz * 0.11 + vec2(cloudTime * 0.045, cloudTime * 0.02);
+          float c = cn(p) * 0.6 + cn(p * 2.1 + 5.0) * 0.4;
+          outgoingLight *= 1.0 - 0.42 * smoothstep(0.5, 0.72, c);
+        }
+        #include <opaque_fragment>`,
+      );
+  };
+  s.customProgramCacheKey = () => `cloud-shade-${fill ?? ""}`;
+}
+
 /**
  * Heartwood Grove: the board is a raised bed of earth in a forest clearing,
  * its squares meadow grass and bare forest soil. Old oaks stand round it on the
@@ -484,12 +527,65 @@ function heartwoodGrove(scene: Scene, board: Board): CourtSet {
   scene.add(group);
   const FLOOR = -1.38;
 
-  dressSquares(group, board, { dark: art("thornwood", "dirt.webp"), light: art("thornwood", "grass.webp"), darkVein: 0, lightVein: 0, darkVeinI: 0, lightVeinI: 0, rough: [0.95, 1] });
+  const cloud = { cloudTime: { value: 0 } };
+  // Each square a modelled tile of meadow turf or forest soil (Meshy), turned at random, on a dark earth base; clouds drift over them.
+  // Under the turf, a living green: wherever the model has gaps, it shows.
+  const earth = new MeshStandardMaterial({ color: 0x2a2116, roughness: 1 });
+  const turf = new MeshStandardMaterial({ color: 0x1e3d0d, roughness: 1 });
+  for (const sq of board.squares.values()) {
+    (sq.material as MeshStandardMaterial).dispose();
+    sq.material = sq.userData.light ? turf : earth;
+  }
+  for (const [kind, url] of [
+    ["light", art("thornwood", "tile-grass.glb")],
+    ["dark", art("thornwood", "tile-dirt.glb")],
+  ] as const) {
+    if (!url) continue;
+    let p = props.get(url);
+    if (!p) {
+      p = new GLTFLoader().loadAsync(url).then((g) => g.scene as unknown as Group);
+      props.set(url, p);
+    }
+    void p.then((src) => {
+      if (!group.parent) return;
+      src.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh) return;
+        const mat = mesh.material as MeshStandardMaterial;
+        // Grass a touch deeper, soil a touch lighter, so both pieces' colors stand out from both.
+        if (!mat.userData.shaded) {
+          mat.userData.shaded = true;
+          mat.color.multiplyScalar(kind === "light" ? 0.8 : 1.45);
+          cloudShade(mat, cloud, kind === "light" ? "vec3(0.08, 0.2, 0.04)" : undefined);
+        }
+      });
+      const box = new Box3().setFromObject(src);
+      const size = box.getSize(new Vector3());
+      const sx = 0.98 / Math.max(size.x, size.z);
+      const sy = 0.16 / size.y;
+      for (const sq of board.squares.values()) {
+        if ((sq.userData.light as boolean) !== (kind === "light")) continue;
+        const o = src.clone();
+        o.traverse((c) => (c.receiveShadow = true));
+        o.scale.set(sx, sy, sx);
+        o.rotation.y = Math.floor(Math.random() * 4) * (Math.PI / 2);
+        o.updateMatrixWorld(true);
+        const b = new Box3().setFromObject(o);
+        const c0 = b.getCenter(new Vector3());
+        // Local to the square (whose top is at 0.05): the tile's foot on the square's foot.
+        o.position.set(-c0.x, -0.1 - b.min.y - sq.position.y, -c0.z);
+        sq.add(o);
+      }
+    });
+  }
   // The bed's sides are earth, its rim grass.
-  dressWalls(group, board, art("thornwood", "dirt.webp"), art("thornwood", "grass.webp"), 0xb8c8a0);
+  dressWalls(group, board, art("thornwood", "dirt.webp"), art("thornwood", "grass.webp"), 0x6f8f56);
+  // Standing stones at the corners, their runes glowing: the stones that were paid for stay.
+  const runes = corners(group, art("thornwood", "stone.glb"), 1.7, { color: 0x60ff90, at: 0.55, size: 0.55 });
 
   // The forest floor, out to the painted forest.
   const floor = new MeshStandardMaterial({ color: 0x8a7a60, roughness: 1 });
+  cloudShade(floor, cloud);
   void texture(art("thornwood", "floor.webp")).then((t) => {
     t.wrapS = t.wrapT = RepeatWrapping;
     t.repeat.set(26, 26);
@@ -562,6 +658,8 @@ function heartwoodGrove(scene: Scene, board: Board): CourtSet {
     update(ms) {
       t += ms;
       const s = t / 1000;
+      cloud.cloudTime.value = s;
+      for (const r of runes) r.material.opacity = 0.45 + 0.25 * Math.sin(s * 1.2 + r.position.x);
       for (const m of motes) {
         const k = s * 0.15 + m.phase;
         m.s.position.set(m.home.x + Math.sin(k * 1.3) * 0.6, m.home.y + Math.sin(k * 0.9) * 0.3, m.home.z + Math.cos(k) * 0.6);
@@ -652,8 +750,10 @@ function tournamentHall(scene: Scene, board: Board): CourtSet {
   hole.lineTo(4.7, -4.7);
   hole.closePath();
   top.holes.push(hole);
-  const tableTex = woodTexture("#86552e", "#4e2e16", 13, 0.8).clone();
-  tableTex.repeat.set(0.12, 0.12);
+  // One walnut plank over the whole top: grain along the table's length, no joins.
+  const tableTex = woodPanel("#8a5a30", "#3a2010", 13).clone();
+  tableTex.repeat.set(1 / 32, 1 / 18);
+  tableTex.offset.set(0.5, 0.5);
   const table = new Mesh(new ShapeGeometry(top).rotateX(-Math.PI / 2), new MeshPhysicalMaterial({ map: tableTex, roughness: 0.65, clearcoat: 0.12, clearcoatRoughness: 0.5 }));
   table.position.y = TABLE;
   table.receiveShadow = true;
@@ -664,8 +764,9 @@ function tournamentHall(scene: Scene, board: Board): CourtSet {
   group.add(clock);
 
   // A warm lamp overhead; far off, the other tables' lamps, soft and out of focus.
-  const lamp = new PointLight(0xffd8a0, 18, 30, 1.6);
-  lamp.position.set(0, 9, 0);
+  // Off to one side and high, so its reflection in the varnish falls away from both players' view.
+  const lamp = new PointLight(0xffd8a0, 12, 34, 1.6);
+  lamp.position.set(9, 11, 0);
   group.add(lamp);
   const glowMat = new SpriteMaterial({ map: glowMap(), color: new Color(0xffc880), blending: AdditiveBlending, depthWrite: false, opacity: 0.5 });
   for (let i = 0; i < 26; i++) {

@@ -1,6 +1,7 @@
 import type { Screen } from "../App";
 import { battleOpen, chapterOpen, CHAPTERS } from "../campaign";
-import { useProfile } from "../profile";
+import { owns, update, useProfile } from "../profile";
+import { TRIBES } from "@outofbook/legions/tribes";
 import { ArrowLeft, Crown, Lock, Star } from "lucide-react";
 
 export function Campaign({ go }: { go: (s: Screen) => void }) {
@@ -12,6 +13,22 @@ export function Campaign({ go }: { go: (s: Screen) => void }) {
           <ArrowLeft size={22} />
         </button>
         <h2>Campaign</h2>
+      </div>
+      <div className="panel" style={{ width: "min(620px, 100%)", margin: "0 auto 16px" }}>
+        <div style={{ marginBottom: 8 }}>You lead</div>
+        <div className="choices">
+          {Object.values(TRIBES).map((t) => {
+            const have = owns(p, `tribe:${t.id}`);
+            return (
+              <button key={t.id} className={p.equipped.tribe === t.id ? "on" : ""} disabled={!have} onClick={() => update((q) => ({ ...q, equipped: { ...q.equipped, tribe: t.id } }))}>
+                {!have && <Lock size={14} />} {t.name}
+              </button>
+            );
+          })}
+        </div>
+        <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+          Each battle is fought against its tribe, on its home court.
+        </div>
       </div>
       <div className="grid even">
         {CHAPTERS.map((c, i) => {

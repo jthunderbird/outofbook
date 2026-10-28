@@ -87,10 +87,10 @@ function recolor(m: Material, mode: Tint) {
         diffuseColor.rgb = mix(ivory, c, warm);`,
     // Linear in brightness (not its square root) so the detail keeps its contrast.
     spring: `float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
-        vec3 spring = vec3(0.66, 0.9, 0.46) * (0.16 + 1.35 * l);
+        vec3 spring = vec3(0.62, 0.97, 0.36) * (0.3 + 1.5 * l);
         diffuseColor.rgb = mix(spring, c, keep);`,
     bark: `float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
-        vec3 bark = vec3(0.6, 0.4, 0.24) * (0.12 + 1.15 * l);
+        vec3 bark = vec3(0.5, 0.33, 0.2) * (0.05 + 0.75 * l);
         diffuseColor.rgb = mix(mix(c, bark, 0.7), c, keep);`,
   }[mode];
   s.onBeforeCompile = (sh) => {
