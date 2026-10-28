@@ -541,7 +541,7 @@ input.text {
   .game {
     padding-right: max(8px, env(safe-area-inset-right));
     padding-bottom: calc(62px + env(safe-area-inset-bottom));
-    --board: min(100vw - 16px, 100dvh - 250px);
+    --board: min(100vw - 16px, 100dvh - 305px);
   }
   .rail {
     top: auto;
