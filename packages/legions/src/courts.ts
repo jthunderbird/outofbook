@@ -82,8 +82,10 @@ export interface CourtView {
 export interface CourtSet {
   /** Where the camera stands for this court, instead of the usual place. */
   view?: CourtView;
-  /** Drawn over a picture the page provides: the board and its labels hidden, the background clear. */
+  /** The board is drawn by the court's own picture: the board's meshes only hide what lies beneath them (depth, no color), its labels hidden. */
   bare?: boolean;
+  /** The screen's size changed (for a background fitted to cover it). */
+  resize?(w: number, h: number): void;
   /** Height at which move markers lie, when the squares stand proud of the board. */
   markY?: number;
   update(ms: number): void;
@@ -851,6 +853,18 @@ function hallGradient() {
 
 // ---------- The Epoch Drifters' home: Epoch Plains, in 3D and in 2D ----------
 
+/** Fits a background picture (16:9) to cover a screen of w x h without stretching, cropping its sides or top and bottom. */
+function cover(t: Texture, w: number, h: number) {
+  const a = w / h / (16 / 9);
+  if (a > 1) {
+    t.repeat.set(1, 1 / a);
+    t.offset.set(0, (1 - 1 / a) / 2);
+  } else {
+    t.repeat.set(a, 1);
+    t.offset.set((1 - a) / 2, 0);
+  }
+}
+
 const chunky = (c: HTMLCanvasElement, repeat?: number) => {
   const t = new CanvasTexture(c);
   t.magFilter = t.minFilter = NearestFilter;
@@ -936,6 +950,7 @@ function epochPlains(scene: Scene, board: Board): CourtSet {
   scene.background = bg;
   let t = 0;
   return {
+    resize: (w, h) => cover(bg, w, h),
     update(ms) {
       t += ms / 1000;
       const f = frames[Math.floor(t * 4) % 4];
@@ -974,7 +989,8 @@ function epochFlat(scene: Scene, board: Board): CourtSet {
   // So far off, through so narrow a lens, that the view is all but flat: every square the same size, as on the picture.
   const D = 400;
   // 32 pixels to a square: the picture is 20 x 11.25 squares where the camera looks; further back it is scaled up to match.
-  const pic = new Mesh(new PlaneGeometry(Backdrop.W / 32, Backdrop.H / 32), new MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false, toneMapped: false, fog: false }));
+  // Cut out (not blended), so it is drawn first, behind everything.
+  const pic = new Mesh(new PlaneGeometry(Backdrop.W / 32, Backdrop.H / 32), new MeshBasicMaterial({ map: tex, alphaTest: 0.5, depthWrite: false, depthTest: false, toneMapped: false, fog: false }));
   pic.renderOrder = -10;
   const back = 25;
   const look = new Vector3();
@@ -998,21 +1014,29 @@ function epochFlat(scene: Scene, board: Board): CourtSet {
   sun.castShadow = true;
   Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6 });
   group.add(sun);
+  // The world beyond fills the whole screen, as on the other boards.
+  const sky = new Backdrop();
+  sky.draw(0);
+  const bg = chunky(sky.cv);
   const prev = scene.background;
-  scene.background = new Color(0xecb6cc);
+  scene.background = bg;
   let t = 0;
   return {
     bare: true,
     view: { fixed: true, pitch: Math.asin(0.75), dist: D, fov: (2 * Math.atan(4.5 / D) * 180) / Math.PI, ty: 0 },
+    resize: (w, h) => cover(bg, w, h),
     update(ms) {
       t += ms / 1000;
       map.draw(t);
       tex.needsUpdate = true;
+      sky.draw(t);
+      bg.needsUpdate = true;
     },
     dispose() {
       group.removeFromParent();
       scene.background = prev;
       tex.dispose();
+      bg.dispose();
     },
   };
 }

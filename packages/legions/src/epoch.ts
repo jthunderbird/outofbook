@@ -44,6 +44,8 @@ interface Act {
   motion: Motion;
   i: number;
   phase: number;
+  /** Facing left on the screen (drawn mirrored): the dragon turns to where it goes and keeps facing that way. */
+  flip: boolean;
 }
 
 const frames = new Map<string, { map: Texture; normal: Texture }>();
@@ -106,7 +108,7 @@ function epochFigure(role: Role, side: Side): Fig {
   card.castShadow = true;
   const depth = new MeshDepthMaterial({ depthPacking: RGBADepthPacking, map: first.map, alphaTest: 0.5 });
   card.customDepthMaterial = depth;
-  f.root.userData.act = { motion: "idle", i: 0, phase: Math.random() * 2 } satisfies Act;
+  f.root.userData.act = { motion: "idle", i: 0, phase: Math.random() * 2, flip: false } satisfies Act;
   // Only the drawn pixels can be tapped: a card's empty corners must not take a tap meant for the square or piece behind it.
   const alpha = sprite(role, side).getContext("2d")!.getImageData(0, 0, 32, 32).data;
   card.raycast = (caster, out) => {
@@ -137,7 +139,7 @@ function epochFigure(role: Role, side: Side): Fig {
       m.map = m.emissiveMap = depth.map = fr.map;
       m.normalMap = fr.normal;
     }
-    card.scale.set(h * lean.size, h * lean.size, 1);
+    card.scale.set(h * lean.size * (a.flip ? -1 : 1), h * lean.size, 1);
     // Standing upright to a flat view, a card would throw a long smear of shadow: there only the soft spot beneath it shows.
     card.castShadow = lean.tilt < 0.6;
     card.parent!.getWorldQuaternion(pq);
@@ -159,6 +161,16 @@ export const epoch: Tribe = {
   play: (stage, move) => play(stage, move),
 };
 
+/** The screen's rightward direction in the world. */
+const screenRight = (stage: Stage) => new Vector3().setFromMatrixColumn(stage.camera.matrixWorld, 0).setY(0).normalize();
+
+/** The dragon (drawn facing right) turns to face b on the screen, if b lies clearly to one side; otherwise it keeps its way. */
+function face(stage: Stage, f: Fig, b: Vector3) {
+  if (f.role !== "n") return;
+  const d = b.clone().sub(f.root.position).dot(screenRight(stage));
+  if (Math.abs(d) > 0.2) act(f).flip = d < 0;
+}
+
 /** Walks from where f stands to b; the dragon takes off, flies and lands. */
 async function travel(stage: Stage, f: Fig, b: Vector3, ms?: number) {
   const a = f.root.position.clone();
@@ -172,6 +184,7 @@ async function travel(stage: Stage, f: Fig, b: Vector3, ms?: number) {
 async function flyTo(stage: Stage, f: Fig, b: Vector3, y: number, ms?: number) {
   const a = f.root.position.clone();
   const top = Math.max(a.y, y) + 0.7;
+  face(stage, f, b);
   setAct(f, "fly");
   await tween(
     stage.clock,
@@ -287,12 +300,13 @@ async function throwAway(stage: Stage, q: Fig, v: Fig) {
   }
   // Back into sight in the far background, falling away: placed along rays through the screen, from just over its top edge down toward the middle, ever further off.
   const near = cam.distanceTo(new Vector3(0, 0, 0));
-  const nx = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.3);
+  // Off to one side of the board, so it is seen falling away past it.
+  const nx = (Math.random() < 0.5 ? -1 : 1) * (0.72 + Math.random() * 0.12);
   const p = new Vector3();
   const scale = v.root.scale.x;
   void (async () => {
     await tween(stage.clock, 1700, (t) => {
-      p.set(nx * (1 - 0.3 * t), 1.15 - 0.75 * t, 0.5)
+      p.set(nx * (1 + 0.06 * t), 1.15 - 0.75 * t, 0.5)
         .unproject(stage.camera)
         .sub(cam)
         .normalize();
@@ -316,7 +330,11 @@ async function burn(stage: Stage, d: Fig, v: Fig) {
   await wait(stage.clock, 220);
   setAct(d, "attack", 1);
   // The breath: flames along the way from the mouth to the victim, then the victim engulfed.
-  const mouth = d.root.position.clone().add(new Vector3(0, d.height * lean.size * 0.62, 0));
+  const side = act(d).flip ? -1 : 1;
+  const mouth = d.root.position
+    .clone()
+    .add(new Vector3(0, d.height * lean.size * 0.62, 0))
+    .addScaledVector(screenRight(stage), side * 0.4 * d.height * lean.size);
   const cards = [] as ReturnType<typeof effectCard>[];
   for (let i = 1; i <= 3; i++) {
     const p = mouth
@@ -501,8 +519,9 @@ async function play(stage: Stage, { mover, to, victim, castle }: TribeMove) {
     const dir = at.clone().sub(mover.root.position).setY(0);
     const short = (d: number) => at.clone().sub(dir.clone().normalize().multiplyScalar(Math.min(d, dir.length())));
     if (mover.role === "n") {
-      // The dragon flies up before its victim and hovers there to breathe fire, then lands where it stood.
+      // The dragon flies up before its victim, facing it, and hovers there to breathe fire, then lands where it stood.
       await flyTo(stage, mover, short(1.1), 0.9);
+      face(stage, mover, at);
       await strike(stage, mover, victim);
       await flyTo(stage, mover, b, 0, 520);
       setAct(mover, "idle");

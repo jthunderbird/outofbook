@@ -388,60 +388,110 @@ function cloudRow(g: CanvasRenderingContext2D, w: number, y: number, row: number
   }
 }
 
+/** A layer of the backdrop: a picture that drifts sideways at its own speed (nearer is faster), wrapping round. */
+interface Drift {
+  c: HTMLCanvasElement;
+  x: number;
+  y: number;
+  speed: number;
+}
+
 /**
  * The world beyond the board, as one picture drawn each frame (640 x 360): a
- * dusk sky with high clouds, floating islands (one carrying mountains, one a
- * castle with a waterfall pouring off it, small islets), and a sea of cloud
- * below everything, drifting. The rocket from the logo crosses the sky.
+ * dusk sky with high clouds, floating islands drifting past at their own
+ * depths (one carrying mountains, one a castle with a waterfall pouring off
+ * it, small islets), and a sea of cloud below everything. The rocket from the
+ * logo crosses the sky.
  */
 export class Backdrop {
   static readonly W = 640;
   static readonly H = 360;
   readonly cv = canvas(Backdrop.W, Backdrop.H).c;
   private g = this.cv.getContext("2d")!;
-  private still = (() => {
+  private sky = (() => {
     const { c, g } = canvas(Backdrop.W, Backdrop.H);
-    g.imageSmoothingEnabled = false;
     g.drawImage(sky(Backdrop.W, 300), 0, 0);
     g.fillStyle = "#ffc38a";
     g.fillRect(0, 300, Backdrop.W, 60);
-    // The far island with its mountains.
-    const peaks = mountains(240, 80, 4, "#5a4796", "#47387f", 74);
-    g.drawImage(peaks, 40, 152 - 80);
-    island(g, 34, 286, 152, 46, 3, 0.45);
-    // A small far islet.
-    island(g, 300, 336, 120, 14, 7, 0.55);
-    // The castle's island, nearer.
-    const keep = castle(120, 84);
-    g.drawImage(keep, 470, 174 - 82);
-    island(g, 440, 620, 174, 52, 5, 0.15);
-    // A nearer islet with a lone tree.
-    island(g, 84, 140, 214, 18, 9, 0.05);
-    g.fillStyle = "#2f7a3c";
-    g.beginPath();
-    g.arc(110, 204, 7, 0, 7);
-    g.fill();
-    g.fillStyle = "#58b050";
-    g.fillRect(106, 199, 4, 1);
-    g.fillStyle = "#5a3d2b";
-    g.fillRect(109, 209, 2, 5);
     return c;
   })();
   private high = clouds(Backdrop.W, 60, 1, "#ffd0d8", "#c486c4");
+  /** Each island drawn on its own canvas, from x0 at y0 in the picture, with the island's top at `top` in it. */
+  private layers: Drift[] = (() => {
+    const make = (w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, x: number, y: number, speed: number): Drift => {
+      const { c, g } = canvas(w, h);
+      g.imageSmoothingEnabled = false;
+      draw(g);
+      return { c, x, y, speed };
+    };
+    return [
+      // Far off: the mountains' island and a small islet, slowest.
+      make(
+        260,
+        150,
+        (g) => {
+          g.drawImage(mountains(240, 80, 4, "#5a4796", "#47387f", 74), 6, 1);
+          island(g, 0, 252, 80, 46, 3, 0.45);
+        },
+        34,
+        72,
+        1.2,
+      ),
+      make(40, 60, (g) => island(g, 2, 38, 10, 14, 7, 0.55), 300, 110, 1.6),
+      // The castle's island, the castle standing on its grass.
+      make(
+        190,
+        180,
+        (g) => {
+          g.drawImage(castle(120, 84), 30, 2);
+          island(g, 0, 180, 82, 52, 5, 0.15);
+        },
+        440,
+        92,
+        2.4,
+      ),
+      // Nearest: an islet with a lone tree.
+      make(
+        60,
+        60,
+        (g) => {
+          island(g, 2, 58, 22, 18, 9, 0.05);
+          g.fillStyle = "#5a3d2b";
+          g.fillRect(27, 15, 2, 7);
+          g.fillStyle = "#2f7a3c";
+          g.beginPath();
+          g.arc(28, 12, 7, 0, 7);
+          g.fill();
+          g.fillStyle = "#58b050";
+          g.fillRect(24, 7, 4, 1);
+        },
+        82,
+        192,
+        4,
+      ),
+    ];
+  })();
   draw(t: number) {
     const g = this.g;
     const W = Backdrop.W;
     g.imageSmoothingEnabled = false;
-    g.drawImage(this.still, 0, 0);
+    g.drawImage(this.sky, 0, 0);
     // High clouds drift through the sky, above the islands.
-    const x = Math.floor((t * 4) % W);
-    g.drawImage(this.high, x, 18, W, 46);
-    g.drawImage(this.high, x - W, 18, W, 46);
-    // The waterfall off the castle's island, pouring into the clouds.
-    for (let y = 172; y < 262; y++) {
-      const k = (y + Math.floor(t * 30)) % 6;
-      g.fillStyle = k < 2 ? "#e8f8ff" : k < 4 ? "#9fd8f5" : "#6cbbe8";
-      g.fillRect(598, y, 5, 1);
+    const hx = Math.floor((t * 4) % W);
+    g.drawImage(this.high, hx, 18, W, 46);
+    g.drawImage(this.high, hx - W, 18, W, 46);
+    // The islands drift past, each at its depth's speed, coming round again from the left.
+    for (const l of this.layers) {
+      const span = W + l.c.width;
+      const x = Math.floor((((l.x + t * l.speed + l.c.width) % span) + span) % span) - l.c.width;
+      g.drawImage(l.c, x, l.y);
+      if (l === this.layers[2])
+        // The waterfall off the castle's island, pouring into the clouds.
+        for (let y = l.y + 80; y < 262; y++) {
+          const k = (y + Math.floor(t * 30)) % 6;
+          g.fillStyle = k < 2 ? "#e8f8ff" : k < 4 ? "#9fd8f5" : "#6cbbe8";
+          g.fillRect(x + 158, y, 5, 1);
+        }
     }
     // The sea of cloud, three rows, back to front.
     cloudRow(g, W, 252, 0, t, "#e9a6c9", "#b97aae");
@@ -466,32 +516,32 @@ export class Backdrop {
 }
 
 /**
- * The flat board's whole picture (640 x 360): the backdrop, then the board's
- * own floating island in the middle, its 64 tiles 32 x 24 pixels (meadow and
- * animated pond), the board's center at the picture's center.
+ * The flat board's picture (640 x 360, clear round it): the board's own
+ * floating island, its rock pillar exactly as wide as the board with a grass
+ * lip showing under the board's front edge, and its 64 tiles 32 x 24 pixels
+ * (meadow and animated pond), the board's center at the picture's center.
  */
 export class FlatMap {
   static readonly TW = 32;
   static readonly TH = 24;
   static readonly X0 = (Backdrop.W - 32 * 8) / 2;
   static readonly Y0 = (Backdrop.H - 24 * 8) / 2;
-  private back = new Backdrop();
   readonly cv = canvas(Backdrop.W, Backdrop.H).c;
   private g = this.cv.getContext("2d")!;
-  private rock = cliff(32 * 8 + 16, 48);
+  private rock = cliff(32 * 8, 56);
   private grass = [tile("grass", 32, 24), tile("grass2", 32, 24)];
   private water = [0, 1, 2, 3].map((i) => tile("water", 32, 24, i));
   draw(t: number) {
     const { TW, TH, X0, Y0 } = FlatMap;
     const g = this.g;
     g.imageSmoothingEnabled = false;
-    this.back.draw(t);
-    g.drawImage(this.back.cv, 0, 0);
-    // The board's island: rock tapering down into the clouds.
-    const cw = TW * 8 + 16;
-    for (let i = 0; i < 48; i++) {
-      const inset = Math.floor(i * i * 0.06 + i * 0.5);
-      g.drawImage(this.rock, 0, i, cw, 1, X0 - 8 + inset, Y0 + TH * 8 + i - 4, Math.max(0, cw - inset * 2), 1);
+    g.clearRect(0, 0, Backdrop.W, Backdrop.H);
+    // The pillar under the board: full width at the top, tapering down into the clouds.
+    const cw = TW * 8;
+    for (let i = 0; i < 56; i++) {
+      const inset = i < 6 ? 0 : Math.floor((i - 6) * (i - 6) * 0.05 + (i - 6) * 0.5);
+      if (cw - inset * 2 <= 0) break;
+      g.drawImage(this.rock, 0, i, cw, 1, X0 + inset, Y0 + TH * 8 + i, cw - inset * 2, 1);
     }
     for (let r = 0; r < 8; r++)
       for (let c = 0; c < 8; c++) {

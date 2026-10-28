@@ -53,6 +53,9 @@ export interface SceneInput {
   onMove?: (uci: string) => void;
 }
 
+/** For a board drawn by its court's picture: writes depth, no color. */
+const DEPTH_ONLY = new MeshBasicMaterial({ colorWrite: false });
+
 export class LegionsScene {
   private renderer: WebGLRenderer;
   private scene = new Scene();
@@ -328,10 +331,16 @@ export class LegionsScene {
     this.scene.background = courtBackground(id);
     const c = court(id);
     if (c.dress) this.court = c.dress(this.scene, this.board);
+    this.court?.resize?.(this.host.clientWidth || 1, this.host.clientHeight || 1);
     this.applyView();
     // A bare court is drawn over a picture the page supplies: no board, no labels, a clear background.
     this.labels.visible = !this.court?.bare;
-    this.board.group.visible = !this.court?.bare;
+    if (this.court?.bare)
+      // Depth only: the board still hides what goes beneath it (a tunnel, a pit), but the court's picture shows.
+      this.board.group.traverse((o) => {
+        const m = o as Mesh;
+        if (m.isMesh) m.material = DEPTH_ONLY;
+      });
     this.highlight();
   }
 
@@ -438,6 +447,7 @@ export class LegionsScene {
       this.camera.aspect = w / h;
     }
     this.camera.updateProjectionMatrix();
+    this.court?.resize?.(w, h);
     if (this.court?.view?.fixed) this.applyView();
   }
 

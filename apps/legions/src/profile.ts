@@ -95,7 +95,12 @@ export function useProfile() {
 export const getProfile = () => profile;
 export const update = (fn: (p: Profile) => Profile) => save(fn(profile));
 // Epoch Drifters and its 3D stage are open to everyone while the tribe is being previewed (its 2D board is bought, Retro mode won by puzzles).
-const PREVIEW: string[] = ["tribe:epoch-drifters", "court:epoch-drifters"];
+const PREVIEW: string[] = [
+  "tribe:epoch-drifters",
+  "court:epoch-drifters",
+  // On the dev server only, to try them in the real game before they can be won or bought.
+  ...(import.meta.env.DEV ? ["court:epoch-flat", "mode:retro"] : []),
+];
 export const owns = (p: Profile, id: ItemId) => p.owned.includes(id) || PREVIEW.includes(id);
 
 /** What a game's end brought: XP, a level reached, items unlocked. */
