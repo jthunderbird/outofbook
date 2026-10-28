@@ -125,6 +125,19 @@ function epochFigure(role: Role, side: Side): Fig {
   blob.position.y = 0.01;
   f.body.add(blob, card);
   f.mats = ownMaterials(f.body);
+  // The whole card takes the depth of its foot (brought a hair toward the camera): a card stands up the screen and so
+  // reaches back over the square behind it, where a taller figure there would otherwise cut off its head. Drawn this way
+  // a card is in front of everything behind its foot and behind everything in front of it, as a 2D game draws its sprites.
+  (card.material as MeshStandardMaterial).onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace(
+      "#include <project_vertex>",
+      `#include <project_vertex>
+      vec4 footView = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+      footView.z += 0.08;
+      vec4 footClip = projectionMatrix * footView;
+      gl_Position.z = footClip.z / footClip.w * gl_Position.w;`,
+    );
+  };
   // Each frame (on the card's own material, which ownMaterials made): the card turns to the camera about the vertical (unless the figure is knocked over), standing on its square's middle, and shows the frame of what it is doing.
   const q = new Quaternion();
   const pq = new Quaternion();

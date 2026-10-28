@@ -368,6 +368,37 @@ function island(g: CanvasRenderingContext2D, x0: number, x1: number, top: number
   }
 }
 
+/**
+ * A waterfall off an island's edge, from (x, top) down into the clouds at
+ * bottom, in the board's water colors: it widens as it falls, its streaks run
+ * down at an easy pace, each column at its own, with foam at the lip and spray
+ * where it meets the clouds.
+ */
+function waterfall(g: CanvasRenderingContext2D, x: number, top: number, bottom: number, t: number) {
+  const tones = ["#2a74c4", "#2f7fd0", "#3589da", "#4a9be2"];
+  for (let y = top; y < bottom; y++) {
+    const k = (y - top) / (bottom - top);
+    const w = 4 + Math.round(k * 4);
+    for (let i = 0; i < w; i++) {
+      const cx = x - Math.floor(w / 2) + i;
+      const edge = i === 0 || i === w - 1;
+      // Each column's streaks fall at its own speed and phase.
+      const run = (y - t * (16 + ((i * 5) % 7) * 2) + i * 11) % 10;
+      const streak = run < 0 ? run + 10 : run;
+      g.fillStyle = streak < 1.5 ? "#e8f8ff" : streak < 3 ? "#a8e4ff" : edge ? "#6cc1f0" : tones[(i + Math.floor(y / 3)) % tones.length];
+      g.fillRect(cx, y, 1, 1);
+    }
+  }
+  // Foam where it spills over the rim, spray where it reaches the clouds.
+  g.fillStyle = "#e8f8ff";
+  g.fillRect(x - 6, top - 1, 6, 2);
+  for (let i = 0; i < 7; i++) {
+    const a = t * 2 + i * 0.9;
+    g.fillStyle = i % 2 ? "#ffffff" : "#d8f0ff";
+    g.fillRect(Math.round(x - 6 + i * 2 + Math.sin(a) * 1.5), Math.round(bottom - 3 - Math.abs(Math.sin(a * 1.3)) * 4), 2, 2);
+  }
+}
+
 /** A row of the sea of cloud below the islands, its puffs drifting; back rows darker and pinker. */
 function cloudRow(g: CanvasRenderingContext2D, w: number, y: number, row: number, t: number, lit: string, shade: string) {
   const r = rng(40 + row);
@@ -388,7 +419,7 @@ function cloudRow(g: CanvasRenderingContext2D, w: number, y: number, row: number
   }
 }
 
-/** A layer of the backdrop: a picture that drifts sideways at its own speed (nearer is faster), wrapping round. */
+/** A layer of the backdrop: a picture that drifts sideways (to the left, against the clouds) at its own speed, nearer faster, wrapping round. */
 interface Drift {
   c: HTMLCanvasElement;
   x: number;
@@ -435,9 +466,9 @@ export class Backdrop {
         },
         34,
         72,
-        1.2,
+        -1.2,
       ),
-      make(40, 60, (g) => island(g, 2, 38, 10, 14, 7, 0.55), 300, 110, 1.6),
+      make(40, 60, (g) => island(g, 2, 38, 10, 14, 7, 0.55), 300, 110, -1.6),
       // The castle's island, the castle standing on its grass.
       make(
         190,
@@ -448,7 +479,7 @@ export class Backdrop {
         },
         440,
         92,
-        2.4,
+        -2.4,
       ),
       // Nearest: an islet with a lone tree.
       make(
@@ -467,7 +498,7 @@ export class Backdrop {
         },
         82,
         192,
-        4,
+        -4,
       ),
     ];
   })();
@@ -480,18 +511,13 @@ export class Backdrop {
     const hx = Math.floor((t * 4) % W);
     g.drawImage(this.high, hx, 18, W, 46);
     g.drawImage(this.high, hx - W, 18, W, 46);
-    // The islands drift past, each at its depth's speed, coming round again from the left.
+    // The islands drift past to the left, each at its depth's speed, coming round again from the right.
     for (const l of this.layers) {
       const span = W + l.c.width;
       const x = Math.floor((((l.x + t * l.speed + l.c.width) % span) + span) % span) - l.c.width;
       g.drawImage(l.c, x, l.y);
-      if (l === this.layers[2])
-        // The waterfall off the castle's island, pouring into the clouds.
-        for (let y = l.y + 80; y < 262; y++) {
-          const k = (y + Math.floor(t * 30)) % 6;
-          g.fillStyle = k < 2 ? "#e8f8ff" : k < 4 ? "#9fd8f5" : "#6cbbe8";
-          g.fillRect(x + 158, y, 5, 1);
-        }
+      // Off the castle island's right edge, just past its rim.
+      if (l === this.layers[2]) waterfall(g, x + 183, l.y + 81, 262, t);
     }
     // The sea of cloud, three rows, back to front.
     cloudRow(g, W, 252, 0, t, "#e9a6c9", "#b97aae");
