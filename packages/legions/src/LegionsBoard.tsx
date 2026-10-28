@@ -1,11 +1,11 @@
-// The arena board (board style "Arena"): the same props as a 2D board, drawn
-// with three.js in arena/scene. Loaded only when Arena is chosen.
+// The Chess Legions board (the "Chess Legions (3D)" board choice): the same props as a 2D board, drawn
+// with three.js in scene.ts. Loaded only when Chess Legions is chosen.
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import type { Side } from "@outofbook/core/types";
-import { Arena } from "./scene";
+import { LegionsScene } from "./scene";
 import { tribe } from "./tribes";
 
-export interface ArenaBoardProps {
+export interface LegionsBoardProps {
   fen: string;
   orientation: Side;
   lastMove?: string;
@@ -27,42 +27,42 @@ export interface ArenaBoardProps {
   hint?: string | null;
 }
 
-export default function ArenaBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, court = "night", glow = false, hint = null, frame }: ArenaBoardProps) {
+export default function LegionsBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, court = "night", glow = false, hint = null, frame }: LegionsBoardProps) {
   const el = useRef<HTMLDivElement>(null);
-  const arena = useRef<Arena | null>(null);
+  const scene = useRef<LegionsScene | null>(null);
   const busy = useRef(onBusy);
   busy.current = onBusy;
 
   useLayoutEffect(() => {
-    const a = new Arena(el.current!, (b) => busy.current?.(b));
-    arena.current = a;
-    // For trying moves by hand from the console: arena.setPosition(fen, uci).
-    if (import.meta.env.DEV) (window as unknown as { arena?: Arena }).arena = a;
+    const a = new LegionsScene(el.current!, (b) => busy.current?.(b));
+    scene.current = a;
+    // For trying moves by hand from the console: legions.setPosition(fen, uci).
+    if (import.meta.env.DEV) (window as unknown as { legions?: LegionsScene }).legions = a;
     return () => {
       a.dispose();
-      arena.current = null;
+      scene.current = null;
     };
   }, []);
-  useEffect(() => arena.current?.setOrientation(orientation), [orientation]);
+  useEffect(() => scene.current?.setOrientation(orientation), [orientation]);
   // After layout effects: the frame is a later sibling, its ref set after ours run.
-  useEffect(() => arena.current?.setFrame(frame?.current ?? null), [frame]);
+  useEffect(() => scene.current?.setFrame(frame?.current ?? null), [frame]);
   const tw = tribes?.w ?? "stormcourt";
   const tb = tribes?.b ?? "stormcourt";
   // Before the position, so the first figures are already the right tribe.
-  useLayoutEffect(() => arena.current?.setTribes({ w: tribe(tw), b: tribe(tb) }), [tw, tb]);
-  useEffect(() => arena.current?.setCourt(court), [court]);
-  useEffect(() => arena.current?.setGlow(glow), [glow]);
+  useLayoutEffect(() => scene.current?.setTribes({ w: tribe(tw), b: tribe(tb) }), [tw, tb]);
+  useEffect(() => scene.current?.setCourt(court), [court]);
+  useEffect(() => scene.current?.setGlow(glow), [glow]);
   useEffect(() => {
-    const a = arena.current;
+    const a = scene.current;
     if (!a) return;
     a.sound.on = sound;
     if (sound) a.sound.preload();
     else a.sound.stopAll();
   }, [sound]);
   // Before paint, so a game over shown with the final move waits for its acting out.
-  useLayoutEffect(() => arena.current?.setPosition(fen, lastMove), [fen, lastMove]);
-  useEffect(() => arena.current?.setInput({ movable, onMove }), [movable, onMove]);
-  useEffect(() => arena.current?.setHint(hint), [hint]);
+  useLayoutEffect(() => scene.current?.setPosition(fen, lastMove), [fen, lastMove]);
+  useEffect(() => scene.current?.setInput({ movable, onMove }), [movable, onMove]);
+  useEffect(() => scene.current?.setHint(hint), [hint]);
 
-  return <div ref={el} style={{ width: "100%", height: "100%" }} data-testid="arena" />;
+  return <div ref={el} style={{ width: "100%", height: "100%" }} data-testid="legions" />;
 }

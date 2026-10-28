@@ -134,8 +134,8 @@ installs). The privacy policy is at `/privacy.html` and account deletion at
 - Opening names: CC0.
 - Lichess's sounds are streamed from Lichess at play time, not shipped. Its
   standard set is not freely licensed.
-- The Arena board's sounds (`packages/legions/sounds/`): CC0, cut from
-  Kenney's packs and Freesound recordings by `scripts/build-arena-sounds.py`;
+- The Chess Legions board's sounds (`packages/legions/sounds/`): CC0, cut from
+  Kenney's packs and Freesound recordings by `scripts/build-legions-sounds.py`;
   sources in `CREDITS.md` there.
 
 ## License

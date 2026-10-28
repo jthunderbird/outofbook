@@ -1,7 +1,7 @@
 // Courts: a board and the scenery around it, which come (and unlock) together.
-// Every tribe has a home court; the plain ones are the arena's marble board under
-// a gradient sky. A court dresses the board the arena built (its squares and
-// walls) and adds its scenery; the arena updates it each frame and takes it all
+// Every tribe has a home court; the plain ones are the classic marble board under
+// a gradient sky. A court dresses the board the scene built (its squares and
+// walls) and adds its scenery; the scene updates it each frame and takes it all
 // away again for another court. Art made with Meshy AI lives in ../courts/<id>/.
 import {
   AdditiveBlending,

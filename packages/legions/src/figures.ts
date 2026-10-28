@@ -1,4 +1,4 @@
-// Arena figures, all built here from smooth shapes so every one can be tweaked:
+// Chess Legions figures, all built here from smooth shapes so every one can be tweaked:
 // turned (lathe) bodies from spline profiles, polished metal that reflects the
 // scene's environment, faces hidden behind helms, masks and hoods. White is
 // bright and noble, black dark and evil. Figures face +z; the scene turns

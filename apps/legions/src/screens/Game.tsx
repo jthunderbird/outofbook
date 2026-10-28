@@ -4,7 +4,7 @@
 // XP and anything unlocked.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import ArenaBoard from "@outofbook/legions/ArenaBoard";
+import LegionsBoard from "@outofbook/legions/LegionsBoard";
 import type { Side } from "@outofbook/legions/figures";
 import { TRIBES } from "@outofbook/legions/tribes";
 import { court } from "@outofbook/legions/courts";
@@ -144,7 +144,7 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
     <div className="game" data-testid="game">
       {/* The scene fills the screen; the board is framed where its place is. */}
       <div className="stage">
-        <ArenaBoard
+        <LegionsBoard
           frame={frame}
           fen={fen}
           orientation={me}

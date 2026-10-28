@@ -1,19 +1,19 @@
 // A tribe: one set of figures and the way they act. Each tribe builds its own
 // figures (colored for the side they play) and acts out its own moves and kills
-// on the stage the arena gives it. A piece dies the way its taker kills, so a
+// on the stage the scene gives it. A piece dies the way its taker kills, so a
 // tribe's kills work on any tribe's figures through the shared Fig parts
 // (root, body, materials, height).
 import type { Mesh, PointLight, Scene } from "three";
 import type { Fig, Role, Side } from "./figures";
 import type { Clock, Particles } from "./fx";
-import type { ArenaSound } from "./sound";
+import type { LegionsSound } from "./sound";
 
-/** What a tribe acts on: the arena's clock, scene, effects, sounds and lights. */
+/** What a tribe acts on: the scene's clock, scene, effects, sounds and lights. */
 export interface Stage {
   readonly clock: Clock;
   readonly scene: Scene;
   readonly fx: Particles;
-  readonly sound: ArenaSound;
+  readonly sound: LegionsSound;
   /** A light for flashes (lightning, fire), dark when unused. */
   readonly flash: PointLight;
   /** The board's squares by name, for effects that open one (a pit). */
@@ -22,7 +22,7 @@ export interface Stage {
   shake: number;
 }
 
-/** One move to act out. The arena has already taken the figures off their squares. */
+/** One move to act out. The scene has already taken the figures off their squares. */
 export interface TribeMove {
   mover: Fig;
   to: string;

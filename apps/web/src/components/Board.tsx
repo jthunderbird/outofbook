@@ -137,12 +137,12 @@ export interface BoardProps {
   feel?: BoardFeel;
   /** Set during the opponent's turn to queue premoves instead of chessground's single one. */
   premoveQueue?: PremoveQueue;
-  /** The Arena board style: a 3D board with acting figures (no arrows, premoves or promotion choice). */
-  arena?: boolean;
-  /** Arena board: told when it starts and stops acting out moves. */
-  onArenaBusy?: (busy: boolean) => void;
-  /** Arena board: play its fight sounds (in place of the move sounds). */
-  arenaSound?: boolean;
+  /** The Chess Legions board: a 3D board with acting figures (no arrows, premoves or promotion choice). */
+  legions?: boolean;
+  /** Chess Legions board: told when it starts and stops acting out moves. */
+  onLegionsBusy?: (busy: boolean) => void;
+  /** Chess Legions board: play its fight sounds (in place of the move sounds). */
+  legionsSound?: boolean;
 }
 
 export interface BoardFeel {
@@ -160,17 +160,17 @@ const color = (s: Side) => (s === "w" ? "white" : "black");
 
 const NO_ARROWS: Arrow[] = [];
 
-const ArenaBoard = lazy(() => import("@outofbook/legions/ArenaBoard"));
+const LegionsBoard = lazy(() => import("@outofbook/legions/LegionsBoard"));
 
 export function Board(props: BoardProps) {
-  if (!props.arena) return <FlatBoard {...props} />;
-  const { fen, orientation, lastMove, movable, onMove, hideEval, evalLine, bigEval, className, onArenaBusy, arenaSound } = props;
+  if (!props.legions) return <FlatBoard {...props} />;
+  const { fen, orientation, lastMove, movable, onMove, hideEval, evalLine, bigEval, className, onLegionsBusy, legionsSound } = props;
   return (
     <div className={`flex gap-1.5 ${className ?? ""}`}>
       {!hideEval && <EvalBar line={evalLine} orientation={orientation} big={bigEval} />}
       <div className="board-wrap min-w-0 flex-1">
         <Suspense fallback={null}>
-          <ArenaBoard fen={fen} orientation={orientation} lastMove={lastMove} movable={movable} onMove={onMove} onBusy={onArenaBusy} sound={arenaSound} />
+          <LegionsBoard fen={fen} orientation={orientation} lastMove={lastMove} movable={movable} onMove={onMove} onBusy={onLegionsBusy} sound={legionsSound} />
         </Suspense>
       </div>
     </div>

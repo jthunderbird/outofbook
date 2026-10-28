@@ -1,5 +1,5 @@
-// The Arena board's sounds: CC0 clips (../sounds, built by
-// scripts/build-arena-sounds.py, bundled by Vite), started by the scene at each step of a fight
+// The Chess Legions board's sounds: CC0 clips (../sounds, built by
+// scripts/build-legions-sounds.py, bundled by Vite), started by the scene at each step of a fight
 // so they land with what is seen. Each play varies its pitch a little so
 // repeats do not sound canned. Off, or while the fight is hurried, nothing plays.
 import { audioContext } from "./audio";
@@ -60,7 +60,7 @@ export interface Playing {
   stop(fadeMs?: number): void;
 }
 
-export class ArenaSound {
+export class LegionsSound {
   on = false;
   private playing = new Set<{ src: AudioBufferSourceNode; gain: GainNode }>();
 

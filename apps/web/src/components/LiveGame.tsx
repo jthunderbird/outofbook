@@ -25,8 +25,8 @@ export interface LiveSettings {
   vibrate: boolean;
   columnLeft: boolean; // wide screens: clocks and buttons left of the board (switched in game)
   // The board in Lichess games (only there: the rest of the app keeps
-  // OutOfBook's own): the account's ("lichess"), a 2D board, or "arena".
-  gameBoard: "arena" | BoardChoice;
+  // OutOfBook's own): the account's ("lichess"), a 2D board, or "legions" (Chess Legions, 3D).
+  gameBoard: "legions" | BoardChoice;
   // Lichess's settings: imported from the account, or set here; one or the other.
   useLichessPrefs: boolean;
   lichess: LichessPrefs; // used when not importing
@@ -52,8 +52,8 @@ export function applyLook(board: BoardChoice, settings: LiveSettings, prefs: Lic
   applyBoardLook(resolveBoard(board, p.theme), p.pieceSet);
 }
 
-/** What a game screen should do, from our settings and the Lichess settings in force; arena: on the 3D board. */
-export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null, arena: boolean) {
+/** What a game screen should do, from our settings and the Lichess settings in force; legions: on the 3D board. */
+export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null, legions: boolean) {
   const p = lichessSettings(settings, prefs);
   const feel: BoardFeel = {
     autoQueen: p.autoQueen,
@@ -67,13 +67,13 @@ export function gameFeel(settings: LiveSettings, prefs: LichessPrefs | null, are
   return {
     fromLichess: settings.useLichessPrefs,
     feel,
-    arena,
+    legions,
     premove: p.premove,
     multiPremove: p.premove && settings.multiPremove,
     soundSet: p.soundSet,
-    // The Arena board sounds its own fights instead of the move sounds.
-    moveSounds: arena ? "silent" : p.soundSet,
-    arenaSound: arena && p.soundSet !== "silent",
+    // The Chess Legions board sounds its own fights instead of the move sounds.
+    moveSounds: legions ? "silent" : p.soundSet,
+    legionsSound: legions && p.soundSet !== "silent",
     tenths: p.clockTenths,
     lowTime: p.clockSound && p.soundSet !== "silent",
     confirm: p.confirmResign === 1,
@@ -93,7 +93,9 @@ export const loadLive = (): LiveSettings => {
       ...(saved.sound === false ? { soundSet: "silent" } : {}),
       ...saved.lichess,
     };
-    // Before Arena, the board was one setting for every board in the app.
+    // The 3D board was once called Arena.
+    if (saved.gameBoard === "arena") saved.gameBoard = "legions";
+    // Before Chess Legions, the board was one setting for every board in the app.
     if (saved.gameBoard === undefined && typeof saved.board === "string") saved.gameBoard = saved.board;
     delete saved.board;
     return { ...LIVE_DEFAULTS, ...saved, lichess };
@@ -324,8 +326,8 @@ export function LiveGame({
       return !v;
     });
   const [hideEnd, setHideEnd] = useState(false);
-  // The arena board acts out the last move (a checkmate: the king's death) before the result shows.
-  const [arenaBusy, setArenaBusy] = useState(false);
+  // The Chess Legions board acts out the last move (a checkmate: the king's death) before the result shows.
+  const [legionsBusy, setLegionsBusy] = useState(false);
   // False while the game stream is down and being reopened.
   const [linkUp, setLinkUp] = useState(true);
   // Opponent left: when Lichess opens the claim (our clock time), or null.
@@ -340,13 +342,13 @@ export function LiveGame({
   const lag = useRef(0);
   const sentAt = useRef(0);
   const localMove = useRef<{ at: number; mine: number } | null>(null);
-  const arena = settings.gameBoard === "arena";
-  const g = useMemo(() => gameFeel(settings, prefs, arena), [settings, prefs, arena]);
+  const legions = settings.gameBoard === "legions";
+  const g = useMemo(() => gameFeel(settings, prefs, legions), [settings, prefs, legions]);
   // The Lichess look while the game is open; OutOfBook's own again after.
   useEffect(() => {
-    applyLook(arena ? "lichess" : settings.gameBoard, settings, prefs);
+    applyLook(legions ? "lichess" : settings.gameBoard, settings, prefs);
     return applyStandardLook;
-  }, [arena, settings, prefs]);
+  }, [legions, settings, prefs]);
   useEffect(() => preloadSounds(g.soundSet), [g.soundSet]);
   const arrived = () => {
     const t = Date.now();
@@ -736,9 +738,9 @@ export function LiveGame({
       feel={g.feel}
       premoveQueue={premoveQueue}
       onApi={(a) => (api.current = a)}
-      arena={g.arena}
-      arenaSound={g.arenaSound}
-      onArenaBusy={setArenaBusy}
+      legions={g.legions}
+      legionsSound={g.legionsSound}
+      onLegionsBusy={setLegionsBusy}
     />
   );
   const viewingPast = viewPly !== null && (
@@ -748,7 +750,7 @@ export function LiveGame({
   );
   // The result sits over the board, so it is plain the game is over; it can be
   // put away to look at the final position (and brought back from the column).
-  const endCard = status && !hideEnd && !arenaBusy && (
+  const endCard = status && !hideEnd && !legionsBusy && (
     <div className="absolute inset-0 z-30 flex items-center justify-center p-4" style={{ background: "rgb(0 0 0 / 0.45)" }}>
       <div className="ui-card ui-pad relative flex max-w-[90%] flex-col items-center gap-3 text-center shadow-2xl" style={{ background: "var(--surface)" }} data-testid="live-result">
         <button className="absolute top-2 right-2 text-muted hover:text-fg" onClick={() => setHideEnd(true)} aria-label="Show the board" title="Show the board">

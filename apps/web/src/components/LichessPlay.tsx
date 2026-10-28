@@ -389,11 +389,11 @@ export function LichessPlay({ token, username, onLiveChange, onReview }: { token
             </Field>
           </div>
           <div className="mt-4 flex flex-col gap-3">
-            <Field label="Board" hint="For Lichess games. Lichess's default brown board shows as OutOfBook blue. Arena: a 3D board where the pieces fight.">
+            <Field label="Board" hint="For Lichess games. Lichess's default brown board shows as OutOfBook blue. Chess Legions: a 3D board where the pieces fight.">
               <Select
                 value={live.gameBoard}
                 onChange={(e) => setL({ gameBoard: e.target.value })}
-                options={[["lichess", "Same as my Lichess board"], ["arena", "Chess Legions (3D)"], ...BOARD_NAMES]}
+                options={[["lichess", "Same as my Lichess board"], ["legions", "Chess Legions (3D)"], ...BOARD_NAMES]}
                 data-testid="board-choice"
               />
             </Field>

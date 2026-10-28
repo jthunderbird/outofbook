@@ -1,4 +1,4 @@
-// The arena board: polished blue marble squares (pale and deep blue, veined,
+// The Chess Legions board: polished blue marble squares (pale and deep blue, veined,
 // drawn once on canvases) on a hollow dark stone plinth with a gold inlay. The
 // plinth is hollow so a square can open: the queen's pit to hell is a hole
 // where its square was, a glowing shaft down into the plinth.

@@ -1,7 +1,7 @@
-# Arena sounds
+# Chess Legions sounds
 
-Sound effects for the Arena board, cut from CC0 (public domain) recordings by
-`scripts/build-arena-sounds.py`. No attribution is required; the sources are listed as thanks.
+Sound effects for the Chess Legions board, cut from CC0 (public domain) recordings by
+`scripts/build-legions-sounds.py`. No attribution is required; the sources are listed as thanks.
 
 - `order.mp3`: [Magic Spell](https://freesound.org/people/qubodup/sounds/442774/) by qubodup (Freesound, CC0)
 - `step1.mp3`: footstep_concrete_000.ogg from [Kenney impact pack](https://kenney.nl/) (CC0)

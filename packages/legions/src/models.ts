@@ -3,7 +3,7 @@
 // idle in place. One model serves both sides: light pieces are recolored in the
 // shader (dark cloth to ivory, gold kept). Each stands centered on its square.
 // Until a model has loaded, its tribe draws the code-built figure instead;
-// modelsReady tells the arena when to rebuild with the models.
+// modelsReady tells the scene when to rebuild with the models.
 import { AnimationMixer, Box3, Quaternion, Vector3, type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D, type SkinnedMesh } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";

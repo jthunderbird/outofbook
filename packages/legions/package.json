@@ -7,7 +7,7 @@
   "description": "Chess Legions' 3D board: figures that act out every move and kill, with their sounds. Shared by OutOfBook (its Legion mode) and the Chess Legions app.",
   "exports": {
     "./*": "./src/*.ts",
-    "./ArenaBoard": "./src/ArenaBoard.tsx"
+    "./LegionsBoard": "./src/LegionsBoard.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

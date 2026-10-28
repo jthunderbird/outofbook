@@ -1,6 +1,6 @@
-// The arena: a 3D board whose pieces act out each move. Each side's tribe
+// The Chess Legions scene: a 3D board whose pieces act out each move. Each side's tribe
 // (tribe.ts; the first is the Stormcourt) builds its figures and acts out its
-// own moves and kills; the arena keeps the board, the camera, taps, the queue of
+// own moves and kills; the scene keeps the board, the camera, taps, the queue of
 // positions and the check mark. Positions come in as FENs with the move that
 // led there; a move that can't be acted out (a jump in history) snaps.
 import { Chess, type Move, type Square } from "chess.js";
@@ -42,17 +42,17 @@ import { buildBoard, squareAt, type Board } from "./board";
 import { type Fig, type Role, type Side } from "./figures";
 import { stormcourt } from "./stormcourt";
 import type { Stage, Tribe } from "./tribe";
-import { ArenaSound } from "./sound";
+import { LegionsSound } from "./sound";
 
 const FILES = "abcdefgh";
 const boardOf = (fen: string) => fen.split(" ")[0];
 
-export interface ArenaInput {
+export interface SceneInput {
   movable?: Side | "both";
   onMove?: (uci: string) => void;
 }
 
-export class Arena {
+export class LegionsScene {
   private renderer: WebGLRenderer;
   private scene = new Scene();
   private camera = new PerspectiveCamera(36, 1, 0.1, 100);
@@ -82,7 +82,7 @@ export class Arena {
   private lastMove?: string;
   private shown = "";
   private orientation: Side = "w";
-  private input: ArenaInput = {};
+  private input: SceneInput = {};
   private selected: string | null = null;
   private hint: string | null = null;
   private rebuildAfter = false;
@@ -97,7 +97,7 @@ export class Arena {
   private ro: ResizeObserver;
   private down: [number, number] | null = null;
   /** The fight's sounds; on when the game's sound is. */
-  readonly sound = new ArenaSound(() => this.hurry);
+  readonly sound = new LegionsSound(() => this.hurry);
   /** Each side's tribe: its figures, and how they move and kill. */
   private tribes: Record<Side, Tribe> = { w: stormcourt, b: stormcourt };
   /** What a tribe acts its moves out on. */
@@ -105,27 +105,27 @@ export class Arena {
 
   constructor(
     private host: HTMLElement,
-    /** Told when the arena starts and stops acting out moves. */
+    /** Told when the scene starts and stops acting out moves. */
     private onBusy?: (busy: boolean) => void,
   ) {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const arena = this;
+    const self = this;
     this.stage = {
       clock: this.clock,
       scene: this.scene,
       sound: this.sound,
       flash: this.flash,
       get squares() {
-        return arena.squares;
+        return self.squares;
       },
       get fx() {
-        return arena.fx;
+        return self.fx;
       },
       get shake() {
-        return arena.shake;
+        return self.shake;
       },
       set shake(ms: number) {
-        arena.shake = ms;
+        self.shake = ms;
       },
     };
     const r = (this.renderer = new WebGLRenderer({ antialias: true }));
@@ -311,7 +311,7 @@ export class Arena {
     this.highlight();
   }
 
-  setInput(i: ArenaInput) {
+  setInput(i: SceneInput) {
     this.input = i;
     this.highlight();
   }
@@ -523,12 +523,12 @@ export class Arena {
         try {
           acted = await this.act(next);
         } catch (e) {
-          console.error("arena", e);
+          console.error("legions", e);
         }
       }
       this.sync(next.fen);
       if (!this.queue.length) {
-        const mate = await this.regicide(next).catch((e) => console.error("arena", e));
+        const mate = await this.regicide(next).catch((e) => console.error("legions", e));
         call = mate ? "knell" : acted && this.game()?.inCheck() ? "horn" : null;
       }
     }

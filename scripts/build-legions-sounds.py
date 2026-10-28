@@ -2,12 +2,12 @@
 # recordings: Kenney's audio packs and sounds on Freesound (their MP3 previews).
 # Each clip is cut, faded, peak-normalized to -1 dBFS and saved as mono MP3;
 # CREDITS.md lists the source of every clip. Sources are cached in a work dir.
-#   python3 scripts/build-arena-sounds.py [work dir]
+#   python3 scripts/build-legions-sounds.py [work dir]
 # Needs ffmpeg. Every source is checked to be CC0 before it is used.
 import json, os, re, subprocess, sys, urllib.request, zipfile
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../packages/legions/sounds")
-WORK = sys.argv[1] if len(sys.argv) > 1 else "/tmp/arena-sounds-src"
+WORK = sys.argv[1] if len(sys.argv) > 1 else "/tmp/legions-sounds-src"
 UA = {"User-Agent": "Mozilla/5.0"}
 KENNEY = {
     "impact": "https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip",
@@ -111,6 +111,6 @@ for name, (src, start, length, fade) in CLIPS.items():
     print(f"{name:8s} {os.path.getsize(out) // 1024:4d} KB  {credit}")
 
 open(f"{OUT}/CREDITS.md", "w").write(
-    "# Arena sounds\n\nSound effects for the Arena board, cut from CC0 (public domain) recordings by\n"
-    "`scripts/build-arena-sounds.py`. No attribution is required; the sources are listed as thanks.\n\n" + "\n".join(credits) + "\n"
+    "# Chess Legions sounds\n\nSound effects for the Chess Legions board, cut from CC0 (public domain) recordings by\n"
+    "`scripts/build-legions-sounds.py`. No attribution is required; the sources are listed as thanks.\n\n" + "\n".join(credits) + "\n"
 )

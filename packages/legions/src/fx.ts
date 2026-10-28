@@ -1,6 +1,6 @@
-// Arena effects: a frame clock that drives tweens, and the pieces of magic the
+// Chess Legions effects: a frame clock that drives tweens, and the pieces of magic the
 // figures share (particles, the king's arc, portals, dust). Everything runs off
-// the arena's render loop, so it stops with the page and speeds up with SPEED.
+// the scene's render loop, so it stops with the page and speeds up with SPEED.
 import {
   AdditiveBlending,
   BoxGeometry,
@@ -23,7 +23,7 @@ import {
   type Scene,
 } from "three";
 
-/** Every arena animation runs at this speed (2 = twice as fast). */
+/** Every Chess Legions animation runs at this speed (2 = twice as fast). */
 export const SPEED = 1;
 
 type Tick = (ms: number) => boolean | void;

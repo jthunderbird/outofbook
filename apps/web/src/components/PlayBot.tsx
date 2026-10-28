@@ -18,10 +18,11 @@ import { gameFeel, LIVE_DEFAULTS } from "./LiveGame";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Progress, Seg, Select, Switch } from "./ui";
 
 /** A switch remembered in localStorage (private mode: for this visit only). */
-function useSavedSwitch(key: string, initial: boolean) {
+function useSavedSwitch(key: string, initial: boolean, oldKey?: string) {
   const [on, setOn] = useState(() => {
     try {
-      const v = localStorage.getItem(key);
+      // oldKey: where it was saved under an earlier name.
+      const v = localStorage.getItem(key) ?? (oldKey ? localStorage.getItem(oldKey) : null);
       return v === null ? initial : v === "1";
     } catch {
       return initial;
@@ -145,19 +146,19 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
     retryAt.current = null;
   };
 
-  // OutOfBook's own board feel (the Lichess settings are for Lichess games only), on the Arena board if chosen.
-  const [arena, setArena] = useSavedSwitch("botArena", false);
+  // OutOfBook's own board feel (the Lichess settings are for Lichess games only), on the Chess Legions board if chosen.
+  const [legions, setLegions] = useSavedSwitch("botLegions", false, "botArena");
   // Sound on or off, in the setup and during a game alike; remembered for the next game.
   const [sound, setSound] = useSavedSwitch("botSound", true);
-  const feel = useMemo(() => gameFeel(LIVE_DEFAULTS, null, arena), [arena]);
-  const soundSet = sound && !arena ? feel.soundSet : "silent";
+  const feel = useMemo(() => gameFeel(LIVE_DEFAULTS, null, legions), [legions]);
+  const soundSet = sound && !legions ? feel.soundSet : "silent";
   // Read when the bot's move lands, so a switch flipped while it thinks counts.
   const soundNow = useRef(soundSet);
   soundNow.current = soundSet;
   useEffect(() => preloadSounds(soundSet), [soundSet]);
   const [hideEnd, setHideEnd] = useState(false);
-  // The arena board acts out the last move (a checkmate: the king's death) before the result shows.
-  const [arenaBusy, setArenaBusy] = useState(false);
+  // The Chess Legions board acts out the last move (a checkmate: the king's death) before the result shows.
+  const [legionsBusy, setLegionsBusy] = useState(false);
   useEffect(() => {
     setHideEnd(false);
     if (over && feel.vibrate) buzz([60, 80, 60]);
@@ -459,9 +460,9 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
             movable={playing && !thinking && viewPly === null && !maiaLoad ? myColor : undefined}
             onMove={onMove}
             feel={feel.feel}
-            arena={feel.arena}
-            arenaSound={sound}
-            onArenaBusy={setArenaBusy}
+            legions={feel.legions}
+            legionsSound={sound}
+            onLegionsBusy={setLegionsBusy}
           />
           {viewPly !== null && (
             <div className="pointer-events-none absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white">
@@ -477,7 +478,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
               </div>
             </div>
           )}
-          {over && game && !hideEnd && !arenaBusy && (
+          {over && game && !hideEnd && !legionsBusy && (
             <div className="absolute inset-0 z-30 flex items-center justify-center p-4" style={{ background: "rgb(0 0 0 / 0.45)" }} data-testid="bot-result">
               <div className="ui-card ui-pad relative flex max-w-[90%] flex-col items-center gap-3 text-center shadow-2xl" style={{ background: "var(--surface)" }}>
                 <button className="absolute top-2 right-2 text-muted hover:text-fg" onClick={() => setHideEnd(true)} aria-label="Show the board" title="Show the board">
@@ -770,7 +771,7 @@ export function PlayBot({ model, start, depth, onReview }: { model: RepertoireMo
                 label="Drill"
                 hint="After each move: engine verdict, your usual move and the line; a banner with take-back on mistakes or when you leave your repertoire."
               />
-              <Switch checked={arena} onChange={setArena} label="Legion mode" hint="Chess Legions: play on a 3D board where the pieces fight it out, every piece killing its own way." />
+              <Switch checked={legions} onChange={setLegions} label="Legion mode" hint="Chess Legions: play on a 3D board where the pieces fight it out, every piece killing its own way." />
               <Switch checked={sound} onChange={setSound} label="Sound" />
               <Switch checked={showEval} onChange={setShowEval} label="Show eval bar during the game" />
               <Button variant="primary" size="lg" onClick={newGame}>
