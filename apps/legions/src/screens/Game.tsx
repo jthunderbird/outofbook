@@ -176,6 +176,7 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
           tribes={tribes}
           court={courtId}
           glow={p.glow}
+          pixel={p.pixel}
           hint={hint}
         />
       </div>

@@ -21,13 +21,29 @@ export interface LegionsBoardProps {
   court?: string;
   /** Glow on bright light, lightning and fire (bloom). */
   glow?: boolean;
+  /** The pixel look: a fixed oblique camera, low resolution, a 16-bit palette. */
+  pixel?: boolean;
   /** Where to frame the board when the scene is larger than it (fills the screen); the whole scene when not given. */
   frame?: RefObject<HTMLElement | null>;
   /** A suggested move to show, as uci. */
   hint?: string | null;
 }
 
-export default function LegionsBoard({ fen, orientation, lastMove, movable, onMove, onBusy, sound = false, tribes, court = "night", glow = false, hint = null, frame }: LegionsBoardProps) {
+export default function LegionsBoard({
+  fen,
+  orientation,
+  lastMove,
+  movable,
+  onMove,
+  onBusy,
+  sound = false,
+  tribes,
+  court = "night",
+  glow = false,
+  pixel = false,
+  hint = null,
+  frame,
+}: LegionsBoardProps) {
   const el = useRef<HTMLDivElement>(null);
   const scene = useRef<LegionsScene | null>(null);
   const busy = useRef(onBusy);
@@ -52,6 +68,7 @@ export default function LegionsBoard({ fen, orientation, lastMove, movable, onMo
   useLayoutEffect(() => scene.current?.setTribes({ w: tribe(tw), b: tribe(tb) }), [tw, tb]);
   useEffect(() => scene.current?.setCourt(court), [court]);
   useEffect(() => scene.current?.setGlow(glow), [glow]);
+  useEffect(() => scene.current?.setPixel(pixel), [pixel]);
   useEffect(() => {
     const a = scene.current;
     if (!a) return;

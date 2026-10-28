@@ -20,6 +20,8 @@ export interface Profile {
   name: string;
   /** Glow on lightning, fire and bright light (bloom); off for slower phones. */
   glow: boolean;
+  /** The pixel look for every tribe (fixed oblique camera, low resolution, 16-bit palette). */
+  pixel: boolean;
   /** Levels already rewarded (perk charges are given once per level). */
   rewardedLevel: number;
 }
@@ -34,6 +36,7 @@ const FRESH: Profile = {
   sound: true,
   name: "Player",
   glow: true,
+  pixel: false,
   rewardedLevel: 1,
 };
 
@@ -91,7 +94,9 @@ export function useProfile() {
 
 export const getProfile = () => profile;
 export const update = (fn: (p: Profile) => Profile) => save(fn(profile));
-export const owns = (p: Profile, id: ItemId) => p.owned.includes(id);
+// Epoch Drifters and its stage are open to everyone while the tribe is being previewed.
+const PREVIEW: string[] = ["tribe:epoch-drifters", "court:epoch-drifters"];
+export const owns = (p: Profile, id: ItemId) => p.owned.includes(id) || PREVIEW.includes(id);
 
 /** What a game's end brought: XP, a level reached, items unlocked. */
 export interface Reward {

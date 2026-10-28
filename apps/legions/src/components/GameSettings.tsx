@@ -30,6 +30,15 @@ export function GameSettings() {
         </span>
         <button className={`switch${p.glow ? " on" : ""}`} aria-label="Glow effects" aria-pressed={p.glow} onClick={() => update((q) => ({ ...q, glow: !q.glow }))} />
       </div>
+      <div className="toggle">
+        <span>
+          Pixel look
+          <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>
+            Draws every tribe as a 16-bit game would: fixed camera, low resolution, fewer colors. Try it on the Epoch Plains stage.
+          </div>
+        </span>
+        <button className={`switch${p.pixel ? " on" : ""}`} aria-label="Pixel look" aria-pressed={p.pixel} onClick={() => update((q) => ({ ...q, pixel: !q.pixel }))} />
+      </div>
     </>
   );
 }

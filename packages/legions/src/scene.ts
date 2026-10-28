@@ -34,6 +34,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { Clock, FIRE_TIME, Particles, SPEED } from "./fx";
 import { court, courtBackground, type CourtSet } from "./courts";
@@ -54,7 +55,7 @@ export interface SceneInput {
 export class LegionsScene {
   private renderer: WebGLRenderer;
   private scene = new Scene();
-  private camera = new PerspectiveCamera(36, 1, 0.1, 100);
+  private camera = new PerspectiveCamera(36, 1, 0.1, 220);
   private controls: OrbitControls;
   private clock = new Clock();
   private fx: Particles;
@@ -239,9 +240,16 @@ export class LegionsScene {
   setOrientation(o: Side) {
     this.orientation = o;
     const s = o === "w" ? 1 : -1;
-    this.camera.position.set(0, 12.6, 9.4 * s);
+    if (this.pixel) {
+      // Low and oblique, pulled back on narrow screens so the board stays whole.
+      const k = Math.max(1, 1.3 / this.camera.aspect);
+      this.camera.position.set(0, 5.4, 11.4 * k * s);
+      this.controls.target.set(0, 0.8, 0);
+    } else {
+      this.camera.position.set(0, 12.6, 9.4 * s);
+      this.controls.target.set(0, 0, 0.5 * s);
+    }
     this.sun.position.set(4 * s, 12, 6 * s);
-    this.controls.target.set(0, 0, 0.5 * s);
     this.controls.update();
     this.drawLabels();
   }
@@ -300,16 +308,50 @@ export class LegionsScene {
    * Only what is brighter than lit white glows: emissive and unlit effects pushed past 1.
    */
   setGlow(on: boolean) {
-    if (on === !!this.composer) return;
-    if (!on) {
-      this.composer!.dispose();
-      this.composer = null;
-      return;
-    }
+    this.glow = on;
+    this.post();
+  }
+
+  /**
+   * The pixel look for any tribe: the camera fixed at a low, oblique angle, the
+   * picture drawn at a few hundred pixels tall and scaled up without smoothing,
+   * and its colors cut to a 16-bit-style palette. A way to see 3D figures as a 2D game would.
+   */
+  setPixel(on: boolean) {
+    if (on === this.pixel) return;
+    this.pixel = on;
+    this.controls.enabled = !on;
+    this.renderer.domElement.style.imageRendering = on ? "pixelated" : "";
+    this.setOrientation(this.orientation);
+    this.post();
+    this.resize();
+  }
+  private glow = false;
+  private pixel = false;
+
+  /** The effects pipeline: bloom for glow, a color cut for the pixel look; none (plain rendering) when neither. */
+  private post() {
+    this.composer?.dispose();
+    this.composer = null;
+    if (!this.glow && !this.pixel) return;
     const c = (this.composer = new EffectComposer(this.renderer));
     c.addPass(new RenderPass(this.scene, this.camera));
-    c.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.5, 0.35, 1.5));
+    if (this.glow) c.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.5, 0.35, 1.5));
     c.addPass(new OutputPass());
+    if (this.pixel)
+      c.addPass(
+        new ShaderPass({
+          uniforms: { tDiffuse: { value: null } },
+          vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+          // Five bits a channel with a light ordered dither, as a 16-bit display would show it.
+          fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+            void main(){
+              vec4 c = texture2D(tDiffuse, vUv);
+              float d = (fract(dot(floor(gl_FragCoord.xy), vec2(0.5, 0.25))) - 0.375) / 32.0;
+              gl_FragColor = vec4(floor((c.rgb + d) * 31.0 + 0.5) / 31.0, c.a);
+            }`,
+        }),
+      );
     this.resize();
   }
 
@@ -350,6 +392,8 @@ export class LegionsScene {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     if (!w || !h) return;
+    // The pixel look draws about 300 pixels tall, whatever the screen.
+    this.renderer.setPixelRatio(this.pixel ? Math.min(1, 300 / h) : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(w, h, false);
     this.composer?.setPixelRatio(this.renderer.getPixelRatio());
     this.composer?.setSize(w, h);
@@ -363,7 +407,10 @@ export class LegionsScene {
       this.camera.clearViewOffset();
       this.camera.aspect = w / h;
     }
+    // A wide lens in the pixel look, so the sky above the board shows.
+    this.camera.fov = this.pixel ? 50 : 36;
     this.camera.updateProjectionMatrix();
+    if (this.pixel) this.setOrientation(this.orientation);
   }
 
   private drawLabels() {
