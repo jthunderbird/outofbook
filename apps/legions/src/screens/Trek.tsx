@@ -74,6 +74,9 @@ export function Trek({ go }: { go: (s: Screen) => void }) {
         </button>
         <h2>Puzzle trek</h2>
         <div className="spacer" />
+        <div className="trek-progress" title="Challenges passed on this run">
+          <Trophy size={16} /> {t.cleared.length} / {CHALLENGES.length}
+        </div>
         <Tallies t={t} />
       </div>
 

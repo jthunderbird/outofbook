@@ -1,5 +1,5 @@
 // Looks lab: the game's own board with any tribe on each side, to try the
-// Collection's finishes, colors and skins (modes) and the outfit trial before
+// Collection's finishes, colors and skins (modes) before
 // they are sold. Everything here is the real code the game uses; pick from the
 // panel, drag to turn the board, pinch or scroll to zoom.
 import { LegionsScene } from "@outofbook/legions/scene";
@@ -7,7 +7,6 @@ import { TRIBES, tribe } from "@outofbook/legions/tribes";
 import { COURTS } from "@outofbook/legions/courts";
 import { COLORS, FINISHES, type Look } from "@outofbook/legions/looks";
 import { MODES, type Mode } from "@outofbook/legions/modes";
-import { OUTFITS } from "@outofbook/legions/outfits";
 import type { Side } from "@outofbook/legions/figures";
 
 const s = new LegionsScene(document.getElementById("stage")!);
@@ -17,7 +16,6 @@ const state = {
   side: "light",
   finish: "",
   color: "",
-  outfit: "",
   skin: "",
   court: "staunton",
   glow: "on",
@@ -48,7 +46,6 @@ pick("side", "Look on", [
 ]);
 pick("finish", "Finish", [["", "Original"], ...FINISHES.map((f): [string, string] => [f.id, f.name])]);
 pick("color", "Color", [["", "Original"], ...COLORS.map((c): [string, string] => [c.id, c.name])]);
-pick("outfit", "Outfit (trial)", [["", "None"], ...OUTFITS.map((o): [string, string] => [o.id, o.name])]);
 pick("skin", "Skin", [["", "None"], ["retro", "Retro"], ...MODES.map((m): [string, string] => [m, m[0].toUpperCase() + m.slice(1)])]);
 pick(
   "court",
@@ -69,7 +66,7 @@ hide.onclick = () => {
 panel.appendChild(hide);
 
 function apply() {
-  const look: Look = { finish: state.finish || undefined, color: state.color || undefined, outfit: state.outfit || undefined };
+  const look: Look = { finish: state.finish || undefined, color: state.color || undefined };
   const looks: Partial<Record<Side, Look>> = {};
   if (state.side !== "dark") looks.w = look;
   if (state.side !== "light") looks.b = look;

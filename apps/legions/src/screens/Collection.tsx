@@ -45,6 +45,12 @@ function howToGet(id: ItemId) {
   return "Coming soon";
 }
 
+/** How an item is had, for ordering a shelf: bought first, then won in the campaign, then by level, then the starters. */
+function source(id: ItemId) {
+  const how = howToGet(id);
+  return how.startsWith("Buy") ? 0 : how.startsWith("Beat") ? 1 : how.startsWith("Reach") ? 2 : 3;
+}
+
 /** Every item that can be won, by shelf, and the modes. */
 function shelves(p: Profile): { rows: ShelfRow[]; modes: ShelfItem[] } {
   const item = (id: ItemId, name: string, on: boolean): ShelfItem => {
@@ -54,7 +60,7 @@ function shelves(p: Profile): { rows: ShelfRow[]; modes: ShelfItem[] } {
   return {
     rows: [
       { title: "Tribes", kind: "figures", items: Object.values(TRIBES).map((t) => item(`tribe:${t.id}`, t.name, p.equipped.tribe === t.id)) },
-      { title: "Courts", kind: "pictures", items: COURTS.map((c) => item(`court:${c.id}`, c.name, p.equipped.court === c.id)) },
+      { title: "Courts", kind: "pictures", items: COURTS.map((c) => item(`court:${c.id}`, c.name, p.equipped.court === c.id)).sort((a, b) => source(a.id as ItemId) - source(b.id as ItemId)) },
       { title: "Finishes", kind: "figures", items: [{ id: "original", name: "Original" }, ...FINISHES].map((f) => item(`finish:${f.id}`, f.name, p.equipped.finish === f.id)) },
       { title: "Colors", kind: "figures", items: [{ id: "original", name: "Original" }, ...COLORS].map((c) => item(`color:${c.id}`, c.name, p.equipped.color === c.id)) },
       // Outfits fit every tribe; the first is a placeholder until it is made.

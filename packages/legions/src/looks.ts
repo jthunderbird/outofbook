@@ -6,7 +6,6 @@
 // models, no new textures.
 import { Color, Material, Mesh, MeshStandardMaterial } from "three";
 import type { Fig, Side } from "./figures";
-import { wearOutfit } from "./outfits";
 
 export interface Finish {
   id: string;
@@ -47,8 +46,6 @@ export const COLORS: PieceColor[] = [
 export interface Look {
   finish?: string;
   color?: string;
-  /** An outfit worn over the figures (outfits.ts; a trial in code). */
-  outfit?: string;
 }
 
 /** The look's shader: recolors the picture after its texture is read (and, for neon, lights its rim). */
@@ -110,14 +107,11 @@ function lookMaterial(m: Material, look: Look, side: Side, unlit: boolean): Mate
 }
 
 /**
- * Dresses a figure in a look (none: as it was made), and in an outfit if the
- * look has one. Called once, when the figure is made. The figure owns its
+ * Dresses a figure in a look (none: as it was made). Called once, when the figure is made. The figure owns its
  * materials (kills fade and cut them), so each gets its own dressed copy.
  */
 export function dressFigure(f: Fig, look: Look | undefined, side: Side) {
-  if (!look) return;
-  if (look.outfit) wearOutfit(f, look.outfit);
-  if (!look.finish && !look.color) return;
+  if (!look || (!look.finish && !look.color)) return;
   const swap = new Map<Material, Material>();
   // Soft see-through extras (a shadow blob, a glow) keep their own colors.
   const one = (m: Material) => {

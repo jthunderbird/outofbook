@@ -35,7 +35,8 @@ for (let s = 1; s <= STAGES; s++) {
   const first = 40 + 1.5 * (s - 1);
   for (let n = 1; n <= count; n++) {
     const each = first * (1 - (0.45 * (n - 1)) / (count - 1));
-    const puzzles = n + 2;
+    // 3 puzzles for the first three challenges, one more every three after (1,261 puzzles over the trek).
+    const puzzles = 2 + Math.ceil(n / 3);
     CHALLENGES.push({ id: `s${s}-c${n}`, stage: s, n, rating: stageRating(s), puzzles, seconds: Math.round((each * puzzles) / 5) * 5 });
   }
 }

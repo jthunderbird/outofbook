@@ -481,7 +481,8 @@ export class CollectionScene {
     floats.forEach((item, i) => {
       const y = win.top - POSTER_TITLE - 0.45 - i * FLOAT_GAP;
       const g = new Group();
-      g.position.set(win.x, y, 0.9);
+      // Close to the poster, so they stay centered on it from any angle.
+      g.position.set(win.x, y - 0.15, 0.3);
       const tc = tokenCanvas(item.id);
       const tt = item.id === "mode:retro" ? pixelTexture(item.locked ? grayed(tc) : tc) : tex(item.locked ? grayed(tc) : tc);
       const mat = new MeshBasicMaterial({ map: this.own(tt), transparent: true, toneMapped: false, side: DoubleSide });
@@ -499,7 +500,7 @@ export class CollectionScene {
       pl.position.y = -0.6;
       g.add(pl);
       this.room.add(g);
-      this.placed.push({ item, group: g, hit: m, top: new Vector3(win.x, y + 0.48, 0.9), float: y });
+      this.placed.push({ item, group: g, hit: m, top: new Vector3(win.x, y + 0.33, 0.3), float: y - 0.15 });
     });
 
     this.walls(x0, len, top, win);
