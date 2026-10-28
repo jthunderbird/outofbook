@@ -87,7 +87,12 @@ function knightHead(m: Material) {
   head.add(part(g, m));
   // Eyes, dark either side of the brow.
   const eye = new MeshStandardMaterial({ color: 0x0a0605, roughness: 0.3 });
-  for (const x of [-0.125, 0.125]) head.add(part(new SphereGeometry(0.022, 10, 8), eye, 0.5).translateX(x).translateZ(0.13));
+  for (const x of [-0.125, 0.125])
+    head.add(
+      part(new SphereGeometry(0.022, 10, 8), eye, 0.5)
+        .translateX(x)
+        .translateZ(0.13),
+    );
   head.position.y = 0.2;
   return head;
 }
