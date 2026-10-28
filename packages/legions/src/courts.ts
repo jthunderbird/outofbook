@@ -15,7 +15,6 @@ import {
   Color,
   CylinderGeometry,
   DirectionalLight,
-  DoubleSide,
   Float32BufferAttribute,
   Group,
   HemisphereLight,
