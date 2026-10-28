@@ -4,6 +4,8 @@
 // over with a wooden clack before it sinks into the board.
 import {
   BoxGeometry,
+  BufferAttribute,
+  BufferGeometry as Geometry,
   CylinderGeometry,
   ExtrudeGeometry,
   Group,
@@ -19,6 +21,7 @@ import {
   type BufferGeometry,
   type Material,
 } from "three";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { squareAt } from "./board";
 import { pieceWood } from "./wood";
 import { Fig, type Role, type Side } from "./figures";
@@ -138,8 +141,50 @@ const PROFILES: Record<Exclude<Role, "n">, Pt[]> = {
   ],
 };
 
-/** The figure's height (to its top ornament), for effects that aim at it. */
-const HEIGHT: Record<Role, number> = { p: 0.84, n: 1.15, b: 1.28, r: 0.96, q: 1.5, k: 1.72 };
+/** The figure's height (to its top ornament), for effects that aim at it: the real set's (models/staunton.bin). */
+const HEIGHT: Record<Role, number> = { p: 0.98, n: 1.22, b: 1.28, r: 1.08, q: 1.44, k: 1.72 };
+
+// The pieces of a real Staunton set (meshes built by scripts/staunton.mjs). Until they have loaded, turned stand-ins take their place.
+const BIN = Object.values(import.meta.glob<string>("../models/staunton.bin", { eager: true, query: "?url", import: "default" }))[0];
+const ROLES: Role[] = ["k", "q", "r", "b", "n", "p"];
+const meshes = new Map<Role, Geometry>();
+let loading: Promise<void> | null = null;
+function loadSet() {
+  loading ??= fetch(BIN)
+    .then((r) => r.arrayBuffer())
+    .then((buf) => {
+      const v = new DataView(buf);
+      let at = 4;
+      for (const role of ROLES) {
+        const verts = v.getUint32(at, true);
+        const count = v.getUint32(at + 4, true);
+        const box = Array.from({ length: 6 }, (_, i) => v.getFloat32(at + 8 + i * 4, true));
+        at += 32;
+        const q = new Uint16Array(buf.slice(at, at + verts * 6));
+        at += verts * 6;
+        const index = new Uint16Array(buf.slice(at, at + count * 2));
+        at += count * 2;
+        const pos = new Float32Array(verts * 3);
+        for (let i = 0; i < pos.length; i++) pos[i] = box[i % 3] + (q[i] / 65535) * box[3 + (i % 3)];
+        const g = new Geometry();
+        g.setAttribute("position", new BufferAttribute(pos, 3));
+        g.setIndex(new BufferAttribute(index, 1));
+        // Smooth where the wood is turned, sharp at collars and cuts.
+        const c = toCreasedNormals(g, 0.6);
+        // The grain runs up the piece: u round it, v up it.
+        const p = c.attributes.position;
+        const uv = new Float32Array(p.count * 2);
+        for (let i = 0; i < p.count; i++) {
+          uv[i * 2] = Math.atan2(p.getZ(i), p.getX(i)) / (Math.PI * 2) + 0.5;
+          uv[i * 2 + 1] = p.getY(i) / box[4];
+        }
+        c.setAttribute("uv", new BufferAttribute(uv, 2));
+        meshes.set(role, c);
+      }
+    })
+    .catch((e) => console.error("staunton", e));
+  return loading;
+}
 
 /**
  * A knight's head, carved in profile as on any tournament set: a thick arched
@@ -205,10 +250,25 @@ function stauntonFigure(role: Role, side: Side): Fig {
   const f = new Fig(role, side, HEIGHT[role]);
   const m = wood(side);
   const cut = new MeshStandardMaterial({ color: side === "w" ? 0x6a4526 : 0x050303, roughness: 0.7 });
-  if (role === "n") {
+  const real = meshes.get(role);
+  if (real) {
+    const piece = part(real, m);
+    // The knight's horse looks along +x in the set; it is turned to face the other side, a little to the side so its profile reads from the player's seat.
+    if (role === "n") piece.rotation.y = -Math.PI / 2 + 0.55;
+    f.body.add(piece);
+  } else if (role === "n") {
     f.body.add(part(turned([...foot(0.29), [0.2, 0.2], [0.2, 0.24, 1], [0.001, 0.24, 1]]), m));
     f.body.add(knightHead(m));
   } else f.body.add(part(turned(PROFILES[role]), m));
+  if (!real) standIn(f, role, m, cut);
+  f.body.add(part(new CylinderGeometry(0.31, 0.31, 0.004, 40), new MeshStandardMaterial({ color: 0x24502c, roughness: 1 }), 0.002));
+  f.mats = ownMaterials(f.body);
+  f.root.rotation.y = side === "w" ? Math.PI : 0;
+  return f;
+}
+
+/** The turned stand-ins' ornaments: the pawn's ball, the mitre's cut, the battlement, the coronet, the cross. */
+function standIn(f: Fig, role: Role, m: Material, cut: Material) {
   if (role === "p") f.body.add(part(new SphereGeometry(0.15, 40, 24), m, 0.68));
   if (role === "b") {
     // The mitre's slanted cut across the head, and a finial ball on top.
@@ -232,16 +292,13 @@ function stauntonFigure(role: Role, side: Side): Fig {
     f.body.add(part(new BoxGeometry(0.07, 0.3, 0.07), m, 1.6));
     f.body.add(part(new BoxGeometry(0.2, 0.07, 0.07), m, 1.63));
   }
-  f.body.add(part(new CylinderGeometry(0.31, 0.31, 0.004, 40), new MeshStandardMaterial({ color: 0x24502c, roughness: 1 }), 0.002));
-  f.mats = ownMaterials(f.body);
-  f.root.rotation.y = side === "w" ? Math.PI : 0;
-  return f;
 }
 
 export const staunton: Tribe = {
   id: "staunton",
   name: "The Staunton tribe",
   figure: stauntonFigure,
+  ready: loadSet,
   play: (stage, move) => play(stage, move),
 };
 
