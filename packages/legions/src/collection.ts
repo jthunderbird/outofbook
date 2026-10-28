@@ -1,9 +1,9 @@
 // The Collection's room: a wall of a bedroom at night with a shelf for each kind
 // of item (tribes, courts, more later). A tribe stands on its shelf all together
 // (a still of its figures, cut out), a court leans in a frame (a still of it seen
-// steep and tall), and Retro mode floats below as a pixel gamepad. Locked items
-// are grayed with what unlocks them above. Drag to look along the shelves, pinch
-// or scroll to zoom, tap an item to pick it.
+// steep and tall), and the modes float in front of the window as pixel tokens
+// (Retro mode's gamepad). Locked items are grayed with what unlocks them above.
+// Drag to look along the shelves, pinch or scroll to zoom, tap an item to pick it.
 //
 // The stills are rendered in the game itself (apps/legions/mockups/shelf.ts) to
 // packages/legions/shelf/<kind>-<id>.webp, so the room costs a few pictures,
@@ -37,6 +37,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
+import { pixelTexture, tokenCanvas } from "./tokens";
 import { woodPanel, woodTexture } from "./wood";
 
 export interface ShelfItem {
@@ -71,8 +72,9 @@ const PIC_SLOT = 1.55;
 const SIGN_SLOT = 1.35;
 const SHELF_D = 0.55;
 const FLOOR = -2.9;
-/** Where Retro mode (and whatever comes to float with it) hovers, below the shelves. */
-const FLOAT_Y = -0.85;
+/** The window left of the shelves, and the room between the modes floating in front of it. */
+const WIN_W = 2.6;
+const FLOAT_GAP = 1.55;
 const LOCK_SVG =
   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
@@ -142,9 +144,6 @@ function night() {
   g.beginPath();
   g.arc(170, 90, 18, 0, Math.PI * 2);
   g.fill();
-  // Rooftops far off.
-  g.fillStyle = "#05060f";
-  for (let x = 0; x < 256; x += 34) g.fillRect(x, 330 - ((x * 7) % 40), 30, 60);
   return tex(c);
 }
 
@@ -214,28 +213,6 @@ function card(name: string, tall: boolean) {
   return tex(c);
 }
 
-/** Retro mode's token: a pixel gamepad. */
-function gamepad() {
-  const [c, g] = canvas(26, 16);
-  const px = (x: number, y: number, w: number, h: number, col: string) => {
-    g.fillStyle = col;
-    g.fillRect(x, y, w, h);
-  };
-  px(3, 2, 20, 12, "#1b1530");
-  px(2, 3, 22, 10, "#1b1530");
-  px(4, 3, 18, 10, "#7a5cff");
-  px(3, 4, 20, 8, "#7a5cff");
-  px(4, 3, 18, 2, "#a891ff");
-  px(6, 6, 2, 6, "#1b1530");
-  px(4, 8, 6, 2, "#1b1530");
-  px(17, 6, 2, 2, "#ff4f7a");
-  px(20, 8, 2, 2, "#ffd84a");
-  px(17, 10, 2, 2, "#4fe3ff");
-  px(14, 8, 2, 2, "#5cff8a");
-  px(11, 9, 2, 1, "#3b2d72");
-  return tex(c, true);
-}
-
 /** A picture's pixels in gray and dimmed, for an item not won yet. */
 function grayed(img: HTMLImageElement | HTMLCanvasElement) {
   const [c, g] = canvas(img.width, img.height);
@@ -260,7 +237,8 @@ interface Placed {
   /** Where the lock note stands (top center), in the world. */
   top: Vector3;
   label?: HTMLDivElement;
-  float?: boolean;
+  /** A mode floating in front of the window, bobbing about this height. */
+  float?: number;
 }
 
 export class CollectionScene {
@@ -332,8 +310,8 @@ export class CollectionScene {
     return t;
   }
 
-  /** The shelves, top to bottom, and the item floating below them. Rebuilt whenever anything about them changes. */
-  setRows(rows: ShelfRow[], float?: ShelfItem) {
+  /** The shelves, top to bottom, and the modes floating in front of the window. Rebuilt whenever anything about them changes. */
+  setRows(rows: ShelfRow[], floats: ShelfItem[] = []) {
     const v = ++this.version;
     for (const p of this.placed) p.label?.remove();
     this.placed = [];
@@ -414,30 +392,33 @@ export class CollectionScene {
       });
     });
 
-    // Retro mode (and whatever comes to float with it) below the shelves.
-    if (float) {
+    // The window, as tall as the shelves allow, and the modes floating in front of it, top down.
+    const win = { x: x0 - 2.3, y: 0, h: Math.min(4.6, top - FLOOR - 1.9) };
+    win.y = FLOOR + 1.6 + win.h / 2;
+    floats.forEach((item, i) => {
+      const y = win.y + ((floats.length - 1) / 2 - i) * FLOAT_GAP;
       const g = new Group();
-      g.position.set(0, FLOAT_Y, 0.9);
-      const mat = new MeshBasicMaterial({ map: this.own(float.locked ? tex(grayed(gamepad().image as HTMLCanvasElement), true) : gamepad()), transparent: true, toneMapped: false, side: DoubleSide });
-      const m = new Mesh(new PlaneGeometry(1.5, 0.92), mat);
+      g.position.set(win.x, y, 0.9);
+      const mat = new MeshBasicMaterial({ map: this.own(pixelTexture(item.locked ? grayed(tokenCanvas(item.id)) : tokenCanvas(item.id))), transparent: true, toneMapped: false, side: DoubleSide });
+      const m = new Mesh(new PlaneGeometry(1.2, 0.74), mat);
       g.add(m);
-      if (!float.locked) {
+      if (!item.locked) {
         const halo = new Mesh(
-          new PlaneGeometry(2.6, 2.0),
+          new PlaneGeometry(2.2, 1.7),
           new MeshBasicMaterial({ map: this.own(glowMap()), color: 0x8a6bff, transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false, toneMapped: false }),
         );
         halo.position.z = -0.05;
         g.add(halo);
       }
-      const pl = new Mesh(new PlaneGeometry(1.3, 0.215), new MeshBasicMaterial({ map: this.own(plate(float.name, float.on, float.locked, 1.3)), toneMapped: false }));
-      pl.position.y = -0.72;
+      const pl = new Mesh(new PlaneGeometry(1.3, 0.215), new MeshBasicMaterial({ map: this.own(plate(item.name, item.on, item.locked, 1.3)), toneMapped: false }));
+      pl.position.y = -0.55;
       g.add(pl);
       this.room.add(g);
-      this.placed.push({ item: float, group: g, hit: m, top: new Vector3(0, FLOAT_Y + 0.55, 0.9), float: true });
-    }
+      this.placed.push({ item, group: g, hit: m, top: new Vector3(win.x, y + 0.45, 0.9), float: y });
+    });
 
-    this.walls(x0, len, top);
-    this.span = { x0: x0 - 3.6, x1: x0 + len + 0.6, y0: FLOOR + 1.1, y1: top + 0.2 };
+    this.walls(x0, len, top, win);
+    this.span = { x0: x0 - 4, x1: x0 + len + 0.6, y0: FLOOR + 1.1, y1: top + 0.2 };
     for (const p of this.placed)
       if (p.item.locked && p.item.note) {
         const d = document.createElement("div");
@@ -485,7 +466,7 @@ export class CollectionScene {
   }
 
   /** The bedroom round the shelves: papered wall, wainscot, floorboards, a window on the night. */
-  private walls(x0: number, len: number, top: number) {
+  private walls(x0: number, len: number, top: number, win: { x: number; y: number; h: number }) {
     const paper = this.own(wallpaper());
     const W = len + 40;
     paper.repeat.set(W / 1.6, 30 / 1.6);
@@ -511,19 +492,18 @@ export class CollectionScene {
     floor.position.set(x0 + len / 2, FLOOR, 6);
     this.room.add(floor);
     // The window, left of the shelves.
-    const wx = x0 - 2;
-    const wy = Math.min(top - 1.8, 2.2);
-    const pane = new Mesh(new PlaneGeometry(2.0, 3.0), new MeshBasicMaterial({ map: this.own(night()), toneMapped: false }));
+    const { x: wx, y: wy, h: wh } = win;
+    const pane = new Mesh(new PlaneGeometry(WIN_W, wh), new MeshBasicMaterial({ map: this.own(night()), toneMapped: false }));
     pane.position.set(wx, wy, 0.01);
     this.room.add(pane);
     const trim = new MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.6 });
     for (const [w, h, x, yy] of [
-      [2.3, 0.15, 0, 1.55],
-      [2.3, 0.2, 0, -1.55],
-      [0.15, 3.2, -1.07, 0],
-      [0.15, 3.2, 1.07, 0],
-      [2.0, 0.07, 0, 0.2],
-      [0.07, 3.0, 0, 0],
+      [WIN_W + 0.3, 0.15, 0, wh / 2 + 0.05],
+      [WIN_W + 0.3, 0.2, 0, -wh / 2 - 0.05],
+      [0.15, wh + 0.2, -WIN_W / 2 - 0.07, 0],
+      [0.15, wh + 0.2, WIN_W / 2 + 0.07, 0],
+      [WIN_W, 0.07, 0, wh * 0.08],
+      [0.07, wh, 0, 0],
     ]) {
       const b = new Mesh(new BoxGeometry(w, h, 0.1), trim);
       b.position.set(wx + x, wy + yy, 0.05);
@@ -544,7 +524,7 @@ export class CollectionScene {
     this.glow.visible = !!p;
     if (!p) return;
     const box = p.top.y - p.group.position.y;
-    const w = p.float ? 2.6 : p.hit instanceof Mesh && p.hit.geometry instanceof PlaneGeometry ? FIG_W * 1.25 : PIC_W * 1.9;
+    const w = p.float !== undefined ? 2.2 : p.hit instanceof Mesh && p.hit.geometry instanceof PlaneGeometry ? FIG_W * 1.25 : PIC_W * 1.9;
     this.glow.scale.set(w, box * 1.5 + 0.6, 1);
     this.glow.position.set(p.group.position.x, p.group.position.y + box / 2, p.group.position.z - 0.12);
   }
@@ -557,7 +537,7 @@ export class CollectionScene {
     if (start) {
       const half = this.halfWidth(d);
       // A wide screen starts with the window in view; a narrow one at the shelves' signs.
-      this.aim.x = this.span.x0 + half + (this.camera.aspect > 1 ? 0 : 3.2);
+      this.aim.x = this.span.x0 + half + (this.camera.aspect > 1 ? 0 : 3.6);
       this.clamp();
       this.look.copy(this.aim);
     }
@@ -589,14 +569,15 @@ export class CollectionScene {
     this.camera.position.set(this.look.x, this.look.y, this.look.z);
     this.camera.lookAt(this.look.x, this.look.y, 0);
     for (const p of this.placed)
-      if (p.float) {
-        p.group.position.y = FLOAT_Y + Math.sin(this.t * 1.6) * 0.08;
-        p.group.rotation.y = Math.sin(this.t * 0.9) * 0.25;
-        p.top.y = p.group.position.y + 0.55;
+      if (p.float !== undefined) {
+        const i = p.group.position.x + p.float;
+        p.group.position.y = p.float + Math.sin(this.t * 1.6 + i) * 0.08;
+        p.group.rotation.y = Math.sin(this.t * 0.9 + i) * 0.25;
+        p.top.y = p.group.position.y + 0.45;
       }
     if (this.glow.visible) {
       const p = this.placed.find((q) => q.item.id === this.selected);
-      if (p?.float) this.glow.position.y = p.group.position.y;
+      if (p?.float !== undefined) this.glow.position.y = p.group.position.y;
       (this.glow.material as MeshBasicMaterial).opacity = 0.55 + Math.sin(this.t * 3) * 0.15;
     }
     this.renderer.render(this.scene, this.camera);

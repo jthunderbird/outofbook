@@ -1,6 +1,6 @@
 // The Collection: a wall in a bedroom with a shelf for each kind of item (the
 // room is packages/legions/src/collection.ts). Every item that can be won is on
-// it, locked ones grayed with what unlocks them; Retro mode floats below. Tap an
+// it, locked ones grayed with what unlocks them; Retro mode floats by the window. Tap an
 // item for its card: what it is, and leading the tribe, using the court or
 // turning the mode on.
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -64,7 +64,7 @@ export function Collection({ go }: { go: (s: Screen) => void }) {
       scene.current = null;
     };
   }, []);
-  useEffect(() => scene.current?.setRows(rows, retro), [rows, retro]);
+  useEffect(() => scene.current?.setRows(rows, [retro]), [rows, retro]);
   useEffect(() => scene.current?.select(sel), [sel]);
 
   const use = (id: string) => {

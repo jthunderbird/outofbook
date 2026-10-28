@@ -48,6 +48,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { court } from "./courts";
 import { glowMap, type Fig } from "./figures";
 import { Backdrop } from "./pixel/world";
+import { gamepadCanvas, pixelTexture } from "./tokens";
 import type { Tribe } from "./tribe";
 
 export interface TrekStop {
@@ -64,6 +65,10 @@ const RIP_GAP = 32;
 const RIP_ART = import.meta.glob<string>("../rips/*.webp", { eager: true, query: "?url", import: "default" });
 /** The extra way between stages, where a stage's gate stands. */
 const GATE = 3.4;
+/** How far past the last stop the trek's prize waits. */
+const PRIZE = 6;
+/** The track's line: rising and falling and winding a little along x. */
+const curve = (x: number) => new Vector3(x, Math.sin(x * 0.11) * 0.9, Math.sin(x * 0.045) * 2.2);
 const STATE_COLOR: Record<TrekStop["state"], number> = { done: 0xffc94a, next: 0x7fe3ff, open: 0xffe3a0, locked: 0x3a3f58 };
 
 /** A soft round star. */
@@ -177,7 +182,7 @@ export class TrekScene {
   /** The hero's place on the track, in stops (fractions while walking). */
   private at = 0;
   private walkTo = 0;
-  /** Where the camera looks along the track, in stops; eased toward aim. */
+  /** Where the camera looks along the track (x); eased toward aim. */
   private view = 0;
   private aim = 0;
   private selected = -1;
@@ -242,7 +247,19 @@ export class TrekScene {
   private place(i: number) {
     let x = 0;
     for (let j = 1; j <= i; j++) x += STEP + (this.stops[j] && this.stops[j].stage !== this.stops[j - 1].stage ? GATE : 0);
-    return new Vector3(x, Math.sin(x * 0.11) * 0.9, Math.sin(x * 0.045) * 2.2);
+    return curve(x);
+  }
+  /** How far along x stop s (fractional) stands. */
+  private xOf(s: number) {
+    if (!this.points.length) return 0;
+    const i = Math.max(0, Math.min(this.points.length - 1, Math.floor(s)));
+    const j = Math.min(this.points.length - 1, i + 1);
+    return this.points[i].x + (this.points[j].x - this.points[i].x) * Math.max(0, Math.min(1, s - i));
+  }
+  /** The camera's range: the first stop to the prize past the last. */
+  private clampX(x: number) {
+    const end = this.points.length ? this.points[this.points.length - 1].x + PRIZE : 0;
+    return Math.max(0, Math.min(end, x));
   }
   /** A point along the track at a fractional stop. */
   private along(s: number) {
@@ -354,7 +371,32 @@ export class TrekScene {
       gate.add(bar, banner);
       this.track.add(gate);
     });
+    // The trek's prize past the last stop: Retro mode's gamepad hovering over a wide stone in a violet glow.
+    if (n) {
+      const at = curve(this.points[n - 1].x + PRIZE);
+      const prize = new Group();
+      prize.position.copy(at);
+      const dais = new Mesh(new CylinderGeometry(1.1, 0.8, 0.34, 12), new MeshStandardMaterial({ color: 0x9a94a8, roughness: 0.85, metalness: 0.1 }));
+      const under = new Mesh(new ConeGeometry(0.85, 1.6, 8).rotateX(Math.PI), new MeshStandardMaterial({ color: 0x4a3f55, roughness: 1, flatShading: true }));
+      under.position.y = -0.95;
+      const pad = new Mesh(new PlaneGeometry(1.6, 0.98), new MeshBasicMaterial({ map: pixelTexture(gamepadCanvas()), alphaTest: 0.5, side: DoubleSide, toneMapped: false }));
+      pad.position.y = 1.5;
+      const halo = new Sprite(new SpriteMaterial({ map: glowMap(), color: 0x8a6bff, blending: AdditiveBlending, depthWrite: false }));
+      halo.position.y = 1.5;
+      halo.scale.setScalar(3.2);
+      const sign = new Mesh(
+        new PlaneGeometry(1.1, 1.28),
+        new MeshStandardMaterial({ map: bannerMap("Prize", "Retro mode"), side: DoubleSide, alphaTest: 0.5, roughness: 0.9, emissive: 0xffffff, emissiveIntensity: 0.25 }),
+      );
+      (sign.material as MeshStandardMaterial).emissiveMap = (sign.material as MeshStandardMaterial).map;
+      sign.position.set(-1.6, 0.9, -0.6);
+      sign.rotation.y = 0.2;
+      prize.add(dais, under, halo, pad, sign);
+      this.track.add(prize);
+      this.prize = pad;
+    }
   }
+  private prize: Mesh | null = null;
   private banners: Mesh[] = [];
 
   /** The space behind the track, in layers that keep up with the camera at their own pace (k: 1 stays with it, 0 is fixed). */
@@ -468,19 +510,19 @@ export class TrekScene {
     this.scene.add(f.root);
     this.hero = f;
     this.at = this.walkTo = at;
-    this.view = this.aim = at;
+    this.view = this.aim = this.xOf(at);
   }
 
   /** Walks the hero to stop i (and the camera with it). */
   goTo(i: number) {
     this.walkTo = i;
-    this.aim = i;
+    this.aim = this.xOf(i);
   }
 
   /** Points the camera at stop i (a tap on the meter) and rings it. */
   select(i: number) {
     this.selected = i;
-    this.aim = i;
+    this.aim = this.xOf(i);
   }
 
   private step(ms: number) {
@@ -508,16 +550,22 @@ export class TrekScene {
       }
       f.update(ms);
       this.heroLight.position.copy(p).add(new Vector3(0.5, 2.5, 2.5));
-      if (walking) this.aim = this.at;
+      if (walking) this.aim = this.xOf(this.at);
     }
     this.view += (this.aim - this.view) * Math.min(1, dt * 3);
-    const look = this.along(Math.max(0, Math.min(this.points.length - 1, this.view)));
+    // The camera glides along the track's smooth line, not stone to stone.
+    const look = curve(this.view);
     // Wide screens look a little ahead along the track; tall ones keep the hero in the middle, from further back.
     const ahead = this.camera.aspect < 1 ? 0 : 1.2;
     this.camera.position.set(look.x - ahead, look.y + 2.6, look.z + (this.camera.aspect < 1 ? 10 : 8.5));
     this.camera.lookAt(look.x + ahead, look.y + 0.9, look.z);
     for (const l of this.layers) l.g.position.x = this.camera.position.x * l.k;
     for (const a of this.asteroids.children) a.rotation.y += a.userData.spin * dt;
+    if (this.prize) {
+      this.prize.position.y = 1.5 + Math.sin(this.t * 1.6) * 0.12;
+      // Turned toward the camera, which comes at it from the left.
+      this.prize.rotation.y = -0.45 + Math.sin(this.t * 0.9) * 0.3;
+    }
     // The banners near the camera stir: a ripple down the cloth, stronger toward its foot.
     for (const b of this.banners) {
       if (Math.abs(b.parent!.position.x - this.camera.position.x) > 30) continue;
@@ -558,7 +606,7 @@ export class TrekScene {
     if (!this.drag) return;
     const dx = e.clientX - this.drag.x;
     if (Math.abs(dx) > 6) this.drag.moved = true;
-    if (this.drag.moved) this.aim = Math.max(0, Math.min(this.points.length - 1, this.drag.view - dx / 70));
+    if (this.drag.moved) this.aim = this.clampX(this.drag.view - (dx / 70) * STEP);
   };
   private up = (e: PointerEvent) => {
     const tap = this.drag && !this.drag.moved;
@@ -571,7 +619,7 @@ export class TrekScene {
     if (hit?.instanceId !== undefined) this.onPick(hit.instanceId);
   };
   private wheel = (e: WheelEvent) => {
-    this.aim = Math.max(0, Math.min(this.points.length - 1, this.aim + (e.deltaY + e.deltaX) / 120));
+    this.aim = this.clampX(this.aim + ((e.deltaY + e.deltaX) / 120) * STEP);
   };
 
   private resize() {
