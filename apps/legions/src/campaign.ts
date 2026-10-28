@@ -1,7 +1,7 @@
 // The campaign: a ladder of tribes, each fought in battles against ever
 // stronger Maia opponents; beating a tribe's last battle (its boss) unlocks it.
 // The Stormcourt comes first, rated very low: it is the game's introduction.
-import type { Side } from "@outofbook/legions/figures";
+import type { Role, Side } from "@outofbook/legions/figures";
 import type { ItemId } from "./profile";
 
 export interface Battle {
@@ -25,6 +25,12 @@ export interface Chapter {
   battles: Battle[];
   /** What beating the boss unlocks. */
   reward: ItemId[];
+  /**
+   * The piece that leads the chapter's page, ready for battle in front of its
+   * army: its waiting clip and the action it plays now and then (rigged models),
+   * leaping that far toward the player.
+   */
+  hero: { role: Role; idle?: string; action?: string; leap?: number };
 }
 
 export const CHAPTERS: Chapter[] = [
@@ -40,6 +46,7 @@ export const CHAPTERS: Chapter[] = [
       { id: "storm-3", name: "The Storm King", elo: 650, side: "w", boss: true },
     ],
     reward: ["tribe:stormcourt", "court:stormcourt"],
+    hero: { role: "k", idle: "Combat_Stance", action: "Basic_Jump", leap: 0.9 },
   },
   {
     tribe: "thornwood",
@@ -53,6 +60,7 @@ export const CHAPTERS: Chapter[] = [
       { id: "thorn-3", name: "The Elder Oak", elo: 800, side: "b", boss: true },
     ],
     reward: ["tribe:thornwood", "court:thornwood"],
+    hero: { role: "q", idle: "Idle", action: "Charged_Spell_Cast" },
   },
   {
     tribe: "epoch-drifters",
@@ -66,6 +74,7 @@ export const CHAPTERS: Chapter[] = [
       { id: "epoch-3", name: "The Princess", elo: 950, side: "w", boss: true },
     ],
     reward: ["tribe:epoch-drifters", "court:epoch-drifters"],
+    hero: { role: "n", leap: 0.8 },
   },
 ];
 

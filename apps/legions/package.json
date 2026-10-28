@@ -17,7 +17,8 @@
     "chess.js": "1.4.0",
     "lucide-react": "^1.59.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

@@ -248,11 +248,54 @@ export class LegionsScene {
     this.renderer.domElement.remove();
   }
 
-  /** The camera's place: the court's own view if it has one (fixed or just a start), else the usual one. */
+  /**
+   * A menu's still camera (a campaign page's hero shot): fixed where it is put,
+   * whatever the court; null gives the game's camera back.
+   */
+  setShowcase(v: { pos: [number, number, number]; target: [number, number, number]; fov: number } | null) {
+    this.show = v;
+    this.applyView();
+  }
+  private show: { pos: [number, number, number]; target: [number, number, number]; fov: number } | null = null;
+
+  /** A figure off the board (a menu's hero), lit, animated and updated with the rest; removed with removeFigure. */
+  addFigure(f: Fig) {
+    this.scene.add(f.root);
+    this.live.add(f);
+  }
+  removeFigure(f: Fig) {
+    f.root.removeFromParent();
+    this.live.delete(f);
+  }
+
+  /** Anything else for a menu's shot (its own lights): added to and removed from the scene. */
+  addObject(o: Object3D) {
+    this.scene.add(o);
+  }
+
+  /** The camera's place: a menu's showcase, else the court's own view if it has one (fixed or just a start), else the usual one. */
   private applyView() {
+    if (this.show) {
+      this.controls.enabled = false;
+      // The orbit's limits would pull a menu's camera back into the game's range.
+      Object.assign(this.controls, { minDistance: 0.5, maxDistance: 400, minPolarAngle: 0, maxPolarAngle: Math.PI });
+      this.camera.fov = this.show.fov;
+      this.camera.near = 0.1;
+      this.camera.far = 220;
+      this.camera.updateProjectionMatrix();
+      lean.tilt = 0.3;
+      lean.size = 1;
+      this.camera.position.set(...this.show.pos);
+      this.controls.target.set(...this.show.target);
+      this.camera.lookAt(this.controls.target);
+      // A menu's shot shows no file and rank letters.
+      this.labels.visible = false;
+      return;
+    }
     const s = this.orientation === "w" ? 1 : -1;
     const v = this.court?.view;
     this.controls.enabled = !v?.fixed;
+    Object.assign(this.controls, { minPolarAngle: 0.15, maxPolarAngle: 1.25 });
     // A fixed view sits far off, with a narrow lens, beyond the orbit's usual range.
     this.controls.minDistance = v?.fixed ? 1 : 9;
     this.controls.maxDistance = v?.fixed ? 400 : 20;
@@ -334,7 +377,7 @@ export class LegionsScene {
     this.court?.resize?.(this.host.clientWidth || 1, this.host.clientHeight || 1);
     this.applyView();
     // A bare court is drawn over a picture the page supplies: no board, no labels, a clear background.
-    this.labels.visible = !this.court?.bare;
+    this.labels.visible = !this.court?.bare && !this.show;
     if (this.court?.bare)
       // Depth only: the board still hides what goes beneath it (a tunnel, a pit), but the court's picture shows.
       this.board.group.traverse((o) => {
@@ -646,7 +689,12 @@ export class LegionsScene {
     try {
       c = new Chess(fen);
     } catch {
-      return;
+      // A display that is no game (one army alone, for a menu): place what is there.
+      try {
+        c = new Chess(fen, { skipValidation: true });
+      } catch {
+        return;
+      }
     }
     const want = new Map<string, { role: Role; side: Side }>();
     for (const p of c.board().flat()) if (p) want.set(p.square, { role: p.type as Role, side: p.color as Side });

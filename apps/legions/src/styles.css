@@ -721,3 +721,226 @@ input[type="range"] {
   width: 100%;
   accent-color: var(--gold);
 }
+
+/* ---------- Campaign: one chapter a page, its hero shot behind ---------- */
+.campaign-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  transition:
+    opacity 0.45s,
+    filter 0.45s;
+}
+.campaign-stage.shown {
+  opacity: 1;
+}
+.campaign-stage.locked {
+  filter: brightness(0.32) saturate(0.35);
+}
+.campaign-hero {
+  position: absolute;
+  inset: 0;
+}
+/* The shot fades into the night at its top and bottom, under the title and the card. */
+.campaign-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #0b0718 0%, rgb(11 7 24 / 0.55) 14%, transparent 34%), linear-gradient(0deg, rgb(11 7 24 / 0.75) 0%, transparent 22%);
+}
+.campaign-swipe {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  touch-action: pan-y;
+}
+.screen.campaign {
+  pointer-events: none;
+  overflow: hidden;
+}
+.screen.campaign button,
+.screen.campaign select,
+.screen.campaign label {
+  pointer-events: auto;
+}
+.campaign .lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.campaign .lead select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+.campaign .side {
+  position: fixed;
+  top: 42%;
+  z-index: 2;
+}
+.campaign .side.left {
+  left: max(10px, env(safe-area-inset-left));
+}
+.campaign .side.right {
+  right: max(10px, env(safe-area-inset-right));
+}
+.campaign .side:disabled {
+  opacity: 0.25;
+}
+.campaign-lock {
+  position: fixed;
+  top: 32%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  font-size: 18px;
+  color: var(--gold);
+  text-shadow: 0 2px 8px #000;
+}
+.campaign-info {
+  margin-top: auto;
+  align-self: center;
+  width: min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgb(20 12 44 / 0.15), rgb(20 12 44 / 0.82) 35%);
+  text-align: center;
+  z-index: 1;
+}
+.campaign-info .chapter-no {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.campaign-info .tribe-banner img {
+  height: clamp(48px, 10dvh, 110px);
+}
+.campaign-info .story {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 15px;
+}
+.campaign-info .reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--gold);
+}
+.campaign-info .fight {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.campaign-info .fight .btn.gold {
+  width: min(360px, 100%);
+  justify-content: center;
+}
+.campaign-info .pips {
+  display: flex;
+  gap: 10px;
+}
+.campaign-info .pip {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--edge);
+  background: var(--panel);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+.campaign-info .pip.won {
+  color: var(--gold);
+  border-color: var(--gold-deep);
+}
+.campaign-info .pip.next {
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgb(255 211 107 / 0.6);
+}
+.campaign-info .pip.boss {
+  color: var(--bad);
+}
+.campaign-info .pip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.campaign-info .dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.campaign-info .dots button {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: rgb(255 255 255 / 0.3);
+  cursor: pointer;
+}
+.campaign-info .dots button.on {
+  background: var(--gold);
+  width: 26px;
+  border-radius: 5px;
+}
+.campaign .topbar,
+.campaign-info {
+  position: relative;
+  z-index: 2;
+}
+@media (max-aspect-ratio: 4/5) {
+  .campaign .lead > span {
+    display: none;
+  }
+  .campaign .lead select {
+    max-width: 42vw;
+  }
+  .campaign-info .story {
+    font-size: 14px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .campaign .side {
+    top: 30%;
+  }
+}
+/* Wide screens: the chapter's card stands at the left, the hero in the middle of the scene. */
+@media (min-aspect-ratio: 4/3) {
+  .campaign-info {
+    position: fixed;
+    left: max(84px, env(safe-area-inset-left));
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+    width: min(380px, 34vw);
+    background: rgb(20 12 44 / 0.78);
+    border: 1px solid var(--edge);
+  }
+  .campaign-lock {
+    left: 62%;
+  }
+}
