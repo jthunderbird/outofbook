@@ -8,7 +8,7 @@ import { TrekScene, type TrekStop } from "@outofbook/legions/trek";
 import { tribe } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { CHALLENGES, STAGES, challengeOpen, clock, duration, nextChallenge, NEW_TALLY, worldOf, type Trek as TrekState } from "../puzzles";
-import { update, useProfile } from "../profile";
+import { myLook, update, useProfile } from "../profile";
 import { ArrowLeft, Check, Clock, Lock, Play, Puzzle, RotateCcw, Trophy, X } from "lucide-react";
 
 /** Where the hero was last shown standing (this visit). */
@@ -43,7 +43,7 @@ export function Trek({ go }: { go: (s: Screen) => void }) {
     s.setStops(stops);
     s.select(place);
     // Back from a passed challenge: the hero walks on from where it stood.
-    void s.setHero(tribe(p.equipped.tribe), Math.min(heroAt ?? place, place)).then(() => s.goTo(place));
+    void s.setHero(tribe(p.equipped.tribe), Math.min(heroAt ?? place, place), myLook(p)).then(() => s.goTo(place));
     heroAt = place;
     if (import.meta.env.DEV) (window as unknown as { trek?: TrekScene }).trek = s;
     return () => {

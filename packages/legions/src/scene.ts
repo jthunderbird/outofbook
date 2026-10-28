@@ -44,6 +44,8 @@ import { type Fig, type Role, type Side } from "./figures";
 import { stormcourt } from "./stormcourt";
 import type { Stage, Tribe } from "./tribe";
 import { LegionsSound } from "./sound";
+import { dressFigure, type Look } from "./looks";
+import { modeShader, type Mode } from "./modes";
 
 const FILES = "abcdefgh";
 const boardOf = (fen: string) => fen.split(" ")[0];
@@ -225,6 +227,7 @@ export class LegionsScene {
       this.shake -= frame;
       this.camera.position.add(new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12));
     }
+    if (this.modePass) this.modePass.uniforms.time.value += frame / 1000;
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
     this.camera.position.copy(cam);
@@ -429,15 +432,34 @@ export class LegionsScene {
   private glow = false;
   private pixel = false;
 
+  /** A side's look (a finish and a color from the Collection); the figures are rebuilt in it. */
+  setLooks(looks: Partial<Record<Side, Look>>) {
+    if (JSON.stringify(looks) === JSON.stringify(this.looks)) return;
+    this.looks = looks;
+    this.rebuild();
+  }
+  private looks: Partial<Record<Side, Look>> = {};
+
+  /** A way of drawing the whole picture (Noir, Sketch), or null. */
+  setMode(mode: Mode | null) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.post();
+  }
+  private mode: Mode | null = null;
+  private modePass: ShaderPass | null = null;
+
   /** The effects pipeline: bloom for glow, a color cut for the pixel look; none (plain rendering) when neither. */
   private post() {
     this.composer?.dispose();
     this.composer = null;
-    if (!this.glow && !this.pixel) return;
+    this.modePass = null;
+    if (!this.glow && !this.pixel && !this.mode) return;
     const c = (this.composer = new EffectComposer(this.renderer));
     c.addPass(new RenderPass(this.scene, this.camera));
     if (this.glow) c.addPass(new UnrealBloomPass(new Vector2(256, 256), 0.5, 0.35, 1.5));
     c.addPass(new OutputPass());
+    if (this.mode) c.addPass((this.modePass = new ShaderPass(modeShader(this.mode))));
     if (this.pixel)
       c.addPass(
         new ShaderPass({
@@ -497,6 +519,10 @@ export class LegionsScene {
     this.renderer.setSize(w, h, false);
     this.composer?.setPixelRatio(this.renderer.getPixelRatio());
     this.composer?.setSize(w, h);
+    if (this.modePass) {
+      const pr = this.renderer.getPixelRatio();
+      this.modePass.uniforms.texel.value = [1 / (w * pr), 1 / (h * pr)];
+    }
     const f = this.frame?.getBoundingClientRect();
     const host = this.host.getBoundingClientRect();
     if (f && f.width && f.height) {
@@ -727,6 +753,7 @@ export class LegionsScene {
       let f = this.figs.get(sq);
       if (!f) {
         f = this.tribes[w.side].figure(w.role, w.side);
+        dressFigure(f.root, this.looks[w.side], w.side);
         this.figs.set(sq, f);
         this.live.add(f);
         this.scene.add(f.root);

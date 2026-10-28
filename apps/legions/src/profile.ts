@@ -2,16 +2,18 @@
 // charges and campaign results. Saved on the device. Owned items are one list,
 // whatever unlocked them (a level, a campaign win, later a purchase).
 import { useSyncExternalStore } from "react";
+import { MODES, type Mode } from "@outofbook/legions/modes";
 import { NEW_TREK, type Trek } from "./puzzles";
 
-export type ItemKind = "tribe" | "court" | "mode";
-/** "tribe:staunton", "court:night", "mode:retro", ... (a court is a board with its scenery; a mode a way of drawing the game). */
+export type ItemKind = "tribe" | "court" | "mode" | "finish" | "color";
+/** "tribe:staunton", "court:night", "mode:retro", "finish:gold", "color:ruby", ... (a court is a board with its scenery; a mode a way of drawing the game; a finish and a color the look of the player's own pieces). */
 export type ItemId = `${ItemKind}:${string}`;
 
 export interface Profile {
   xp: number;
   owned: ItemId[];
-  equipped: { tribe: string; court: string };
+  /** finish and color: "original" for the tribe as it was made. */
+  equipped: { tribe: string; court: string; finish: string; color: string };
   /** Charges left: show the best move, take a move back, carry on with a failed puzzle challenge (bought in the store). */
   perks: { hint: number; takeback: number; retry: number };
   /** Campaign battles won (ids from campaign.ts). */
@@ -25,6 +27,8 @@ export interface Profile {
   glow: boolean;
   /** Retro mode: every battle drawn at 16-bit resolution and palette, 3D tribes included. Needs mode:retro. */
   retro: boolean;
+  /** Another way of drawing every battle ("noir", "sketch"), or "" for none. Needs mode:<id>. */
+  mode: string;
   /** Levels already rewarded (perk charges are given once per level). */
   rewardedLevel: number;
 }
@@ -33,7 +37,7 @@ const KEY = "legions.profile";
 const FRESH: Profile = {
   xp: 0,
   owned: ["tribe:staunton", "court:staunton", "court:night"],
-  equipped: { tribe: "staunton", court: "staunton" },
+  equipped: { tribe: "staunton", court: "staunton", finish: "original", color: "original" },
   perks: { hint: 3, takeback: 3, retry: 0 },
   won: [],
   trek: NEW_TREK,
@@ -41,6 +45,7 @@ const FRESH: Profile = {
   name: "Player",
   glow: true,
   retro: false,
+  mode: "",
   rewardedLevel: 1,
 };
 
@@ -99,6 +104,17 @@ export function useProfile() {
 export const getProfile = () => profile;
 export const update = (fn: (p: Profile) => Profile) => save(fn(profile));
 export const owns = (p: Profile, id: ItemId) => p.owned.includes(id);
+
+/** The look the player's own pieces wear (only what they own). */
+export function myLook(p: Profile) {
+  const { finish, color } = p.equipped;
+  return {
+    finish: finish !== "original" && owns(p, `finish:${finish}`) ? finish : undefined,
+    color: color !== "original" && owns(p, `color:${color}`) ? color : undefined,
+  };
+}
+/** The way every battle is drawn besides Retro mode, if owned. */
+export const myMode = (p: Profile) => ((MODES as readonly string[]).includes(p.mode) && owns(p, `mode:${p.mode}`) ? (p.mode as Mode) : null);
 
 /** What a game's end brought: XP, a level reached, items unlocked. */
 export interface Reward {

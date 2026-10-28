@@ -1,6 +1,9 @@
 import { useState } from "react";
 import type { Screen } from "../App";
-import { resetProfile } from "../profile";
+import { resetProfile, update } from "../profile";
+import { COURTS } from "@outofbook/legions/courts";
+import { COLORS, FINISHES } from "@outofbook/legions/looks";
+import { TRIBES } from "@outofbook/legions/tribes";
 import { ArrowLeft } from "lucide-react";
 import { GameSettings } from "../components/GameSettings";
 
@@ -27,6 +30,30 @@ export function Settings({ go }: { go: (s: Screen) => void }) {
             Soon
           </button>
         </div>
+        {import.meta.env.DEV && (
+          <div className="toggle">
+            <span>Own everything (dev build only)</span>
+            <button
+              className="btn dark small"
+              onClick={() =>
+                update((q) => ({
+                  ...q,
+                  owned: [
+                    ...Object.keys(TRIBES).map((t) => `tribe:${t}` as const),
+                    ...COURTS.map((c) => `court:${c.id}` as const),
+                    ...FINISHES.map((f) => `finish:${f.id}` as const),
+                    ...COLORS.map((c) => `color:${c.id}` as const),
+                    "mode:retro" as const,
+                    "mode:noir" as const,
+                    "mode:sketch" as const,
+                  ],
+                }))
+              }
+            >
+              Unlock
+            </button>
+          </div>
+        )}
         <div className="toggle" style={{ borderBottom: 0 }}>
           <span>Start over</span>
           <button className="btn red small" onClick={() => setReset(true)}>

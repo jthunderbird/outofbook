@@ -49,6 +49,7 @@ import { court } from "./courts";
 import { glowMap, type Fig } from "./figures";
 import { Backdrop } from "./pixel/world";
 import { gamepadCanvas, pixelTexture } from "./tokens";
+import { dressFigure, type Look } from "./looks";
 import type { Tribe } from "./tribe";
 
 export interface TrekStop {
@@ -501,11 +502,12 @@ export class TrekScene {
   }
 
   /** The hero: the tribe's king, standing on stop at (and walking to later stops). */
-  async setHero(tribe: Tribe, at: number) {
+  async setHero(tribe: Tribe, at: number, look?: Look) {
     await tribe.ready?.();
     if (this.gone) return;
     if (this.hero) this.hero.root.removeFromParent();
     const f = tribe.figure("k", "b");
+    dressFigure(f.root, look, "b");
     f.root.scale.setScalar(0.62);
     this.scene.add(f.root);
     this.hero = f;

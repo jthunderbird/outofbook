@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import type { Side } from "@outofbook/core/types";
 import { LegionsScene } from "./scene";
 import { tribe } from "./tribes";
+import type { Look } from "./looks";
+import type { Mode } from "./modes";
 
 export interface LegionsBoardProps {
   fen: string;
@@ -23,6 +25,10 @@ export interface LegionsBoardProps {
   glow?: boolean;
   /** The pixel look: a fixed oblique camera, low resolution, a 16-bit palette. */
   pixel?: boolean;
+  /** Each side's look (a finish and a color from the Chess Legions collection). */
+  looks?: Partial<Record<Side, Look>>;
+  /** A way of drawing the whole picture: Noir, Sketch. */
+  mode?: Mode | null;
   /** Where to frame the board when the scene is larger than it (fills the screen); the whole scene when not given. */
   frame?: RefObject<HTMLElement | null>;
   /** A suggested move to show, as uci. */
@@ -41,6 +47,8 @@ export default function LegionsBoard({
   court = "night",
   glow = false,
   pixel = false,
+  looks,
+  mode = null,
   hint = null,
   frame,
 }: LegionsBoardProps) {
@@ -69,6 +77,10 @@ export default function LegionsBoard({
   useEffect(() => scene.current?.setCourt(court), [court]);
   useEffect(() => scene.current?.setGlow(glow), [glow]);
   useEffect(() => scene.current?.setPixel(pixel), [pixel]);
+  const lookKey = JSON.stringify(looks ?? {});
+  // Before the position, like the tribes, so the first figures already wear it.
+  useLayoutEffect(() => scene.current?.setLooks(JSON.parse(lookKey)), [lookKey]);
+  useEffect(() => scene.current?.setMode(mode), [mode]);
   useEffect(() => {
     const a = scene.current;
     if (!a) return;

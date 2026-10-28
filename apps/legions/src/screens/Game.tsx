@@ -14,7 +14,7 @@ import { court } from "@outofbook/legions/courts";
 import type { Screen } from "../App";
 import { findBattle } from "../campaign";
 import { bestMove, getMaia, maiaMove, unwatchMaia, type MaiaStatus } from "../opponent";
-import { award, owns, update, useProfile, type ItemId, type Reward } from "../profile";
+import { award, myLook, myMode, owns, update, useProfile, type ItemId, type Reward } from "../profile";
 import { CircleArrowUp, Flag, Lightbulb, LockOpen, Settings as Cog, Undo2, Volume2, VolumeX, X } from "lucide-react";
 import { Captured } from "../components/Captured";
 import { GameSettings } from "../components/GameSettings";
@@ -177,6 +177,8 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
           court={courtId}
           glow={p.glow}
           pixel={p.retro && owns(p, "mode:retro")}
+          looks={{ [me]: myLook(p) }}
+          mode={myMode(p)}
           hint={hint}
         />
       </div>

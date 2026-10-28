@@ -12,7 +12,7 @@ import type { Side } from "@outofbook/legions/figures";
 import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { CHALLENGES, TREK_XP, challengeXp, clock, drawPuzzles, findChallenge, worldOf, type Puzzle, type Tally } from "../puzzles";
-import { award, getProfile, owns, update, useProfile, type Reward } from "../profile";
+import { award, getProfile, myLook, myMode, owns, update, useProfile, type Reward } from "../profile";
 import { Check, Clock, LockOpen, RotateCcw, Trophy, Volume2, VolumeX, X } from "lucide-react";
 
 type State = "loading" | "opening" | "play" | "reply" | "solved" | "failed" | "passed" | "error";
@@ -225,6 +225,8 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
           court={world.court}
           glow={p.glow}
           pixel={p.retro && owns(p, "mode:retro")}
+          looks={{ [mine]: myLook(p) }}
+          mode={myMode(p)}
         />
       </div>
       <div className="board" ref={frame} />

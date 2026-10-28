@@ -76,7 +76,7 @@ export function QuickPlay({ go }: { go: (s: Screen) => void }) {
           <span>
             Retro mode
             <div className="muted" style={{ fontSize: 13, maxWidth: 360 }}>
-              {owns(p, "mode:retro") ? "Every battle drawn as a 16-bit game would, 3D tribes included." : "Beat the puzzle challenges to unlock."}
+              {owns(p, "mode:retro") ? "Every battle drawn as a 16-bit game would, 3D tribes included." : "Finish the puzzle trek to unlock."}
             </div>
           </span>
           {owns(p, "mode:retro") ? (

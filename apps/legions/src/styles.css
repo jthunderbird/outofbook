@@ -1230,3 +1230,6 @@ input[type="range"] {
   border-radius: 999px;
   background: rgb(14 10 36 / 0.7);
 }
+.shelf-lock.tight span {
+  display: none;
+}

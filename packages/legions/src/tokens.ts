@@ -29,9 +29,79 @@ export function gamepadCanvas() {
   return c;
 }
 
+/** Pixels from rows of characters: each character a color from the key ("." clear). */
+function sprite(rows: string[], key: Record<string, string>) {
+  const c = document.createElement("canvas");
+  c.width = rows[0].length;
+  c.height = rows.length;
+  const g = c.getContext("2d")!;
+  rows.forEach((r, y) =>
+    [...r].forEach((ch, x) => {
+      if (!key[ch]) return;
+      g.fillStyle = key[ch];
+      g.fillRect(x, y, 1, 1);
+    }),
+  );
+  return c;
+}
+
+/** Noir's token: a detective's fedora, black and white. */
+function fedoraCanvas() {
+  return sprite(
+    [
+      "..........................",
+      "..........................",
+      "..........kkkkkk..........",
+      "........kkwwkkwwkk........",
+      ".......kwwwwkkwwwwk.......",
+      ".......kwwwwwwwwwwk.......",
+      ".......kwwwwwwwwwwk.......",
+      ".......kggggggggggk.......",
+      ".......kggggggggggk.......",
+      "...kkkkkwwwwwwwwwwkkkkk...",
+      "..kwwwwwwwwwwwwwwwwwwwwk..",
+      "..kwwwwwwwwwwwwwwwwwwwwk..",
+      "...kkwwwwwwwwwwwwwwwwkk...",
+      ".....kkkkkkkkkkkkkkkk.....",
+      "..........................",
+      "..........................",
+    ],
+    { k: "#0a0a0c", w: "#d8d6d0", g: "#4a4a50" },
+  );
+}
+
+/** Sketch's token: a pencil drawing a line. */
+function pencilCanvas() {
+  return sprite(
+    [
+      "..........................",
+      "...................kk.....",
+      "..................kppk....",
+      ".................kyyypk...",
+      "................kyyyyk....",
+      "...............kyyyyk.....",
+      "..............kyyyyk......",
+      ".............kyyyyk.......",
+      "............kyyyyk........",
+      "...........kyyyyk.........",
+      "..........ksssyk..........",
+      "..........kssk............",
+      "..........kgk.............",
+      ".........kk...............",
+      "..lllllll.................",
+      "..........................",
+    ],
+    { k: "#1b1530", y: "#ffd23a", p: "#ff7aa8", s: "#f2d6a2", g: "#3a3a44", l: "#6a6a7a" },
+  );
+}
+
 /** A mode's token by its item id ("mode:retro"). */
 export function tokenCanvas(id: string) {
   switch (id) {
+    case "mode:noir":
+      return fedoraCanvas();
+    case "mode:sketch":
+      return pencilCanvas();
     default:
       return gamepadCanvas();
   }

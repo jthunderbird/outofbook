@@ -10,17 +10,21 @@ import { tribe } from "@outofbook/legions/tribes";
 const q = new URLSearchParams(location.search);
 const tribeId = q.get("tribe");
 const courtId = q.get("court");
+// A finish or a color: a few of the Staunton set's pieces wearing it, both sides.
+const lookId = q.get("finish") ?? q.get("color");
+const look = !lookId ? null : lookId === "original" ? {} : q.get("finish") ? { finish: lookId } : { color: lookId };
 const s = new LegionsScene(document.getElementById("stage")!);
 // The scene's insides, for a cutout: no board, no labels, no sky.
 const inner = s as unknown as { scene: Scene; board: { group: Object3D }; labels: Object3D };
 
-if (tribeId) {
-  const t = tribe(tribeId);
+if (tribeId || look) {
+  const t = tribe(tribeId ?? "staunton");
   await t.ready?.();
   s.setTribes({ w: t, b: t });
   // The key light over the viewer's shoulder, not behind the tribe.
   s.setOrientation("b");
-  s.setPosition("8/8/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
+  if (look) s.setLooks({ w: look, b: look });
+  s.setPosition(look ? "8/8/8/8/8/8/8/2NQKbqk w - - 0 1" : "8/8/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
   // Seen from the far side, so the tribe faces the viewer, pawns in front of the taller pieces.
   s.setShowcase({ pos: [0, 3.4, -5.2], target: [0, 0.75, 4], fov: 30 });
   inner.scene.background = null;

@@ -74,7 +74,7 @@ const SHELF_D = 0.55;
 const FLOOR = -2.9;
 /** The window left of the shelves, and the room between the modes floating in front of it. */
 const WIN_W = 2.6;
-const FLOAT_GAP = 1.55;
+const FLOAT_GAP = 1.95;
 const LOCK_SVG =
   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
@@ -393,7 +393,7 @@ export class CollectionScene {
     });
 
     // The window, as tall as the shelves allow, and the modes floating in front of it, top down.
-    const win = { x: x0 - 2.3, y: 0, h: Math.min(4.6, top - FLOOR - 1.9) };
+    const win = { x: x0 - 2.3, y: 0, h: Math.min(6.4, top - FLOOR - 1.9) };
     win.y = FLOOR + 1.6 + win.h / 2;
     floats.forEach((item, i) => {
       const y = win.y + ((floats.length - 1) / 2 - i) * FLOAT_GAP;
@@ -585,6 +585,9 @@ export class CollectionScene {
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
     const v = new Vector3();
+    // Seen from far, the notes would run into each other: only the lock shows until the view comes closer.
+    const perUnit = h / (2 * Math.tan((this.camera.fov * Math.PI) / 360) * this.look.z);
+    const tight = perUnit * PIC_SLOT < 125;
     for (const p of this.placed) {
       if (!p.label) continue;
       v.copy(p.top).project(this.camera);
@@ -592,7 +595,10 @@ export class CollectionScene {
       const y = (-v.y * 0.5 + 0.5) * h;
       const show = v.z < 1 && x > -80 && x < w + 80 && y > 0 && y < h;
       p.label.style.display = show ? "" : "none";
-      if (show) p.label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+      if (show) {
+        p.label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+        p.label.classList.toggle("tight", tight);
+      }
     }
   }
 

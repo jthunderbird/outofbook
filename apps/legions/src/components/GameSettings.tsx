@@ -1,5 +1,5 @@
 // The settings a player may change mid-game (and on the Settings screen):
-// their name, sound, glow and (once won) Retro mode.
+// their name, sound, glow and (once won) Retro mode, Noir and Sketch.
 import { Lock } from "lucide-react";
 import { owns, update, useProfile } from "../profile";
 
@@ -44,6 +44,24 @@ export function GameSettings() {
           <Lock size={18} aria-label="Locked" />
         )}
       </div>
+      {(
+        [
+          ["noir", "Noir", "A black-and-white film, grain and all."],
+          ["sketch", "Sketch", "Every battle drawn in pencil on paper."],
+        ] as const
+      )
+        .filter(([id]) => owns(p, `mode:${id}`))
+        .map(([id, name, about]) => (
+          <div className="toggle" key={id}>
+            <span>
+              {name}
+              <div className="muted" style={{ fontSize: 13, maxWidth: 360 }}>
+                {about}
+              </div>
+            </span>
+            <button className={`switch${p.mode === id ? " on" : ""}`} aria-label={name} aria-pressed={p.mode === id} onClick={() => update((q) => ({ ...q, mode: q.mode === id ? "" : id }))} />
+          </div>
+        ))}
     </>
   );
 }
