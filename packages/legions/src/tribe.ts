@@ -40,6 +40,8 @@ export interface Tribe {
   name: string;
   /** A figure for a piece of this tribe, in its side's colors. */
   figure(role: Role, side: Side): Fig;
+  /** Loads what its figures need (models); until then figure() may give stand-ins. */
+  ready?(): Promise<void>;
   /** Acts out a move (and its kill) by a figure of this tribe. */
   play(stage: Stage, move: TribeMove): Promise<void>;
 }

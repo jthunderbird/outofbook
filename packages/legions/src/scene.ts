@@ -37,7 +37,6 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { Clock, FIRE_TIME, Particles, SPEED } from "./fx";
 import { court, courtBackground, type CourtSet } from "./courts";
-import { modelsReady } from "./models";
 import { buildBoard, squareAt, type Board } from "./board";
 import { type Fig, type Role, type Side } from "./figures";
 import { stormcourt } from "./stormcourt";
@@ -181,7 +180,7 @@ export class LegionsScene {
     };
     this.raf = requestAnimationFrame(frame);
     // Modelled figures replace code-built ones as soon as their models have loaded.
-    void modelsReady.then(() => !this.disposed && this.rebuild());
+    this.loadTribes();
   }
 
   /** Dev (recording): time stands still and moves only by step(). */
@@ -249,7 +248,14 @@ export class LegionsScene {
   setTribes(t: Record<Side, Tribe>) {
     if (t.w === this.tribes.w && t.b === this.tribes.b) return;
     this.tribes = t;
+    this.loadTribes();
     this.rebuild();
+  }
+
+  /** Loads the tribes' models; their figures are built again once they have. */
+  private loadTribes() {
+    const t = this.tribes;
+    void Promise.all([t.w.ready?.(), t.b.ready?.()]).then(() => !this.disposed && t === this.tribes && this.rebuild());
   }
 
   /** Builds every figure on the board again (new tribes, or models that have loaded). */

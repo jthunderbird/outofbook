@@ -1,9 +1,9 @@
 // Modelled figures (glTF made with Meshy AI, packed by scripts/pack-model.mjs):
-// loaded once, cloned per piece. Rigged ones get their own animation mixer and
+// loaded once per tribe, when a tribe first takes the board, and cloned per piece. Rigged ones get their own animation mixer and
 // idle in place. One model serves both sides: light pieces are recolored in the
-// shader (dark cloth to ivory, gold kept). Each stands centered on its square.
-// Until a model has loaded, its tribe draws the code-built figure instead;
-// modelsReady tells the scene when to rebuild with the models.
+// shader (dark cloth to ivory, or bark to birch; gold kept). Each stands centered
+// on its square. Until a model has loaded, its tribe draws a code-built figure
+// instead; loadModels tells the scene when to rebuild with the models.
 import { AnimationMixer, Box3, Quaternion, Vector3, type AnimationClip, type Material, type Mesh, type MeshStandardMaterial, type Object3D, type SkinnedMesh } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
@@ -57,14 +57,25 @@ async function load(name: string) {
   loaded.set(name, { gltf, clips: new Map(gltf.animations.map((c) => [c.name, /idle/i.test(c.name) ? calm(inPlace(c)) : inPlace(c)])), height: box.getSize(new Vector3()).y });
 }
 
-/** Every model, loaded; resolves even if one fails (its piece stays code-built). */
-export const modelsReady: Promise<void> = Promise.all(Object.keys(URLS).map((u) => load(u.replace(/^.*\/(.*)\.glb$/, "$1")).catch((e) => console.error("model", u, e)))).then(() => {});
+const loading = new Map<string, Promise<void>>();
+/** Every model whose name starts with prefix (a tribe's), loaded; resolves even if one fails (its piece stays code-built). */
+export function loadModels(prefix: string): Promise<void> {
+  let p = loading.get(prefix);
+  if (!p) {
+    const names = Object.keys(URLS)
+      .map((u) => u.replace(/^.*\/(.*)\.glb$/, "$1"))
+      .filter((n) => n.startsWith(prefix));
+    p = Promise.all(names.map((n) => load(n).catch((e) => console.error("model", n, e)))).then(() => {});
+    loading.set(prefix, p);
+  }
+  return p;
+}
 
 /**
  * Light side: dark cloth and metal become ivory and silver, keeping their shading;
  * warm saturated colors (gold trim, fire) stay as they are.
  */
-function lighten(m: Material) {
+function lighten(m: Material, mode: Light) {
   const s = m as MeshStandardMaterial;
   if (!s.isMeshStandardMaterial) return;
   s.onBeforeCompile = (sh) => {
@@ -76,20 +87,35 @@ function lighten(m: Material) {
         float l = dot(c, vec3(0.299, 0.587, 0.114));
         float mx = max(c.r, max(c.g, c.b));
         float sat = mx > 0.0 ? (mx - min(c.r, min(c.g, c.b))) / mx : 0.0;
-        float warm = smoothstep(0.3, 0.55, sat) * step(c.b, c.g) * step(c.g, c.r * 1.05);
+        ${
+          mode === "birch"
+            ? `// Bark to pale birch, leaves and moss to spring green; gold and blossoms kept.
+        // Only bright saturated warm colors (gold, blossoms) are kept; bark is darker and turns.
+        float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
+        float green = smoothstep(0.15, 0.3, sat) * step(c.r * 1.05, c.g) * step(c.b, c.g);
+        vec3 birch = vec3(0.92, 0.87, 0.74) * (0.45 + 0.9 * sqrt(l));
+        vec3 spring = vec3(0.55, 0.85, 0.35) * (0.5 + 1.1 * sqrt(l));
+        diffuseColor.rgb = mix(mix(birch, spring, green), c, keep);`
+            : `float warm = smoothstep(0.3, 0.55, sat) * step(c.b, c.g) * step(c.g, c.r * 1.05);
         vec3 ivory = vec3(0.93, 0.89, 0.8) * (0.42 + 0.95 * sqrt(l));
-        diffuseColor.rgb = mix(ivory, c, warm);
+        diffuseColor.rgb = mix(ivory, c, warm);`
+        }
       }`,
     );
   };
-  s.customProgramCacheKey = () => "legions-light";
+  s.customProgramCacheKey = () => `legions-light-${mode}`;
 }
+
+/** How a model is lightened for the light side. */
+export type Light = "ivory" | "birch";
 
 export interface ModelOptions {
   /** Turns a model that does not face +z. */
   turn?: number;
   /** The idle clip, if not "Idle". */
   idle?: string;
+  /** The light side's recolor (ivory by default). */
+  light?: Light;
 }
 
 /** A figure from a loaded model, height tall, centered and idling; null until the model has loaded. */
@@ -118,7 +144,7 @@ export function modelFig(name: string, role: Role, side: Side, height: number, o
   });
   f.body.add(model);
   f.mats = ownMaterials(f.body);
-  if (side === "w") f.mats.forEach(lighten);
+  if (side === "w") f.mats.forEach((m) => lighten(m, o.light ?? "ivory"));
   if (m.clips.size) {
     const idle = o.idle && m.clips.has(o.idle) ? o.idle : m.clips.has("Idle") ? "Idle" : [...m.clips.keys()][0];
     f.anim = { mixer: new AnimationMixer(model), clips: m.clips, idle, hand: model.getObjectByName("RightHand") ?? undefined };

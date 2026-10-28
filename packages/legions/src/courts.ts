@@ -32,6 +32,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BACKGROUNDS, backgroundTexture } from "./backgrounds";
 import type { Board } from "./board";
 import { glowMap } from "./figures";
+import { leafGeo, leafMaterials } from "./thornwood";
 
 export interface Court {
   id: string;
@@ -70,19 +71,27 @@ function texture(url: string, color = true) {
   return t;
 }
 
-const pillar = { glb: null as Promise<Group> | null };
+const props = new Map<string, Promise<Group>>();
 
-// ---------- The Stormcourt's home: Storm Keep ----------
+// ---------- What every dressed court is made of ----------
 
-/** The sea of storm clouds the keep stands above: drifting noise, lit from inside by lightning. */
-function cloudSea() {
+/** A sea of drifting noise far below the board (cloud or mist), lit where a flash lands; colors are linear RGB. */
+type RGB = [number, number, number];
+function sea(dark: RGB, light: RGB, glow: RGB, y: number) {
   const mat = new ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    uniforms: { time: { value: 0 }, flash: { value: 0 }, flashAt: { value: new Vector3() } },
+    uniforms: {
+      time: { value: 0 },
+      flash: { value: 0 },
+      flashAt: { value: new Vector3() },
+      dark: { value: new Color(...dark) },
+      light: { value: new Color(...light) },
+      glow: { value: new Color(...glow) },
+    },
     vertexShader: `varying vec3 vPos; void main() { vPos = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vPos, 1.0); }`,
     fragmentShader: `
-      uniform float time; uniform float flash; uniform vec3 flashAt; varying vec3 vPos;
+      uniform float time; uniform float flash; uniform vec3 flashAt; uniform vec3 dark; uniform vec3 light; uniform vec3 glow; varying vec3 vPos;
       float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
@@ -90,18 +99,140 @@ function cloudSea() {
       void main() {
         vec2 p = vPos.xz * 0.06;
         float c = fbm(p + vec2(time * 0.012, time * 0.006) + fbm(p * 1.7 - time * 0.01));
-        vec3 col = mix(vec3(0.03, 0.035, 0.06), vec3(0.2, 0.2, 0.3), smoothstep(0.35, 0.8, c));
+        vec3 col = mix(dark, light, smoothstep(0.35, 0.8, c));
         float d = length(vPos.xz - flashAt.xz);
-        col += vec3(0.55, 0.45, 1.0) * flash * smoothstep(18.0, 0.0, d) * (0.4 + c);
+        col += glow * flash * smoothstep(18.0, 0.0, d) * (0.4 + c);
         float edge = smoothstep(46.0, 30.0, length(vPos.xz));
         gl_FragColor = vec4(col, edge);
       }`,
   });
   const m = new Mesh(new CircleGeometry(48, 64).rotateX(-Math.PI / 2), mat);
-  m.position.y = -7;
+  m.position.y = y;
   return m;
 }
 
+/** The painted sky round about: a wide painting mirrored round a cylinder. */
+function skyDome(url: string, tint: number) {
+  const mat = new MeshBasicMaterial({ side: BackSide, fog: false, color: tint });
+  void texture(url).then((t) => {
+    t.wrapS = MirroredRepeatWrapping;
+    t.repeat.set(4, 1);
+    mat.map = t;
+    mat.needsUpdate = true;
+  });
+  const dome = new Mesh(new CylinderGeometry(50, 50, 44, 64, 1, true), mat);
+  dome.position.y = 6;
+  return { dome, mat };
+}
+
+/**
+ * The squares in a court's stone: each a different part of its texture, so no
+ * two look alike; glow maps make their veins shine, through shader if given.
+ */
+function dressSquares(
+  group: Group,
+  board: Board,
+  o: {
+    dark: string;
+    light: string;
+    darkGlow?: string;
+    lightGlow?: string;
+    darkVein: number;
+    lightVein: number;
+    darkVeinI: number;
+    lightVeinI: number;
+    lightTint?: number;
+    rough: [number, number];
+    shader?: (m: MeshStandardMaterial) => void;
+  },
+) {
+  void Promise.all([texture(o.dark), texture(o.light), o.darkGlow ? texture(o.darkGlow, false) : null, o.lightGlow ? texture(o.lightGlow, false) : null]).then(([dark, light, darkGlow, lightGlow]) => {
+    if (!group.parent) return;
+    for (const t of [dark, light, darkGlow, lightGlow]) if (t) t.wrapS = t.wrapT = RepeatWrapping;
+    for (const sq of board.squares.values()) {
+      const isLight = sq.userData.light as boolean;
+      const ox = Math.random() * 0.62;
+      const oy = Math.random() * 0.62;
+      const turn = Math.floor(Math.random() * 4) * (Math.PI / 2);
+      const cut = (t: Texture) => {
+        const c = t.clone();
+        c.repeat.set(0.38, 0.38);
+        c.offset.set(ox, oy);
+        c.center.set(0.5, 0.5);
+        c.rotation = turn;
+        return c;
+      };
+      const m = new MeshStandardMaterial({ map: cut(isLight ? light : dark), roughness: o.rough[isLight ? 0 : 1], metalness: 0.05 });
+      if (isLight && o.lightTint !== undefined) m.color.setHex(o.lightTint);
+      const glow = isLight ? lightGlow : darkGlow;
+      if (glow) {
+        m.emissive = new Color(isLight ? o.lightVein : o.darkVein);
+        m.emissiveMap = cut(glow);
+        m.emissiveIntensity = isLight ? o.lightVeinI : o.darkVeinI;
+        o.shader?.(m);
+      }
+      (sq.material as MeshStandardMaterial).dispose();
+      sq.material = m;
+    }
+  });
+}
+
+/** The plinth's walls: a carved frieze on the long faces, a stone top. */
+function dressWalls(group: Group, board: Board, frieze: string, top: string, topColor: number) {
+  void Promise.all([texture(frieze), texture(top)]).then(([fr, tp]) => {
+    if (!group.parent) return;
+    const topMat = new MeshStandardMaterial({ map: tp, color: topColor, roughness: 0.6 });
+    for (const w of board.walls) {
+      const f = fr.clone();
+      f.wrapS = MirroredRepeatWrapping;
+      f.repeat.set(3, 1);
+      const side = new MeshStandardMaterial({ map: f, roughness: 0.6, metalness: 0.1 });
+      // Box faces: +x, -x, +y, -y, +z, -z; the long faces carry the frieze.
+      const alongX = (w.geometry as unknown as { parameters: { width: number } }).parameters.width > 1;
+      (w.material as MeshStandardMaterial).dispose();
+      w.material = alongX ? [topMat, topMat, topMat, topMat, side, side] : [side, side, topMat, topMat, topMat, topMat];
+    }
+  });
+}
+
+/** A prop model at each of the plinth's four corners, height H, facing the board; a glow at height glowAt if a color is given. */
+function corners(group: Group, url: string, H: number, glow?: { color: number; at: number; size: number }) {
+  const glows: Sprite[] = [];
+  let p = props.get(url);
+  if (!p) {
+    p = new GLTFLoader().loadAsync(url).then((g) => g.scene as unknown as Group);
+    props.set(url, p);
+  }
+  void p.then((src) => {
+    if (!group.parent) return;
+    for (const x of [-1, 1])
+      for (const z of [-1, 1]) {
+        const o = src.clone();
+        o.traverse((c) => {
+          c.castShadow = true;
+          c.receiveShadow = true;
+        });
+        o.rotation.y = Math.atan2(-x, -z);
+        o.updateMatrixWorld(true);
+        const box = new Box3().setFromObject(o);
+        const c0 = box.getCenter(new Vector3());
+        o.scale.setScalar(H / (box.max.y - box.min.y));
+        // Centered on the plinth's corner, its foot on the plinth.
+        const k = o.scale.x;
+        o.position.set(x * 4.35 - c0.x * k, -box.min.y * k, z * 4.35 - c0.z * k);
+        group.add(o);
+        if (!glow) continue;
+        const g = new Sprite(new SpriteMaterial({ map: glowMap(), color: new Color(glow.color).multiplyScalar(2.5), blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
+        g.scale.setScalar(glow.size);
+        g.position.set(x * 4.35, H * glow.at, z * 4.35);
+        group.add(g);
+        glows.push(g);
+      }
+  });
+  return glows;
+}
+
+// ---------- The Stormcourt's home: Storm Keep ----------
 /** A jagged bolt from the sky down into the clouds, at a point on a wide ring round the board. */
 function bolt(color: Color) {
   const a = Math.random() * Math.PI * 2;
@@ -201,103 +332,31 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
   const vu: VeinUniforms = { veinTime: { value: 0 }, surge: { value: new Vector3(0, 0, -1) }, veinFlash: { value: 0 } };
-  const crystals: Sprite[] = [];
   const BOLT = new Color(0xb8a8ff);
 
-  // The squares: storm slate with lightning veins, and veined marble.
-  void Promise.all([
-    texture(art("stormcourt", "slate.webp")),
-    texture(art("stormcourt", "marble.webp")),
-    texture(art("stormcourt", "slate-veins.webp"), false),
-    texture(art("stormcourt", "marble-veins.webp"), false),
-  ]).then(([slate, marble, glow, marbleGlow]) => {
-    if (!group.parent) return;
-    for (const t of [slate, marble, glow, marbleGlow]) t.wrapS = t.wrapT = RepeatWrapping;
-    for (const sq of board.squares.values()) {
-      const light = sq.userData.light as boolean;
-      // Each square a different part of the stone, so no two look alike.
-      const ox = Math.random() * 0.62;
-      const oy = Math.random() * 0.62;
-      const turn = Math.floor(Math.random() * 4) * (Math.PI / 2);
-      const cut = (t: Texture) => {
-        const c = t.clone();
-        c.repeat.set(0.38, 0.38);
-        c.offset.set(ox, oy);
-        c.center.set(0.5, 0.5);
-        c.rotation = turn;
-        return c;
-      };
-      const m = new MeshStandardMaterial({ map: cut(light ? marble : slate), roughness: light ? 0.22 : 0.3, metalness: 0.05 });
-      // Electric blue in the slate, a paler silver-blue in the marble.
-      m.emissive = new Color(light ? 0x3f86ff : 0x4f8cff);
-      // A touch off white, so the marble's blue veins can show.
-      if (light) m.color.setHex(0xd4d9e4);
-      m.emissiveMap = cut(light ? marbleGlow : glow);
-      m.emissiveIntensity = light ? 1.2 : 1;
-      veinShader(m, vu);
-      (sq.material as MeshStandardMaterial).dispose();
-      sq.material = m;
-    }
+  // The squares: storm slate with lightning veins, and veined marble (a touch off white, so its blue veins show).
+  dressSquares(group, board, {
+    dark: art("stormcourt", "slate.webp"),
+    light: art("stormcourt", "marble.webp"),
+    darkGlow: art("stormcourt", "slate-veins.webp"),
+    lightGlow: art("stormcourt", "marble-veins.webp"),
+    darkVein: 0x4f8cff,
+    lightVein: 0x3f86ff,
+    darkVeinI: 1,
+    lightVeinI: 1.2,
+    lightTint: 0xd4d9e4,
+    rough: [0.22, 0.3],
+    shader: (m) => veinShader(m, vu),
   });
-
   // The walls: a carved basalt frieze of storm runes inlaid with gold.
-  void Promise.all([texture(art("stormcourt", "frieze.webp")), texture(art("stormcourt", "slate.webp"))]).then(([frieze, slate]) => {
-    if (!group.parent) return;
-    const top = new MeshStandardMaterial({ map: slate, color: 0x8890a0, roughness: 0.45 });
-    for (const w of board.walls) {
-      const f = frieze.clone();
-      f.wrapS = MirroredRepeatWrapping;
-      f.repeat.set(3, 1);
-      const side = new MeshStandardMaterial({ map: f, roughness: 0.55, metalness: 0.15 });
-      // Box faces: +x, -x, +y, -y, +z, -z; the long faces carry the frieze.
-      const alongX = (w.geometry as unknown as { parameters: { width: number } }).parameters.width > 1;
-      (w.material as MeshStandardMaterial).dispose();
-      w.material = alongX ? [top, top, top, top, side, side] : [side, side, top, top, top, top];
-    }
-  });
-
+  dressWalls(group, board, art("stormcourt", "frieze.webp"), art("stormcourt", "slate.webp"), 0x8890a0);
   // Storm pillars at the four corners, a storm crystal on each.
-  pillar.glb ??= new GLTFLoader().loadAsync(art("stormcourt", "pillar.glb")).then((g) => g.scene as unknown as Group);
-  void pillar.glb.then((src) => {
-    if (!group.parent) return;
-    for (const x of [-1, 1])
-      for (const z of [-1, 1]) {
-        const p = src.clone();
-        p.traverse((o) => {
-          o.castShadow = true;
-          o.receiveShadow = true;
-        });
-        const H = 2.1;
-        // Its face to the board.
-        p.rotation.y = Math.atan2(-x, -z);
-        p.updateMatrixWorld(true);
-        const box = new Box3().setFromObject(p);
-        const c0 = box.getCenter(new Vector3());
-        p.scale.setScalar(H / (box.max.y - box.min.y));
-        // Centered on the plinth's corner, its foot on the plinth.
-        const k = p.scale.x;
-        p.position.set(x * 4.35 - c0.x * k, -box.min.y * k, z * 4.35 - c0.z * k);
-        group.add(p);
-        const c = new Sprite(new SpriteMaterial({ map: glowMap(), color: new Color(0xa070ff).multiplyScalar(2.5), blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
-        c.scale.setScalar(0.9);
-        c.position.set(x * 4.35, H * 0.86, z * 4.35);
-        group.add(c);
-        crystals.push(c);
-      }
-  });
+  const crystals = corners(group, art("stormcourt", "pillar.glb"), 2.1, { color: 0xa070ff, at: 0.86, size: 0.9 });
 
   // The sky round about, and the clouds below.
-  const sky = new MeshBasicMaterial({ side: BackSide, fog: false, color: 0x9098a8 });
-  void texture(art("stormcourt", "sky.webp")).then((t) => {
-    t.wrapS = MirroredRepeatWrapping;
-    t.repeat.set(4, 1);
-    sky.map = t;
-    sky.needsUpdate = true;
-  });
-  const dome = new Mesh(new CylinderGeometry(50, 50, 44, 64, 1, true), sky);
-  dome.position.y = 6;
-  const sea = cloudSea();
-  group.add(dome, sea);
+  const { dome, mat: sky } = skyDome(art("stormcourt", "sky.webp"), 0x9098a8);
+  const clouds = sea([0.03, 0.035, 0.06], [0.2, 0.2, 0.3], [0.55, 0.45, 1.0], -7);
+  group.add(dome, clouds);
   const strikeLight = new DirectionalLight(0xc8b8ff, 0);
   strikeLight.position.set(-6, 10, -4);
   group.add(strikeLight);
@@ -316,7 +375,7 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
     group.add(m);
     bolts.push({ mesh: m, life: 140 + Math.random() * 120 });
   };
-  const seaU = (sea.material as ShaderMaterial).uniforms;
+  const seaU = (clouds.material as ShaderMaterial).uniforms;
   return {
     update(ms) {
       t += ms;
@@ -377,9 +436,127 @@ function stormKeep(scene: Scene, board: Board): CourtSet {
   };
 }
 
+// ---------- The Thornwood's home: Heartwood Grove ----------
+
+/** The moss's root veins breathe a soft green, a slow wave of light passing through now and then. */
+function rootVeins(m: MeshStandardMaterial, u: { veinTime: { value: number }; [k: string]: { value: unknown } }) {
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWorld;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vWorld;\nuniform float veinTime;").replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>
+        {
+          float w = pow(0.5 + 0.5 * sin(dot(vWorld.xz, vec2(0.6, 0.8)) * 0.7 - veinTime * 0.6), 5.0);
+          totalEmissiveRadiance *= 0.55 + 0.25 * sin(veinTime * 0.9) + 1.1 * w;
+        }`,
+    );
+  };
+  m.customProgramCacheKey = () => "grove-veins";
+}
+
+function heartwoodGrove(scene: Scene, board: Board): CourtSet {
+  const group = new Group();
+  scene.add(group);
+  const vu = { veinTime: { value: 0 } };
+
+  // Moss-grown stone with glowing root veins, and pale birch.
+  dressSquares(group, board, {
+    dark: art("thornwood", "moss.webp"),
+    light: art("thornwood", "birch.webp"),
+    darkGlow: art("thornwood", "moss-veins.webp"),
+    darkVein: 0x7dff8a,
+    lightVein: 0,
+    darkVeinI: 1,
+    lightVeinI: 0,
+    // A warmer, darker birch than the raw wood, so it does not glare.
+    lightTint: 0xd8cbb0,
+    rough: [0.75, 0.85],
+    shader: (m) => rootVeins(m, vu),
+  });
+  // The walls: a carved band of roots, oak leaves and acorns.
+  dressWalls(group, board, art("thornwood", "frieze.webp"), art("thornwood", "moss.webp"), 0x9aa890);
+  // Standing stones at the corners, their runes glowing.
+  const runes = corners(group, art("thornwood", "stone.glb"), 1.7, { color: 0x60ff90, at: 0.55, size: 0.55 });
+
+  // The forest round about, mist below.
+  const { dome } = skyDome(art("thornwood", "sky.webp"), 0xa8b4ac);
+  const mist = sea([0.008, 0.02, 0.016], [0.05, 0.1, 0.08], [0, 0, 0], -5);
+  group.add(dome, mist);
+  const moon = new DirectionalLight(0xa8c4ff, 0.35);
+  moon.position.set(-8, 12, -10);
+  group.add(moon);
+  const prevBg = scene.background;
+  scene.background = new Color(0x020604);
+
+  // Fireflies drifting about the board, blinking.
+  const flies: { s: Sprite; home: Vector3; phase: number; speed: number }[] = [];
+  const flyMat = new SpriteMaterial({ map: glowMap(), color: new Color(0xd8ff70).multiplyScalar(2.2), blending: AdditiveBlending, depthWrite: false, toneMapped: false });
+  for (let i = 0; i < 36; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 4.8 + Math.random() * 7;
+    const s = new Sprite(flyMat.clone());
+    s.scale.setScalar(0.12 + Math.random() * 0.08);
+    const home = new Vector3(Math.cos(a) * r, 0.3 + Math.random() * 2.6, Math.sin(a) * r);
+    s.position.copy(home);
+    group.add(s);
+    flies.push({ s, home, phase: Math.random() * 10, speed: 0.4 + Math.random() * 0.6 });
+  }
+
+  // A few leaves always drifting down over the board.
+  const leaves: { m: Mesh; y: number; x: number; z: number; spin: number; speed: number }[] = [];
+  const mats = leafMaterials();
+  const drop = (l: { m: Mesh; y: number; x: number; z: number; spin: number; speed: number }) => {
+    l.x = (Math.random() - 0.5) * 9;
+    l.z = (Math.random() - 0.5) * 9;
+    l.y = 4 + Math.random() * 3;
+    l.speed = 0.25 + Math.random() * 0.2;
+    l.m.material = mats[Math.floor(Math.random() * mats.length)];
+  };
+  for (let i = 0; i < 6; i++) {
+    const l = { m: new Mesh(leafGeo, mats[0]), y: 0, x: 0, z: 0, spin: Math.random() * 6, speed: 0 };
+    l.m.scale.setScalar(0.12);
+    drop(l);
+    l.y = Math.random() * 6;
+    group.add(l.m);
+    leaves.push(l);
+  }
+
+  let t = 0;
+  const mistU = (mist.material as ShaderMaterial).uniforms;
+  return {
+    update(ms) {
+      t += ms;
+      const s = t / 1000;
+      mistU.time.value = s * 1.5;
+      vu.veinTime.value = s;
+      for (const f of flies) {
+        const k = s * f.speed + f.phase;
+        f.s.position.set(f.home.x + Math.sin(k * 0.7) * 0.8, f.home.y + Math.sin(k * 1.3) * 0.35, f.home.z + Math.cos(k * 0.6) * 0.8);
+        f.s.material.opacity = Math.max(0, Math.sin(k * 2.1)) ** 2;
+      }
+      for (const l of leaves) {
+        l.y -= (l.speed * ms) / 1000;
+        if (l.y < 0.02) drop(l);
+        l.m.position.set(l.x + Math.sin(s * 1.3 + l.spin) * 0.4, l.y, l.z + Math.cos(s + l.spin) * 0.2);
+        l.m.rotation.set(s * 1.7 + l.spin, s + l.spin, s * 0.8);
+      }
+      for (const r of runes) r.material.opacity = 0.45 + 0.25 * Math.sin(s * 1.2 + r.position.x);
+    },
+    dispose() {
+      group.removeFromParent();
+      scene.background = prevBg;
+      flyMat.dispose();
+    },
+  };
+}
+
 export const COURTS: Court[] = [
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
+  { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "sky.webp"), dress: heartwoodGrove },
 ];
 
 export const court = (id: string) => COURTS.find((c) => c.id === id) ?? COURTS[0];

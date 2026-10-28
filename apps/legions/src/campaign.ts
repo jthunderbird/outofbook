@@ -41,6 +41,19 @@ export const CHAPTERS: Chapter[] = [
     ],
     reward: ["tribe:stormcourt", "court:stormcourt"],
   },
+  {
+    tribe: "thornwood",
+    name: "The Thornwood",
+    court: "thornwood",
+    story: "An ancient forest that remembers every axe. Its priests travel as roots, its queen's flowers bite, and the Elder Oak grows trees through his enemies.",
+    tier: 2,
+    battles: [
+      { id: "thorn-1", name: "Into the thorns", elo: 900, side: "b" },
+      { id: "thorn-2", name: "The Dryad's garden", elo: 1000, side: "w" },
+      { id: "thorn-3", name: "The Elder Oak", elo: 1100, side: "b", boss: true },
+    ],
+    reward: ["tribe:thornwood", "court:thornwood"],
+  },
 ];
 
 /** A chapter opens when the one before it is beaten. */

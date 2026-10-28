@@ -5,12 +5,13 @@
 // queen opens a pit of fire; soldiers march and chop. The king floats to his
 // square and withers what he takes.
 import { AdditiveBlending, Color, ConeGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Plane, QuadraticBezierCurve3, Vector3, type Material } from "three";
+import { Actor, lerpAngle } from "./actor";
 import { Pit, squareAt } from "./board";
 import { MAGIC, makeFig, type Fig, type Side } from "./figures";
+import { loadModels } from "./models";
 import { Portal, clip, clipAbove, ease, flame, followClip, magicArc, ownMaterials, tween, wait } from "./fx";
-import type { Stage, Tribe, TribeMove } from "./tribe";
+import type { Tribe, TribeMove } from "./tribe";
 
-const lerpAngle = (a: number, b: number, t: number) => a + (((((b - a) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * t;
 const BODY: Record<Side, number> = { w: 0xefe6d6, b: 0x2b2730 };
 const ASH = new Color(0x38332f);
 /** Lightning's color: white gold for white, violet for black. */
@@ -20,35 +21,12 @@ export const stormcourt: Tribe = {
   id: "stormcourt",
   name: "The Stormcourt",
   figure: makeFig,
+  ready: () => loadModels("stormcourt-"),
   play: (stage, move) => new Acts(stage).play(move),
 };
 
 /** The Stormcourt's moves and kills, acted out on a stage. */
-class Acts {
-  constructor(private stage: Stage) {}
-
-  private get clock() {
-    return this.stage.clock;
-  }
-  private get scene() {
-    return this.stage.scene;
-  }
-  private get fx() {
-    return this.stage.fx;
-  }
-  private get sound() {
-    return this.stage.sound;
-  }
-  private get flash() {
-    return this.stage.flash;
-  }
-  private get squares() {
-    return this.stage.squares;
-  }
-  private set shake(ms: number) {
-    this.stage.shake = ms;
-  }
-
+class Acts extends Actor {
   async play({ mover, to, victim, king, castle, promotion }: TribeMove) {
     if (mover.role === "k") {
       if (castle) {
@@ -343,36 +321,6 @@ class Acts {
   }
 
   // ---------- Moving ----------
-
-  private restFacing(f: Fig) {
-    return f.side === "w" ? Math.PI : 0;
-  }
-
-  private turn(f: Fig, to: number, ms = 180) {
-    const from = f.root.rotation.y;
-    return tween(this.clock, ms, (t) => (f.root.rotation.y = lerpAngle(from, to, t)));
-  }
-
-  /** Runs fn every frame until the returned function is called. */
-  private loop(fn: (ms: number) => void) {
-    let on = true;
-    this.clock.add((ms) => {
-      if (!on) return true;
-      fn(ms);
-    });
-    return () => {
-      on = false;
-    };
-  }
-
-  /** Straight from where f stands to b over ms, lifted by lift(t). */
-  private line(f: Fig, b: Vector3, ms: number, lift: (t: number) => number = () => 0, e = ease.linear) {
-    const a = f.root.position.clone();
-    return tween(this.clock, ms, (t) => f.root.position.set(a.x + (b.x - a.x) * t, lift(t), a.z + (b.z - a.z) * t), e);
-  }
-
-  /** The point fraction s of the way from a to b. */
-  private along = (a: Vector3, b: Vector3, s: number) => a.clone().lerp(b, s);
 
   /** Pawns: walk, legs and arms swinging; to take, stop short and chop the piece down. */
   private async march(f: Fig, to: string, victim?: Fig) {
@@ -719,8 +667,6 @@ class Acts {
     this.sound.play(`stone${1 + Math.floor(Math.random() * 3)}` as "stone1", { gain, delay });
   }
 
-  private standard = (mats: Material[]) => mats.filter((m): m is MeshStandardMaterial => (m as MeshStandardMaterial).isMeshStandardMaterial);
-
   /** Darkens a figure toward char by amount, glowing like embers. */
   private char(v: Fig, amount: number, ms: number) {
     const mats = this.standard(v.mats);
@@ -743,28 +689,6 @@ class Acts {
     this.fx.dust(v.root.position, 10);
     await wait(this.clock, 300);
     await this.sink(v);
-  }
-
-  /** Falls over away from dir. */
-  private topple(v: Fig, dir: Vector3, ms = 320) {
-    const axis = new Vector3(dir.z, 0, -dir.x).normalize();
-    const start = v.root.quaternion.clone();
-    return tween(
-      this.clock,
-      ms,
-      (t) => {
-        v.root.quaternion.copy(start);
-        v.root.rotateOnWorldAxis(axis, (Math.PI / 2) * t);
-      },
-      ease.in,
-    );
-  }
-
-  /** Sinks into the board and is gone. */
-  private async sink(v: Fig) {
-    const y = v.root.position.y;
-    await tween(this.clock, 400, (t) => (v.root.position.y = y - 0.4 * t));
-    v.root.removeFromParent();
   }
 
   /**
@@ -867,11 +791,6 @@ class Acts {
       remove();
     };
     return { remove, fade };
-  }
-
-  /** The name of the square under a point. */
-  private squareOf(p: Vector3) {
-    return "abcdefgh"[Math.round(p.x + 3.5)] + (Math.round(3.5 - p.z) + 1);
   }
 
   /** Killed by the queen: a pit to hell opens under the piece; it falls in, burns up at the bottom, and the pit closes. */
