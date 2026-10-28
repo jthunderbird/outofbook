@@ -17,7 +17,6 @@ import {
   DirectionalLight,
   DoubleSide,
   Float32BufferAttribute,
-  Fog,
   Group,
   HemisphereLight,
   Mesh,
@@ -48,7 +47,6 @@ import {
   type Texture,
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { BACKGROUNDS, backgroundTexture } from "./backgrounds";
 import type { Board } from "./board";
 import { glowMap } from "./figures";
@@ -1338,91 +1336,137 @@ function sketchDesk(scene: Scene, board: Board): CourtSet {
 }
 
 /**
- * The Noir skin's court: the clean marble board standing on the wet cobbles
- * of a 1950s back alley at night, one corner in a puddle that mirrors the
- * pieces. Brick walls rise either side: a speakeasy's door with its warm lamp,
- * a fire escape, trash, crates; a cold street lamp; the alley's mouth far off.
+ * The Noir skin's court, drawn as HD-2D games draw their worlds: the alley
+ * itself is the painted picture (alley.webp), filling the screen behind the
+ * board and sliding a little as the camera turns and tilts, so the board seems
+ * to stand in it. The marble board, its sides in black lacquer, stands on the
+ * wet cobbles in a pool of shadow, lit from behind by the alley's street lamp
+ * and coldly from the front; nothing else is built, so the eye stays on the pieces.
  */
 function backAlley(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
   const GROUND = -1.41;
-  const W = 15;
-  const L = 70;
   // Black lacquer on the board's sides.
   const lacquer = new MeshPhysicalMaterial({ color: 0x0c0c10, roughness: 0.25, clearcoat: 0.8 });
   for (const w of board.walls) {
     (w.material as MeshStandardMaterial).dispose();
     w.material = lacquer;
   }
-  // The street: wet cobbles.
-  const road = new Mesh(new PlaneGeometry(2 * W, 2 * L).rotateX(-Math.PI / 2), tiled(art("noir", "cobble.webp"), 2 * W, 2 * L, 6, { roughness: 0.35, metalness: 0.15, color: 0x50545e }));
-  road.position.y = GROUND;
-  road.receiveShadow = true;
-  group.add(road);
-  // A puddle under one corner of the board, mirroring it.
-  // An uneven outline, as rain pools.
-  const edge = new Shape();
-  for (let i = 0; i <= 48; i++) {
-    const a = (i / 48) * Math.PI * 2;
-    const r = 4.2 * (1 + 0.16 * Math.sin(a * 3 + 1) + 0.09 * Math.sin(a * 7 + 2) + 0.05 * Math.sin(a * 13));
-    const x = Math.cos(a) * r * 1.4;
-    const y = Math.sin(a) * r;
-    if (i === 0) edge.moveTo(x, y);
-    else edge.lineTo(x, y);
+  // The squares' marble in black and white, as the film shows it.
+  // Each square keeps its own part of the marble (its texture's repeat, offset and turn); the picture under them is made gray once.
+  const grays = new Map<unknown, CanvasTexture>();
+  const used: Texture[] = [];
+  for (const sq of board.squares.values()) {
+    const was = sq.material as MeshStandardMaterial;
+    const src = was.map;
+    let map: Texture | null = null;
+    if (src) {
+      let gray = grays.get(src.image);
+      if (!gray) {
+        const img = src.image as CanvasImageSource & { width: number; height: number };
+        const c = document.createElement("canvas");
+        c.width = img.width;
+        c.height = img.height;
+        const g = c.getContext("2d")!;
+        g.filter = sq.userData.light ? "grayscale(1) brightness(1.05)" : "grayscale(1) brightness(0.55) contrast(1.3)";
+        g.drawImage(img, 0, 0);
+        gray = new CanvasTexture(c);
+        gray.colorSpace = SRGBColorSpace;
+        grays.set(src.image, gray);
+      }
+      map = gray.clone();
+      map.wrapS = src.wrapS;
+      map.wrapT = src.wrapT;
+      map.repeat.copy(src.repeat);
+      map.offset.copy(src.offset);
+      map.rotation = src.rotation;
+      map.anisotropy = 4;
+      used.push(map);
+    }
+    sq.material = new MeshStandardMaterial({ map, roughness: was.roughness, metalness: was.metalness });
+    was.dispose();
   }
-  const puddle = new Reflector(new ShapeGeometry(edge), { textureWidth: 512, textureHeight: 512, color: 0xa8aebb });
-  puddle.rotation.x = -Math.PI / 2;
-  puddle.position.set(4.6, GROUND + 0.015, 3.2);
-  group.add(puddle);
-  // The brick walls either side, and across the far end behind the camera's back.
-  const brick = (w: number) => tiled(art("noir", "brick.webp"), w, 40, 8, { roughness: 0.85, color: 0x9a8a80 });
-  for (const s of [-1, 1]) {
-    const wall = new Mesh(new PlaneGeometry(2 * L, 40), brick(2 * L));
-    wall.position.set(s * W, GROUND + 20, 0);
-    wall.rotation.y = -s * (Math.PI / 2);
-    wall.receiveShadow = true;
-    group.add(wall);
-  }
-  const back = new Mesh(new PlaneGeometry(2 * W, 40), brick(2 * W));
-  back.position.set(0, GROUND + 20, L);
-  back.rotation.y = Math.PI;
-  group.add(back);
-  // The alley's mouth far off: the street beyond.
-  const mouth = new MeshBasicMaterial({ color: 0x9098a8, toneMapped: false });
+  // The picture: a touch soft and dark, as a background out of focus, and a little larger than the screen so it can slide.
+  const OVER = 1.18;
+  const cv = document.createElement("canvas");
+  const bg = new CanvasTexture(cv);
+  bg.colorSpace = SRGBColorSpace;
+  let size = [16, 9];
+  const fit = () => {
+    const [w, h] = size;
+    const a = w / h / (cv.width / cv.height || 16 / 9);
+    // The part of the picture the screen shows (covering it), then the room left to slide.
+    const rx = (a > 1 ? 1 : a) / OVER;
+    const ry = (a > 1 ? 1 / a : 1) / OVER;
+    bg.repeat.set(rx, ry);
+    return [1 - rx, 1 - ry];
+  };
+  let slack = fit();
   void texture(art("noir", "alley.webp")).then((t) => {
-    mouth.map = t;
-    mouth.needsUpdate = true;
+    const img = t.image as HTMLImageElement;
+    cv.width = img.width;
+    cv.height = img.height;
+    const g = cv.getContext("2d")!;
+    g.filter = "blur(1px) brightness(0.9)";
+    g.drawImage(img, 0, 0);
+    // A new size: the old upload goes, the next frame makes a new one.
+    bg.dispose();
+    bg.needsUpdate = true;
+    slack = fit();
   });
-  const end = new Mesh(new PlaneGeometry(2 * W * 1.6, 2 * W * 0.9), mouth);
-  end.position.set(0, GROUND + W * 0.9 - 2, -L);
-  group.add(end);
-  // The props.
-  prop(group, art("noir", "door.glb"), 13, -W + 1.6, GROUND, -7, Math.PI / 2);
-  prop(group, art("noir", "fire-escape.glb"), 16, W - 2.5, GROUND + 9, -2, -Math.PI / 2);
-  prop(group, art("noir", "lamp.glb"), 17, W - 2.2, GROUND, -13, -Math.PI / 2);
-  prop(group, art("noir", "trash.glb"), 4.5, -W + 2.6, GROUND, 9, 0.4);
-  prop(group, art("noir", "crates.glb"), 6, W - 3, GROUND, 10, -0.3);
-  // The street lamp's cold light, the speakeasy's warm one, little else.
-  const street = new PointLight(0xdfe6ff, 70, 50, 1.4);
-  street.position.set(W - 3.5, GROUND + 16, -13);
+  // The camera's turn slides the picture sideways, its height up and down (looking down shows more of the cobbles).
+  const tracker = new Mesh(new PlaneGeometry(0.001, 0.001), new MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+  tracker.frustumCulled = false;
+  tracker.onBeforeRender = (_r, _s, camera) => {
+    const p = camera.position;
+    const az = Math.atan2(p.x, p.z);
+    const polar = Math.atan2(Math.hypot(p.x, p.z), p.y);
+    const up = Math.min(1, Math.max(0, (polar - 0.15) / 1.1));
+    bg.offset.set(slack[0] * (0.5 + 0.5 * Math.sin(az)), slack[1] * (0.15 + 0.7 * up));
+  };
+  group.add(tracker);
+  // A pool of shadow on the cobbles round the board, so it stands on the ground rather than floating on the picture.
+  const pool = document.createElement("canvas");
+  pool.width = pool.height = 128;
+  const pg = pool.getContext("2d")!;
+  const grad = pg.createRadialGradient(64, 64, 20, 64, 64, 64);
+  grad.addColorStop(0, "rgba(0,0,0,0.75)");
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  pg.fillStyle = grad;
+  pg.fillRect(0, 0, 128, 128);
+  const poolTex = new CanvasTexture(pool);
+  const shade = new Mesh(new PlaneGeometry(22, 22).rotateX(-Math.PI / 2), new MeshBasicMaterial({ map: poolTex, transparent: true, depthWrite: false, toneMapped: false }));
+  shade.position.y = GROUND;
+  group.add(shade);
+  const catcher = new Mesh(new PlaneGeometry(30, 30).rotateX(-Math.PI / 2), new ShadowMaterial({ opacity: 0.45 }));
+  catcher.position.y = GROUND + 0.01;
+  catcher.receiveShadow = true;
+  group.add(catcher);
+  // The street lamp behind the board, as in the picture; a cold glow from the front so the pieces read.
+  const street = new PointLight(0xffe6c0, 30, 70, 1.4);
+  street.position.set(5, 22, -18);
   street.castShadow = true;
   street.shadow.mapSize.set(1024, 1024);
-  const door = new PointLight(0xffb070, 30, 22, 1.5);
-  door.position.set(-W + 3, GROUND + 9, -7);
-  group.add(street, door, new HemisphereLight(0x6a7488, 0x0a0a10, 0.35));
+  const front = new DirectionalLight(0x9aa8c8, 0.7);
+  front.position.set(-4, 9, 14);
+  group.add(street, front, new HemisphereLight(0x6a7488, 0x0a0a10, 0.4));
   const prevBg = scene.background;
-  const prevFog = scene.fog;
-  scene.background = new Color(0x07080c);
-  scene.fog = new Fog(0x0a0c12, 30, 110);
+  scene.background = bg;
   return {
+    resize(w, h) {
+      size = [w, h];
+      slack = fit();
+    },
     update() {},
     dispose() {
       group.removeFromParent();
       scene.background = prevBg;
-      scene.fog = prevFog;
-      puddle.dispose();
       lacquer.dispose();
+      bg.dispose();
+      poolTex.dispose();
+      grays.forEach((t) => t.dispose());
+      used.forEach((t) => t.dispose());
     },
   };
 }
