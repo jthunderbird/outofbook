@@ -25,11 +25,7 @@ export interface Chapter {
   battles: Battle[];
   /** What beating the boss unlocks. */
   reward: ItemId[];
-  /**
-   * The piece that leads the chapter's page, ready for battle in front of its
-   * army: its waiting clip and the action it plays now and then (rigged models),
-   * leaping that far toward the player.
-   */
+  /** The piece that leads the chapter's page in front of its army, idling in its tribe's character (Tribe.hero). */
   hero: { role: Role };
 }
 

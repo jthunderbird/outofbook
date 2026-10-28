@@ -2,6 +2,7 @@
 // charges and campaign results. Saved on the device. Owned items are one list,
 // whatever unlocked them (a level, a campaign win, later a purchase).
 import { useSyncExternalStore } from "react";
+import { NEW_TREK, type Trek } from "./puzzles";
 
 export type ItemKind = "tribe" | "court" | "mode";
 /** "tribe:staunton", "court:night", "mode:retro", ... (a court is a board with its scenery; a mode a way of drawing the game). */
@@ -11,10 +12,12 @@ export interface Profile {
   xp: number;
   owned: ItemId[];
   equipped: { tribe: string; court: string };
-  /** Charges left: show the best move, take a move back. */
-  perks: { hint: number; takeback: number };
+  /** Charges left: show the best move, take a move back, carry on with a failed puzzle challenge (bought in the store). */
+  perks: { hint: number; takeback: number; retry: number };
   /** Campaign battles won (ids from campaign.ts). */
   won: string[];
+  /** The puzzle trek: progress on this run and the tallies. */
+  trek: Trek;
   sound: boolean;
   /** The player's name in games; a Lichess login's name later. */
   name: string;
@@ -31,8 +34,9 @@ const FRESH: Profile = {
   xp: 0,
   owned: ["tribe:staunton", "court:staunton", "court:night"],
   equipped: { tribe: "staunton", court: "staunton" },
-  perks: { hint: 3, takeback: 3 },
+  perks: { hint: 3, takeback: 3, retry: 0 },
   won: [],
+  trek: NEW_TREK,
   sound: true,
   name: "Player",
   glow: true,
@@ -62,7 +66,7 @@ function load(): Profile {
     }
     // Every player owns the starter tribe's home, the Tournament Hall.
     if (saved?.owned && !saved.owned.includes("court:staunton")) saved.owned.push("court:staunton");
-    if (saved) return { ...FRESH, ...saved, equipped: { ...FRESH.equipped, ...saved.equipped }, perks: { ...FRESH.perks, ...saved.perks } };
+    if (saved) return { ...FRESH, ...saved, equipped: { ...FRESH.equipped, ...saved.equipped }, perks: { ...FRESH.perks, ...saved.perks }, trek: { ...FRESH.trek, ...saved.trek } };
   } catch {
     /* private mode or bad data: start fresh */
   }

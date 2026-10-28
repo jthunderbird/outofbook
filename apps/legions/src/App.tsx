@@ -9,8 +9,18 @@ import { QuickPlay } from "./screens/QuickPlay";
 import { Game, type GameSetup } from "./screens/Game";
 import { Collection } from "./screens/Collection";
 import { Settings } from "./screens/Settings";
+import { Trek } from "./screens/Trek";
+import { PuzzleRun } from "./screens/PuzzleRun";
 
-export type Screen = { name: "home" } | { name: "campaign" } | { name: "quick" } | { name: "collection" } | { name: "settings" } | { name: "game"; setup: GameSetup };
+export type Screen =
+  | { name: "home" }
+  | { name: "campaign" }
+  | { name: "quick" }
+  | { name: "collection" }
+  | { name: "settings" }
+  | { name: "game"; setup: GameSetup }
+  | { name: "trek" }
+  | { name: "puzzle"; challenge: string; nonce: number };
 
 export function App() {
   const [screen, go] = useState<Screen>({ name: "home" });
@@ -25,6 +35,8 @@ export function App() {
       {screen.name === "collection" && <Collection go={go} />}
       {screen.name === "settings" && <Settings go={go} />}
       {screen.name === "game" && <Game key={screen.setup.nonce} setup={screen.setup} go={go} />}
+      {screen.name === "trek" && <Trek go={go} />}
+      {screen.name === "puzzle" && <PuzzleRun key={screen.nonce} id={screen.challenge} go={go} />}
     </>
   );
 }

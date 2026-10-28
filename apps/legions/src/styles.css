@@ -944,3 +944,203 @@ input[type="range"] {
     left: 62%;
   }
 }
+
+/* ---------- Puzzle trek: the track through space behind, the challenge card and meter over it ---------- */
+.trek-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+.trek-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(4 3 12 / 0.7) 0%, transparent 18%), linear-gradient(0deg, rgb(4 3 12 / 0.85) 0%, transparent 34%);
+}
+.screen.trek {
+  pointer-events: none;
+  overflow: hidden;
+}
+.screen.trek button,
+.screen.trek .trek-card {
+  pointer-events: auto;
+}
+.screen.trek .topbar,
+.trek-card,
+.trek-done {
+  position: relative;
+  z-index: 2;
+}
+.small {
+  font-size: 13px;
+}
+.trek-tallies {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  font-size: 14px;
+}
+.trek-tallies span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.trek-tallies .good {
+  color: var(--good);
+}
+.trek-tallies .bad {
+  color: var(--bad);
+}
+.trek-tallies .all {
+  flex-basis: 100%;
+  justify-content: flex-end;
+  font-size: 12px;
+}
+.trek-done {
+  align-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  background: rgb(60 40 10 / 0.8);
+  border: 1px solid var(--gold-deep);
+  color: var(--gold);
+  pointer-events: auto;
+}
+.trek-card {
+  margin-top: auto;
+  align-self: center;
+  width: min(620px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  border-radius: 22px;
+  background: rgb(14 10 36 / 0.8);
+  border: 1px solid var(--edge);
+  text-align: center;
+}
+.trek-where {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.trek-asks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  font-size: 17px;
+}
+.trek-asks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.trek-card > .btn.gold {
+  width: min(340px, 100%);
+  justify-content: center;
+}
+.trek-meter {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  height: 16px;
+  margin-top: 4px;
+}
+.trek-meter .seg {
+  position: relative;
+  flex-basis: 0;
+  min-width: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.12);
+  overflow: visible;
+  cursor: pointer;
+}
+.trek-meter .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold));
+}
+.trek-meter .here {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #7fe3ff;
+  box-shadow: 0 0 8px #7fe3ff;
+}
+
+/* ---------- A puzzle challenge: its clock and progress over the board ---------- */
+.puzzle-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.puzzle-clock.low {
+  color: var(--bad);
+  animation: pulse-low 0.8s ease-in-out infinite;
+}
+@keyframes pulse-low {
+  50% {
+    opacity: 0.55;
+  }
+}
+.puzzle-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.puzzle-dots span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.18);
+}
+.puzzle-dots .done {
+  background: var(--gold);
+}
+.puzzle-dots .now {
+  background: #7fe3ff;
+  box-shadow: 0 0 8px #7fe3ff;
+}
+.puzzle-prompt {
+  font-size: 17px;
+  color: var(--muted);
+}
+.puzzle-prompt.on {
+  color: var(--gold);
+}
+@media (max-aspect-ratio: 4/5) {
+  .trek .topbar h2 {
+    font-size: 19px;
+    white-space: nowrap;
+  }
+  .trek-tallies {
+    gap: 2px 8px;
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+}

@@ -48,13 +48,13 @@ export function Home({ go }: { go: (s: Screen) => void }) {
             <small>Any strength, any side</small>
           </span>
         </button>
-        <button className="btn dark" style={{ ["--i" as string]: 2 }} disabled>
+        <button className="btn" style={{ ["--i" as string]: 2 }} onClick={() => go({ name: "trek" })}>
           <span className="icon">
             <Puzzle size={30} />
           </span>
           <span>
             Puzzles
-            <small>Coming soon</small>
+            <small>The puzzle trek: 250 timed challenges</small>
           </span>
         </button>
         <button className={`btn ${owns(p, "mode:retro") ? "" : "dark"}`} style={{ ["--i" as string]: 3 }} disabled={!owns(p, "mode:retro")} onClick={() => update((q) => ({ ...q, retro: !q.retro }))}>
