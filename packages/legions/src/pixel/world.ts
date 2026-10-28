@@ -321,42 +321,138 @@ export function hiTile(kind: TileKind, frame = 0) {
   return c;
 }
 
-/** The world beyond the board, as one picture drawn each frame: dusk sky, ridges, castle, hills, drifting clouds and a rocket crossing. 512 x 288. */
-export class Backdrop {
-  readonly cv = canvas(512, 288).c;
-  private g = this.cv.getContext("2d")!;
-  private L = {
-    sky: sky(512, 288),
-    far: mountains(512, 70, 4, "#6b58b0", "#5846a0", 52),
-    near: mountains(512, 56, 9, "#4a3f8c", "#3b3178", 40, false),
-    castle: castle(120, 84),
-    hills: hills(512, 64, 3, "#2f6b4a", "#2f7a3c", "#58b050"),
-    cloudA: clouds(512, 60, 1, "#ffd0d8", "#c486c4"),
-    cloudB: clouds(512, 60, 2, "#ffe6ea", "#d9a0d0"),
+/** A floating island seen from the side: a grass lip on top, rock strata tapering below, roots and vines hanging off it. Far ones are mixed toward the sky's haze. */
+function island(g: CanvasRenderingContext2D, x0: number, x1: number, top: number, depth: number, seed: number, haze: number) {
+  const r = rng(seed);
+  const tone = (hexa: string) => {
+    const c = hex(hexa);
+    const h = hex("#b07ab8");
+    return `rgb(${c.map((v, i) => Math.round(v + (h[i] - v) * haze)).join(",")})`;
   };
+  const w = x1 - x0;
+  const bottom: number[] = [];
+  for (let x = 0; x < w; x++) {
+    const u = (x / (w - 1)) * 2 - 1;
+    const d = depth * Math.pow(Math.max(0, 1 - u * u), 0.75) * (0.8 + 0.2 * Math.sin(x * 0.7 + seed) * Math.sin(x * 0.23));
+    bottom.push(Math.round(top + 3 + d));
+  }
+  for (let x = 0; x < w; x++)
+    for (let y = top; y <= bottom[x]; y++) {
+      const band = (y - top) % 5 < 2;
+      const deep = (y - top) / Math.max(1, bottom[x] - top);
+      g.fillStyle = tone(deep > 0.6 ? "#4a3022" : band ? "#7e5a40" : "#5f412e");
+      g.fillRect(x0 + x, y, 1, 1);
+    }
+  // The grass lip.
+  g.fillStyle = tone("#6fbf4a");
+  g.fillRect(x0, top, w, 2);
+  g.fillStyle = tone("#3f8434");
+  g.fillRect(x0, top + 2, w, 1);
+  // Roots and vines hanging below, and a few loose stones.
+  for (let i = 0; i < w / 9; i++) {
+    let x = x0 + Math.floor(r() * w);
+    const len = 6 + r() * 16;
+    g.fillStyle = tone(r() < 0.5 ? "#3d7a2e" : "#5a3d2b");
+    const start = bottom[Math.min(w - 1, x - x0)] - 2;
+    for (let y = 0; y < len; y++) {
+      x += r() < 0.25 ? (r() < 0.5 ? -1 : 1) : 0;
+      g.fillRect(x, start + y, 1, 1);
+    }
+  }
+  for (let i = 0; i < 3; i++) {
+    const x = x0 + w * (0.3 + r() * 0.4);
+    const y = bottom[Math.floor(x - x0)] + 6 + r() * 10;
+    g.fillStyle = tone("#5f412e");
+    g.fillRect(Math.round(x), Math.round(y), 3, 2);
+    g.fillRect(Math.round(x) + 1, Math.round(y) + 2, 1, 1);
+  }
+}
+
+/** A row of the sea of cloud below the islands, its puffs drifting; back rows darker and pinker. */
+function cloudRow(g: CanvasRenderingContext2D, w: number, y: number, row: number, t: number, lit: string, shade: string) {
+  const r = rng(40 + row);
+  const shift = (t * (3 + row * 2)) % 40;
+  g.fillStyle = shade;
+  g.fillRect(0, y, w, 400);
+  for (let x = -40; x < w + 40; x += 22 + Math.floor(r() * 10)) {
+    const rad = 12 + r() * 10;
+    const px = x + shift;
+    g.fillStyle = shade;
+    g.beginPath();
+    g.ellipse(px, y, rad, rad * 0.55, 0, 0, 7);
+    g.fill();
+    g.fillStyle = lit;
+    g.beginPath();
+    g.ellipse(px - 2, y - 2, rad * 0.8, rad * 0.4, 0, 0, 7);
+    g.fill();
+  }
+}
+
+/**
+ * The world beyond the board, as one picture drawn each frame (640 x 360): a
+ * dusk sky with high clouds, floating islands (one carrying mountains, one a
+ * castle with a waterfall pouring off it, small islets), and a sea of cloud
+ * below everything, drifting. The rocket from the logo crosses the sky.
+ */
+export class Backdrop {
+  static readonly W = 640;
+  static readonly H = 360;
+  readonly cv = canvas(Backdrop.W, Backdrop.H).c;
+  private g = this.cv.getContext("2d")!;
+  private still = (() => {
+    const { c, g } = canvas(Backdrop.W, Backdrop.H);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(sky(Backdrop.W, 300), 0, 0);
+    g.fillStyle = "#ffc38a";
+    g.fillRect(0, 300, Backdrop.W, 60);
+    // The far island with its mountains.
+    const peaks = mountains(240, 80, 4, "#5a4796", "#47387f", 74);
+    g.drawImage(peaks, 40, 152 - 80);
+    island(g, 34, 286, 152, 46, 3, 0.45);
+    // A small far islet.
+    island(g, 300, 336, 120, 14, 7, 0.55);
+    // The castle's island, nearer.
+    const keep = castle(120, 84);
+    g.drawImage(keep, 470, 174 - 82);
+    island(g, 440, 620, 174, 52, 5, 0.15);
+    // A nearer islet with a lone tree.
+    island(g, 84, 140, 214, 18, 9, 0.05);
+    g.fillStyle = "#2f7a3c";
+    g.beginPath();
+    g.arc(110, 204, 7, 0, 7);
+    g.fill();
+    g.fillStyle = "#58b050";
+    g.fillRect(106, 199, 4, 1);
+    g.fillStyle = "#5a3d2b";
+    g.fillRect(109, 209, 2, 5);
+    return c;
+  })();
+  private high = clouds(Backdrop.W, 60, 1, "#ffd0d8", "#c486c4");
   draw(t: number) {
     const g = this.g;
-    const L = this.L;
+    const W = Backdrop.W;
     g.imageSmoothingEnabled = false;
-    g.drawImage(L.sky, 0, 0);
-    g.drawImage(L.far, 0, 70);
-    g.drawImage(L.near, 0, 92);
-    g.drawImage(L.castle, 392, 36);
-    g.drawImage(L.hills, 0, 112);
-    for (const [c, sp, y] of [
-      [L.cloudA, 5, 20],
-      [L.cloudB, 11, 160],
-    ] as const) {
-      const x = Math.floor((t * sp) % 512);
-      g.drawImage(c, x, y);
-      g.drawImage(c, x - 512, y);
+    g.drawImage(this.still, 0, 0);
+    // High clouds drift through the sky, above the islands.
+    const x = Math.floor((t * 4) % W);
+    g.drawImage(this.high, x, 18, W, 46);
+    g.drawImage(this.high, x - W, 18, W, 46);
+    // The waterfall off the castle's island, pouring into the clouds.
+    for (let y = 176; y < 262; y++) {
+      const k = (y + Math.floor(t * 30)) % 6;
+      g.fillStyle = k < 2 ? "#e8f8ff" : k < 4 ? "#9fd8f5" : "#6cbbe8";
+      g.fillRect(446, y, 5, 1);
     }
-    // The drifting ship from the logo.
-    const x = Math.floor(((t * 18) % 592) - 40);
-    const y = 44 + Math.round(Math.sin(t * 2) * 2);
+    // The sea of cloud, three rows, back to front.
+    cloudRow(g, W, 252, 0, t, "#e9a6c9", "#b97aae");
+    cloudRow(g, W, 282, 1, t, "#f6c4d8", "#d495bd");
+    cloudRow(g, W, 318, 2, t, "#ffe6ea", "#ecb6cc");
+    // The rocket crossing the sky.
+    const sx = Math.floor(((t * 18) % (W + 80)) - 40);
+    const sy = 52 + Math.round(Math.sin(t * 2) * 2);
     const px = (dx: number, dy: number, w: number, h: number, c: string) => {
       g.fillStyle = c;
-      g.fillRect(x + dx, y + dy, w, h);
+      g.fillRect(sx + dx, sy + dy, w, h);
     };
     px(-1, 0, 14, 5, "#1d1530");
     px(0, 1, 12, 3, "#e03a4a");
@@ -366,5 +462,43 @@ export class Backdrop {
     px(3, 4, 5, 2, "#ffd24a");
     px(-4, 1, 3, 2, "#ff9ec2");
     px(-7, 2, 3, 1, "#ffe9a0");
+  }
+}
+
+/**
+ * The flat board's whole picture (640 x 360): the backdrop, then the board's
+ * own floating island in the middle, its 64 tiles 32 x 24 pixels (meadow and
+ * animated pond), the board's center at the picture's center.
+ */
+export class FlatMap {
+  static readonly TW = 32;
+  static readonly TH = 24;
+  static readonly X0 = (Backdrop.W - 32 * 8) / 2;
+  static readonly Y0 = (Backdrop.H - 24 * 8) / 2;
+  private back = new Backdrop();
+  readonly cv = canvas(Backdrop.W, Backdrop.H).c;
+  private g = this.cv.getContext("2d")!;
+  private rock = cliff(32 * 8 + 16, 48);
+  private grass = [tile("grass", 32, 24), tile("grass2", 32, 24)];
+  private water = [0, 1, 2, 3].map((i) => tile("water", 32, 24, i));
+  draw(t: number) {
+    const { TW, TH, X0, Y0 } = FlatMap;
+    const g = this.g;
+    g.imageSmoothingEnabled = false;
+    this.back.draw(t);
+    g.drawImage(this.back.cv, 0, 0);
+    // The board's island: rock tapering down into the clouds.
+    const cw = TW * 8 + 16;
+    for (let i = 0; i < 48; i++) {
+      const inset = Math.floor(i * i * 0.06 + i * 0.5);
+      g.drawImage(this.rock, 0, i, cw, 1, X0 - 8 + inset, Y0 + TH * 8 + i - 4, Math.max(0, cw - inset * 2), 1);
+    }
+    for (let r = 0; r < 8; r++)
+      for (let c = 0; c < 8; c++) {
+        const dark = (r + c) % 2 === 1;
+        g.drawImage(dark ? this.water[Math.floor(t * 4) % 4] : this.grass[(r * 3 + c) % 3 === 0 ? 1 : 0], X0 + c * TW, Y0 + r * TH);
+      }
+    g.strokeStyle = "rgba(20,10,40,.55)";
+    g.strokeRect(X0 - 0.5, Y0 - 0.5, TW * 8 + 1, TH * 8 + 1);
   }
 }

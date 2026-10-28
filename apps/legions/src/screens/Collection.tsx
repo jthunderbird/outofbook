@@ -8,6 +8,7 @@ const ABOUT: Record<string, string> = {
   staunton: "A classic wooden set. Pieces slide, the knight hops, and a capture knocks the other piece flat.",
   stormcourt: "A king who rules by magic, thunder bishops, stone rooks and a queen who opens a pit of fire.",
   thornwood: "An ancient forest: root-walking priests, treant rooks, a flytrap queen and the Elder Oak.",
+  "epoch-drifters": "Heroes out of a 16-bit RPG: a sword-swinging hero, a fire-breathing dragon, a cleric, a stone guardian, a princess and their king.",
 };
 
 /** How an item is won, for locked ones. */
@@ -16,6 +17,7 @@ function howToGet(id: ItemId) {
   if (level) return `Reach level ${level}`;
   if (id === "tribe:stormcourt" || id === "court:stormcourt") return "Beat the Storm King in the campaign";
   if (id === "tribe:thornwood" || id === "court:thornwood") return "Beat the Elder Oak in the campaign";
+  if (id === "court:epoch-flat") return "Buy with credits (coming soon)";
   return "Coming soon";
 }
 

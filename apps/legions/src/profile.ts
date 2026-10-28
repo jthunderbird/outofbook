@@ -3,8 +3,8 @@
 // whatever unlocked them (a level, a campaign win, later a purchase).
 import { useSyncExternalStore } from "react";
 
-export type ItemKind = "tribe" | "court";
-/** "tribe:staunton", "court:night", ... (a court is a board with its scenery). */
+export type ItemKind = "tribe" | "court" | "mode";
+/** "tribe:staunton", "court:night", "mode:retro", ... (a court is a board with its scenery; a mode a way of drawing the game). */
 export type ItemId = `${ItemKind}:${string}`;
 
 export interface Profile {
@@ -20,8 +20,8 @@ export interface Profile {
   name: string;
   /** Glow on lightning, fire and bright light (bloom); off for slower phones. */
   glow: boolean;
-  /** The pixel look for every tribe (fixed oblique camera, low resolution, 16-bit palette). */
-  pixel: boolean;
+  /** Retro mode: every battle drawn at 16-bit resolution and palette, 3D tribes included. Needs mode:retro. */
+  retro: boolean;
   /** Levels already rewarded (perk charges are given once per level). */
   rewardedLevel: number;
 }
@@ -36,7 +36,7 @@ const FRESH: Profile = {
   sound: true,
   name: "Player",
   glow: true,
-  pixel: false,
+  retro: false,
   rewardedLevel: 1,
 };
 
@@ -94,8 +94,8 @@ export function useProfile() {
 
 export const getProfile = () => profile;
 export const update = (fn: (p: Profile) => Profile) => save(fn(profile));
-// Epoch Drifters and its stage are open to everyone while the tribe is being previewed.
-const PREVIEW: string[] = ["tribe:epoch-drifters", "court:epoch-drifters", "court:epoch-flat"];
+// Epoch Drifters and its 3D stage are open to everyone while the tribe is being previewed (its 2D board is bought, Retro mode won by puzzles).
+const PREVIEW: string[] = ["tribe:epoch-drifters", "court:epoch-drifters"];
 export const owns = (p: Profile, id: ItemId) => p.owned.includes(id) || PREVIEW.includes(id);
 
 /** What a game's end brought: XP, a level reached, items unlocked. */

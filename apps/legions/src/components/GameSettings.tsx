@@ -1,6 +1,7 @@
 // The settings a player may change mid-game (and on the Settings screen):
-// their name, sound, and glow.
-import { update, useProfile } from "../profile";
+// their name, sound, glow and (once won) Retro mode.
+import { Lock } from "lucide-react";
+import { owns, update, useProfile } from "../profile";
 
 export function GameSettings() {
   const p = useProfile();
@@ -32,12 +33,16 @@ export function GameSettings() {
       </div>
       <div className="toggle">
         <span>
-          Pixel look
-          <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>
-            Draws every tribe as a 16-bit game would: fixed camera, low resolution, fewer colors. Try it on the Epoch Plains stage.
+          Retro mode
+          <div className="muted" style={{ fontSize: 13, maxWidth: 360 }}>
+            {owns(p, "mode:retro") ? "Every battle drawn as a 16-bit game would, 3D tribes included." : "Beat the puzzle challenges to unlock."}
           </div>
         </span>
-        <button className={`switch${p.pixel ? " on" : ""}`} aria-label="Pixel look" aria-pressed={p.pixel} onClick={() => update((q) => ({ ...q, pixel: !q.pixel }))} />
+        {owns(p, "mode:retro") ? (
+          <button className={`switch${p.retro ? " on" : ""}`} aria-label="Retro mode" aria-pressed={p.retro} onClick={() => update((q) => ({ ...q, retro: !q.retro }))} />
+        ) : (
+          <Lock size={18} aria-label="Locked" />
+        )}
       </div>
     </>
   );

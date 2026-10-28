@@ -177,7 +177,8 @@ export class LegionsScene {
     let last = performance.now();
     const frame = (now: number) => {
       this.raf = requestAnimationFrame(frame);
-      const ms = Math.min(50, now - last);
+      // A frame stamp can come before the time the loop started: never a negative step.
+      const ms = Math.max(0, Math.min(50, now - last));
       last = now;
       if (!this.manual) this.step(ms);
     };
@@ -249,9 +250,8 @@ export class LegionsScene {
     this.camera.fov = v?.fov ?? 36;
     this.camera.updateProjectionMatrix();
     lean.tilt = v?.fixed ? v.pitch : 0.3;
-    // In a fixed view the cards are drawn pixel for pixel: 32 pixels to a square, standing toward the front of it.
+    // In a fixed view the cards are drawn pixel for pixel: 32 pixels to a square.
     lean.size = v?.fixed ? 1 / 1.4 : 1;
-    lean.foot = v?.fixed ? 0.25 : 0;
     if (v) {
       // Pulled back on narrow screens so the board stays whole.
       const k = Math.max(1, 1.3 / this.camera.aspect);

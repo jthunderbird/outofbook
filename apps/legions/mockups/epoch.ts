@@ -909,15 +909,26 @@ function loop(now: number) {
 }
 
 if (location.search.includes("sheet")) {
-  // A sprite sheet at 8x, for checking the art alone.
+  // A sprite sheet at 5x: each piece's frames (2 idle, 4 walk, 3 attack), light side then dark.
   host.innerHTML = "";
   const c = document.createElement("canvas");
-  c.width = 32 * 6;
-  c.height = 64;
+  const roles = ["k", "q", "n", "b", "r", "p"] as Role[];
+  const seq = [
+    ["idle", 0],
+    ["idle", 1],
+    ["walk", 0],
+    ["walk", 1],
+    ["walk", 2],
+    ["walk", 3],
+    ["attack", 0],
+    ["attack", 1],
+    ["attack", 2],
+  ] as const;
+  c.width = 32 * seq.length;
+  c.height = 32 * 12;
   const g = c.getContext("2d")!;
-  (["w", "b"] as Side[]).forEach((s, y) => (["k", "q", "n", "b", "r", "p"] as Role[]).forEach((r, x) => g.drawImage(sprite(r, s), x * 32, y * 32)));
-  c.style.width = `${c.width * 8}px`;
-  c.style.height = `${c.height * 8}px`;
+  (["w", "b"] as Side[]).forEach((s, si) => roles.forEach((r, ri) => seq.forEach(([m, i], x) => g.drawImage(sprite(r, s, m, i), x * 32, (si * 6 + ri) * 32))));
+  c.style.height = "96vh";
   c.style.background = "#7a9a5a";
   host.appendChild(c);
   void SIDES;

@@ -15,8 +15,10 @@ import {
   Color,
   CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
   Float32BufferAttribute,
   Group,
+  HemisphereLight,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
@@ -49,7 +51,7 @@ import type { Board } from "./board";
 import { glowMap } from "./figures";
 import { woodPanel, woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
-import { Backdrop, cliff, hiTile, tile } from "./pixel/world";
+import { Backdrop, cliff, FlatMap, hiTile } from "./pixel/world";
 
 export interface Court {
   id: string;
@@ -848,30 +850,31 @@ function hallGradient() {
   return hallBg;
 }
 
-// ---------- The Epoch Drifters' home: Epoch Plains ----------
+// ---------- The Epoch Drifters' home: Epoch Plains, in 3D and in 2D ----------
+
+const chunky = (c: HTMLCanvasElement, repeat?: number) => {
+  const t = new CanvasTexture(c);
+  t.magFilter = t.minFilter = NearestFilter;
+  t.colorSpace = SRGBColorSpace;
+  t.generateMipmaps = false;
+  if (repeat) {
+    t.wrapS = t.wrapT = RepeatWrapping;
+    t.repeat.set(repeat, repeat);
+  }
+  return t;
+};
 
 /**
- * A floating island of meadow and pond under a painted dusk sky: grass and
- * animated water squares, the island's rock beneath, and the pixel-art world
- * (mountains, castle, hills, clouds) as the screen's background, whatever the
- * camera does. Pixel art for any tribe. The flat version draws the squares as
- * the 2D game's 32 x 24 tiles and fixes the camera at the oblique angle of a
- * 16-bit RPG, as far back as a nearly flat view needs.
+ * Epoch Plains: a floating island of meadow and pond in a dusk sky, under the
+ * usual camera. The squares are the 2D game's tiles softened and detailed (as
+ * HD-2D games keep their worlds sharp under chunky sprites), the island's rock
+ * steps down beneath, and the painted world of floating islands over a sea of
+ * cloud fills the screen behind. Warm low sun, a violet sky light, a cool rim
+ * light to set the figures off, and pollen drifting.
  */
-function epochPlains(scene: Scene, board: Board, flat: boolean): CourtSet {
+function epochPlains(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
-  const chunky = (c: HTMLCanvasElement, repeat?: number) => {
-    const t = new CanvasTexture(c);
-    t.magFilter = t.minFilter = NearestFilter;
-    t.colorSpace = SRGBColorSpace;
-    t.generateMipmaps = false;
-    if (repeat) {
-      t.wrapS = t.wrapT = RepeatWrapping;
-      t.repeat.set(repeat, repeat);
-    }
-    return t;
-  };
   const smooth = (c: HTMLCanvasElement) => {
     const t = new CanvasTexture(c);
     t.magFilter = LinearFilter;
@@ -880,17 +883,14 @@ function epochPlains(scene: Scene, board: Board, flat: boolean): CourtSet {
     t.anisotropy = 8;
     return t;
   };
-  // Flat: the 2D game's own tiles with hard pixels; 3D: the same softened and detailed.
-  const tex = (k: "grass" | "grass2" | "water" | "path", i = 0) => (flat ? chunky(tile(k, 32, 24, i)) : smooth(hiTile(k, i)));
-  const grass = [new MeshStandardMaterial({ map: tex("grass"), roughness: 1 }), new MeshStandardMaterial({ map: tex("grass2"), roughness: 1 })];
-  const frames = [0, 1, 2, 3].map((i) => tex("water", i));
+  const grass = [new MeshStandardMaterial({ map: smooth(hiTile("grass")), roughness: 1 }), new MeshStandardMaterial({ map: smooth(hiTile("grass2")), roughness: 1 })];
+  const frames = [0, 1, 2, 3].map((i) => smooth(hiTile("water", i)));
   const water = new MeshStandardMaterial({ map: frames[0], emissive: new Color(0x0a2a55), emissiveMap: frames[0], emissiveIntensity: 0.5, roughness: 0.6 });
   let n = 0;
   for (const sq of board.squares.values()) {
     (sq.material as MeshStandardMaterial).dispose();
     sq.material = sq.userData.light ? grass[n++ % 3 === 0 ? 1 : 0] : water;
   }
-  // The plinth is the island's rim: rock down the sides.
   const rock = new MeshStandardMaterial({ map: chunky(cliff(32, 32), 3), roughness: 1 });
   for (const w of board.walls) {
     (w.material as MeshStandardMaterial).dispose();
@@ -912,12 +912,24 @@ function epochPlains(scene: Scene, board: Board, flat: boolean): CourtSet {
   tip.rotation.x = Math.PI;
   tip.position.y = FLOOR - 3.6;
   group.add(tip);
-  const sun = new DirectionalLight(0xffc890, 1.1);
+  const sun = new DirectionalLight(0xffc890, 1.3);
   sun.position.set(-7, 9, 6);
-  const rim = new DirectionalLight(0x8ab4ff, 0.8);
+  const rim = new DirectionalLight(0x8ab4ff, 1.1);
   rim.position.set(5, 6, -9);
-  group.add(sun, rim);
-  // The world beyond: one picture behind everything, redrawn as the clouds drift.
+  const sky = new HemisphereLight(0xb7a8ff, 0x6a3d5a, 0.6);
+  const lamp = new PointLight(0xffd9a0, 10, 14, 1.6);
+  lamp.position.set(0, 3.2, 1);
+  group.add(sun, rim, sky, lamp);
+  // Pollen drifting in the light.
+  const motes: { s: Sprite; home: Vector3; phase: number }[] = [];
+  const moteMat = new SpriteMaterial({ map: glowMap(), color: new Color(0xfff0b0).multiplyScalar(1.2), blending: AdditiveBlending, depthWrite: false, opacity: 0.5 });
+  for (let i = 0; i < 36; i++) {
+    const s = new Sprite(moteMat);
+    s.scale.setScalar(0.05 + Math.random() * 0.05);
+    const home = new Vector3((Math.random() - 0.5) * 12, 0.4 + Math.random() * 3.5, (Math.random() - 0.5) * 12);
+    group.add(s);
+    motes.push({ s, home, phase: Math.random() * 20 });
+  }
   const back = new Backdrop();
   back.draw(0);
   const bg = chunky(back.cv);
@@ -925,12 +937,14 @@ function epochPlains(scene: Scene, board: Board, flat: boolean): CourtSet {
   scene.background = bg;
   let t = 0;
   return {
-    // Flat: the oblique angle a 16-bit RPG draws its board at (tiles 32 wide, 24 high), seen from far off through a narrow lens. 3D: free to orbit, starting lower than the other courts so the sky shows.
-    view: flat ? { fixed: true, pitch: 0.85, dist: 70, fov: 9, ty: 0.2 } : { fixed: false, pitch: 0.6, dist: 14, fov: 36, ty: 0.6 },
     update(ms) {
       t += ms / 1000;
       const f = frames[Math.floor(t * 4) % 4];
       water.map = water.emissiveMap = f;
+      for (const m of motes) {
+        const k = t * 0.15 + m.phase;
+        m.s.position.set(m.home.x + Math.sin(k * 1.3) * 0.6, m.home.y + Math.sin(k * 0.9) * 0.3, m.home.z + Math.cos(k) * 0.6);
+      }
       back.draw(t);
       bg.needsUpdate = true;
     },
@@ -938,58 +952,80 @@ function epochPlains(scene: Scene, board: Board, flat: boolean): CourtSet {
       group.removeFromParent();
       scene.background = prevBg;
       bg.dispose();
+      moteMat.dispose();
+    },
+  };
+}
+
+/**
+ * Epoch Plains (2D): the board as a 16-bit RPG draws it. The page's whole
+ * picture (FlatMap: backdrop, the board's island, 32 x 24 pixel tiles) hangs
+ * behind everything, square to the camera, and the camera is fixed far off at
+ * the angle (asin 0.75) and lens at which a square covers its tile exactly, so
+ * the figures of any tribe stand on the picture's tiles. The board itself is
+ * hidden; the figures' shadows still fall on the tiles.
+ */
+function epochFlat(scene: Scene, board: Board): CourtSet {
+  void board;
+  const group = new Group();
+  scene.add(group);
+  const map = new FlatMap();
+  map.draw(0);
+  const tex = chunky(map.cv);
+  const D = 70;
+  // 32 pixels to a square: the picture is 20 x 11.25 squares where the camera looks; further back it is scaled up to match.
+  const pic = new Mesh(new PlaneGeometry(Backdrop.W / 32, Backdrop.H / 32), new MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false, toneMapped: false, fog: false }));
+  pic.renderOrder = -10;
+  const back = 30;
+  const look = new Vector3();
+  const dir = new Vector3();
+  pic.onBeforeRender = (_r, _s, camera) => {
+    dir.copy(camera.position).sub(look.set(0, 0, 0));
+    const d = dir.length();
+    dir.normalize();
+    pic.position.copy(look).addScaledVector(dir, -back);
+    pic.scale.setScalar((d + back) / d);
+    pic.lookAt(camera.position);
+    pic.updateMatrixWorld(true);
+  };
+  group.add(pic);
+  const shade = new Mesh(new PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new ShadowMaterial({ opacity: 0.35 }));
+  shade.position.y = 0.002;
+  shade.receiveShadow = true;
+  group.add(shade);
+  const sun = new DirectionalLight(0xffe2b8, 1.4);
+  sun.position.set(-6, 10, 8);
+  sun.castShadow = true;
+  group.add(sun);
+  const prev = scene.background;
+  scene.background = new Color(0xecb6cc);
+  let t = 0;
+  return {
+    bare: true,
+    view: { fixed: true, pitch: Math.asin(0.75), dist: D, fov: (2 * Math.atan(4.5 / D) * 180) / Math.PI, ty: 0 },
+    update(ms) {
+      t += ms / 1000;
+      map.draw(t);
+      tex.needsUpdate = true;
+    },
+    dispose() {
+      group.removeFromParent();
+      scene.background = prev;
+      tex.dispose();
     },
   };
 }
 
 export const COURTS: Court[] = [
   { id: "staunton", name: "Tournament Hall", tribe: "staunton", top: "#4a3020", bottom: "#060403", dress: tournamentHall },
-  { id: "epoch-drifters", name: "Epoch Plains", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: (s, b) => epochPlains(s, b, false) },
-  { id: "epoch-flat", name: "Epoch Plains (flat)", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: (s, b) => epochPlains(s, b, true) },
+  { id: "epoch-drifters", name: "Epoch Plains", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: epochPlains },
+  { id: "epoch-flat", name: "Epoch Plains (2D)", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: epochFlat },
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
   { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
 ];
 
-/**
- * The flat pixel map's overlay (its picture, backdrop and tiles, is drawn by the page under the
- * scene): the board hidden and the camera fixed so that 32 x 24 pixels on the page's picture are one
- * square, whatever tribe stands on it. Not offered in menus.
- */
-const OVERLAY: Court = {
-  id: "epoch-overlay",
-  name: "Epoch Plains (map)",
-  top: "#c45a96",
-  bottom: "#3b2a78",
-  dress(scene, board) {
-    const group = new Group();
-    scene.add(group);
-    // Figures' shadows fall on the page's tiles.
-    const shade = new Mesh(new PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new ShadowMaterial({ opacity: 0.35 }));
-    shade.position.y = 0.002;
-    shade.receiveShadow = true;
-    group.add(shade);
-    const sun = new DirectionalLight(0xffe2b8, 1.4);
-    sun.position.set(-6, 10, 8);
-    sun.castShadow = true;
-    group.add(sun);
-    void board;
-    const prev = scene.background;
-    scene.background = null;
-    return {
-      bare: true,
-      // asin(0.75): a tile 32 wide is 24 high. Seen from far off through a narrow lens so it is nearly flat; the scene is 512 x 288 pixels of 32 to the unit, its middle 4 pixels above the board's.
-      view: { fixed: true, pitch: Math.asin(0.75), dist: 70, fov: (2 * Math.atan(4.5 / 70) * 180) / Math.PI, ty: 0, tz: -4 / 24 },
-      update() {},
-      dispose() {
-        group.removeFromParent();
-        scene.background = prev;
-      },
-    };
-  },
-};
-
-export const court = (id: string) => (id === OVERLAY.id ? OVERLAY : (COURTS.find((c) => c.id === id) ?? COURTS[0]));
+export const court = (id: string) => COURTS.find((c) => c.id === id) ?? COURTS[0];
 
 /** The plain courts' sky: their gradient. */
 export const courtBackground = (id: string) => backgroundTexture(court(id).dress ? "night" : id);

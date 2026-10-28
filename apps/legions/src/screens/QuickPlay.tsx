@@ -74,12 +74,16 @@ export function QuickPlay({ go }: { go: (s: Screen) => void }) {
         </div>
         <div className="toggle">
           <span>
-            Pixel look
+            Retro mode
             <div className="muted" style={{ fontSize: 13, maxWidth: 360 }}>
-              Draws the whole battle at 16-bit resolution and palette, including 3D tribes.
+              {owns(p, "mode:retro") ? "Every battle drawn as a 16-bit game would, 3D tribes included." : "Beat the puzzle challenges to unlock."}
             </div>
           </span>
-          <button className={`switch${p.pixel ? " on" : ""}`} aria-label="Pixel look" aria-pressed={p.pixel} onClick={() => update((q) => ({ ...q, pixel: !q.pixel }))} />
+          {owns(p, "mode:retro") ? (
+            <button className={`switch${p.retro ? " on" : ""}`} aria-label="Retro mode" aria-pressed={p.retro} onClick={() => update((q) => ({ ...q, retro: !q.retro }))} />
+          ) : (
+            <Lock size={18} aria-label="Locked" />
+          )}
         </div>
         <div>
           <div style={{ marginBottom: 8 }}>You play</div>
