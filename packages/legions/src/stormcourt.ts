@@ -4,10 +4,27 @@
 // by lightning; knights gallop through their L and cut the piece down; the
 // queen opens a pit of fire; soldiers march and chop. The king floats to his
 // square and withers what he takes.
-import { AdditiveBlending, Color, ConeGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Plane, QuadraticBezierCurve3, Vector3, type Material } from "three";
+import {
+  AdditiveBlending,
+  Color,
+  ConeGeometry,
+  CylinderGeometry,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Plane,
+  PointLight,
+  QuadraticBezierCurve3,
+  Quaternion,
+  Sprite,
+  SpriteMaterial,
+  Vector3,
+  type Material,
+} from "three";
 import { Actor, lerpAngle } from "./actor";
 import { Pit, squareAt } from "./board";
-import { MAGIC, makeFig, type Fig, type Side } from "./figures";
+import { MAGIC, glowMap, makeFig, type Fig, type Side } from "./figures";
 import { loadModels } from "./models";
 import { Portal, clip, clipAbove, ease, flame, followClip, magicArc, ownMaterials, tween, wait } from "./fx";
 import type { Tribe, TribeMove } from "./tribe";
@@ -23,7 +40,11 @@ export const stormcourt: Tribe = {
   figure: makeFig,
   ready: () => loadModels("stormcourt-"),
   play: (stage, move) => new Acts(stage).play(move),
+  hero: (stage, f) => new Acts(stage).hero(f),
 };
+
+/** The Storm King's showcase lightning: electric blue, white at the core. */
+const STORM = 0x8fd0ff;
 
 /** The Stormcourt's moves and kills, acted out on a stage. */
 class Acts extends Actor {
@@ -765,8 +786,99 @@ class Acts extends Actor {
     top.removeFromParent();
   }
 
+  /**
+   * The campaign's showcase: the king stares the player down, eyes lit with
+   * lightning, electricity crackling from his hands and arcing round his body.
+   */
+  hero(f: Fig) {
+    let on = true;
+    if (f.anim?.clips.has("Storm_Idle")) {
+      f.anim.idle = "Storm_Idle";
+      void f.play("Storm_Idle", { loop: true, fade: 0 });
+    }
+    const face = f.root.getObjectByName("headfront") ?? f.root.getObjectByName("Head");
+    const hands = ["LeftHand", "RightHand"].map((n) => f.root.getObjectByName(n)).filter((o) => !!o);
+    // Each eye: a soft blue glow round a small white-hot core.
+    const eyes = [-1, 1, -1, 1].map((_, i) => {
+      const s = new Sprite(new SpriteMaterial({ map: glowMap(), color: i < 2 ? STORM : 0xffffff, blending: AdditiveBlending, depthWrite: false, depthTest: false }));
+      s.renderOrder = 6;
+      this.scene.add(s);
+      return s;
+    });
+    // A blue light between the hands, flickering with the sparks, so the electricity lights the king.
+    const light = new PointLight(STORM, 0, 2.5, 2);
+    this.scene.add(light);
+    const q = new Quaternion();
+    const at = (o: { getWorldPosition(v: Vector3): Vector3 } | undefined, fallback: Vector3) => (o ? o.getWorldPosition(new Vector3()) : fallback.clone().add(f.root.position));
+    const h = f.height;
+    let spark = 0;
+    let loop = 0;
+    this.clock.add((ms) => {
+      if (!on) return true;
+      f.root.getWorldQuaternion(q);
+      const right = new Vector3(1, 0, 0).applyQuaternion(q);
+      const fwd = new Vector3(0, 0, 1).applyQuaternion(q);
+      const eye = at(face, new Vector3(0, h * 0.9, 0.1))
+        .addScaledVector(fwd, h * 0.035)
+        .add(new Vector3(0, h * 0.012, 0));
+      const glow = 0.85 + Math.random() * 0.3;
+      eyes.forEach((s, i) => {
+        s.position.copy(eye).addScaledVector(right, (i % 2 ? 1 : -1) * h * 0.026);
+        s.scale.setScalar(h * (i < 2 ? 0.045 : 0.016) * glow);
+      });
+      const [l, r] =
+        hands.length === 2
+          ? hands.map((o) => at(o, new Vector3()))
+          : [-1, 1].map((k) =>
+              f.root.position
+                .clone()
+                .add(right.clone().multiplyScalar(k * h * 0.3))
+                .setY(h * 0.5),
+            );
+      light.position
+        .copy(l)
+        .lerp(r, 0.5)
+        .addScaledVector(fwd, 0.3)
+        .setY(h * 0.6);
+      light.intensity = Math.max(0, light.intensity - ms * 0.01);
+      // Sparks: short crackles at the hands, now and then a bolt from a hand round the body, and now and then one hand to the other.
+      spark -= ms;
+      loop -= ms;
+      if (spark <= 0) {
+        spark = 50 + Math.random() * 90;
+        const hand = Math.random() < 0.5 ? l : r;
+        const out = hand.clone().add(new Vector3((Math.random() - 0.5) * 0.35, (Math.random() - 0.3) * 0.3, (Math.random() - 0.5) * 0.35));
+        void this.bolt(hand, out, STORM, 4, 0.1, 0.45).fade(90);
+        if (Math.random() < 0.35) {
+          const a = Math.random() * Math.PI * 2;
+          const round = f.root.position.clone().add(new Vector3(Math.cos(a) * h * 0.32, h * (0.25 + Math.random() * 0.55), Math.sin(a) * h * 0.32));
+          void this.bolt(hand, round, STORM, 6, 0.18, 0.55).fade(140);
+        }
+        light.intensity = 0.8 + Math.random() * 0.8;
+      }
+      if (loop <= 0) {
+        loop = 900 + Math.random() * 1400;
+        const mid = f.root.position
+          .clone()
+          .addScaledVector(fwd, h * 0.3)
+          .setY(h * (0.45 + Math.random() * 0.2));
+        void this.bolt(l, mid, STORM, 6, 0.2, 0.6).fade(180);
+        void this.bolt(mid, r, STORM, 6, 0.2, 0.6).fade(180);
+        light.intensity = 2.2;
+      }
+    });
+    return () => {
+      on = false;
+      for (const s of eyes) {
+        s.removeFromParent();
+        s.material.dispose();
+      }
+      light.removeFromParent();
+    };
+  }
+
   /** A jagged bolt from a to b in n strokes (a core and a colored glow, a side branch); the caller removes it or fades it out. */
-  private bolt(a: Vector3, b: Vector3, color: number, n = 9, spread = 0.3) {
+  private bolt(a: Vector3, b: Vector3, color: number, n = 9, spread = 0.3, width = 1) {
     const g = new Group();
     const core = new MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: AdditiveBlending, depthWrite: false });
     const halo = new MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: AdditiveBlending, depthWrite: false });
@@ -782,8 +894,8 @@ class Acts extends Actor {
       pts.push(to);
       for (let i = 0; i < pts.length - 1; i++)
         for (const [mat, r] of [
-          [core, 0.014],
-          [halo, 0.045],
+          [core, 0.014 * width],
+          [halo, 0.045 * width],
         ] as const) {
           const len = pts[i].distanceTo(pts[i + 1]);
           const m = new Mesh(new CylinderGeometry(r, r, len, 5), mat);

@@ -14,6 +14,7 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
+  PointLight,
   RepeatWrapping,
   SphereGeometry,
   SRGBColorSpace,
@@ -54,6 +55,7 @@ export const thornwood: Tribe = {
   figure: thornFigure,
   ready: () => loadModels("thornwood-"),
   play: (stage, move) => new Grove(stage).play(move),
+  hero: (stage, f) => new Grove(stage).hero(f),
 };
 
 // ---------- Art ----------
@@ -659,6 +661,117 @@ class Grove extends Actor {
     mat.dispose();
     vineTex.dispose();
     this.leaves(p.clone().setY(0.2), 6, { speed: 0.8, up: 0.8 });
+  }
+
+  /**
+   * The campaign's showcase: the Dryad Queen kneels and reaches into the
+   * ground, and thorny vines rise up all round the court behind her; as she
+   * stands again they sink back into the earth.
+   */
+  hero(f: Fig) {
+    let on = true;
+    const glow = GLOW[f.side];
+    const hands = ["LeftHand", "RightHand"].map((n) => f.root.getObjectByName(n)).filter((o) => !!o);
+    const light = new PointLight(glow, 0, 4, 1.5);
+    this.scene.add(light);
+    const tex = art("vine").clone();
+    tex.repeat.set(4, 1);
+    tex.wrapS = RepeatWrapping;
+    // Lit from within a little, so they stand out against the dark wood behind.
+    const mat = new MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.35, side: DoubleSide, color: new Color(1.6, 2, 1.4) });
+    const p = f.root.position;
+    const standing = new Set<Mesh>();
+    const clear = (m: Mesh) => {
+      m.removeFromParent();
+      m.geometry.dispose();
+      standing.delete(m);
+    };
+    /** Vines rising round the court behind her, grown by fraction; they sink back when done. */
+    const rise = () => {
+      const vines = [-3.3, -2.5, -1.7, -1, 1, 1.7, 2.5, 3.3].map((x, i) => {
+        const h = 1.4 + Math.random() * 1.6;
+        const phase = Math.random() * Math.PI * 2;
+        const base = new Vector3(p.x + x + (Math.random() - 0.5) * 0.3, 0, p.z - 1 - Math.random() * 2.6);
+        const pts: Vector3[] = [];
+        for (let j = 0; j <= 20; j++) {
+          const s = j / 20;
+          const a = phase + s * Math.PI * 2.6;
+          pts.push(new Vector3(base.x + Math.sin(a) * 0.28 * s, -0.05 + s * h, base.z + Math.cos(a) * 0.22 * s));
+        }
+        const geo = new TubeGeometry(new CatmullRomCurve3(pts), 60, 0.07 + Math.random() * 0.03, 6);
+        geo.setDrawRange(0, 0);
+        const m = new Mesh(geo, mat);
+        this.scene.add(m);
+        standing.add(m);
+        return { m, base, top: pts[20], delay: i % 2 ? 0 : 0.15 + Math.random() * 0.15 };
+      });
+      const total = vines[0].m.geometry.index!.count;
+      void (async () => {
+        for (const v of vines) this.fx.dust(v.base, 3, 0x5a4630);
+        this.sound.play("grind", { gain: 0.25, rate: 1.3 });
+        await tween(
+          this.clock,
+          1100,
+          (t) => {
+            for (const v of vines) {
+              const k = Math.max(0, Math.min(1, (t - v.delay) / (1 - v.delay)));
+              v.m.geometry.setDrawRange(0, Math.floor((total * k) / 6) * 6);
+            }
+          },
+          ease.out,
+        );
+        if (on) for (const v of vines) this.leaves(v.top, 3, { speed: 0.6, up: 0.5 });
+      })();
+      return async () => {
+        await tween(this.clock, 900, (t) => vines.forEach((v) => (v.m.position.y = -3.2 * t)), ease.in);
+        for (const v of vines) clear(v.m);
+      };
+    };
+    const at = () => {
+      const w = hands.map((o) => o.getWorldPosition(new Vector3()));
+      return w.length ? w.reduce((a, b) => a.add(b)).multiplyScalar(1 / w.length) : p.clone().setY(f.height * 0.5);
+    };
+    // Her hands' light: green, brightening as they go into the ground.
+    let power = 0;
+    this.clock.add(() => {
+      if (!on) return true;
+      light.position.copy(at()).setY(Math.max(0.3, light.position.y));
+      light.intensity = power * (0.8 + Math.random() * 0.4);
+    });
+    void (async () => {
+      const clip = f.anim?.clips.get("Root_Call");
+      while (on) {
+        await wait(this.clock, 2200);
+        if (!on) break;
+        let sink: (() => Promise<void>) | null = null;
+        const start = performance.now();
+        const ms = (clip?.duration ?? 4) * 1000;
+        // The vines rise when her hands reach the ground (or, without the clip, at once), and sink as she stands.
+        this.clock.add(() => {
+          if (!on || sink) return true;
+          const k = (performance.now() - start) / ms;
+          if ((hands.length && at().y < f.height * 0.2) || k > 0.45 || !clip) {
+            sink = rise();
+            this.fx.burst(at().setY(0.1), glow, 18, { glow: true, speed: 1.2, up: 1.4, size: 0.05, life: 900 });
+            void tween(this.clock, 400, (t) => (power = 5 * t));
+            return true;
+          }
+        });
+        if (clip) await f.play("Root_Call", { fade: 0.35 });
+        else await wait(this.clock, 3000);
+        void tween(this.clock, 600, (t) => (power = 5 * (1 - t)));
+        const done = sink as (() => Promise<void>) | null;
+        if (done) await done();
+        else sink = () => Promise.resolve();
+      }
+    })();
+    return () => {
+      on = false;
+      light.removeFromParent();
+      for (const m of [...standing]) clear(m);
+      mat.dispose();
+      tex.dispose();
+    };
   }
 
   // ---------- Leaves ----------

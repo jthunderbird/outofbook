@@ -46,6 +46,8 @@ interface Act {
   phase: number;
   /** Facing left on the screen (drawn mirrored): the dragon turns to where it goes and keeps facing that way. */
   flip: boolean;
+  /** Turned in the card's plane about its foot (the dragon rearing up), in radians. */
+  roll?: number;
 }
 
 const frames = new Map<string, { map: Texture; normal: Texture }>();
@@ -161,6 +163,7 @@ function epochFigure(role: Role, side: Side): Fig {
     q.setFromAxisAngle(UP, Math.atan2(camera.position.x - at.x, camera.position.z - at.z));
     card.quaternion.copy(pq.invert()).multiply(q);
     card.rotateX(-lean.tilt);
+    if (a.roll) card.rotateZ(a.roll);
     card.updateMatrixWorld(true);
   };
   f.root.userData.pixels = role + side;
@@ -172,7 +175,67 @@ export const epoch: Tribe = {
   name: "Epoch Drifters",
   figure: epochFigure,
   play: (stage, move) => play(stage, move),
+  hero: (stage, f) => hero(stage, f),
 };
+
+/**
+ * The campaign's showcase: the dragon, turned to the middle of the screen,
+ * looks happily out at the player, hops now and then, and every so often rears
+ * its head up and breathes a spout of fire into the air.
+ */
+function hero(stage: Stage, f: Fig) {
+  let on = true;
+  const a = act(f);
+  face(stage, f, stage.camera.position.clone().setY(0));
+  void (async () => {
+    while (on) {
+      await wait(stage.clock, 1800 + Math.random() * 1200);
+      if (!on) break;
+      // A happy hop or two.
+      for (let i = 0; i < 2 && on; i++) await tween(stage.clock, 320, (t) => (f.root.position.y = Math.sin(t * Math.PI) * 0.22));
+      await wait(stage.clock, 900 + Math.random() * 900);
+      if (!on) break;
+      await breathe();
+    }
+  })();
+  async function breathe() {
+    const k = a.flip ? -1 : 1;
+    setAct(f, "attack", 0);
+    await tween(stage.clock, 380, (t) => (a.roll = k * 0.5 * t), ease.out);
+    setAct(f, "attack", 1);
+    // The mouth, the card turned up about its foot: fire rises from it in tongues that climb, swell and go.
+    const h = f.height * lean.size;
+    const [x, y] = [k * 0.4 * h, 0.62 * h];
+    const [c, s] = [Math.cos(k * 0.5), Math.sin(k * 0.5)];
+    const mouth = f.root.position
+      .clone()
+      .addScaledVector(screenRight(stage), x * c - y * s)
+      .add(new Vector3(0, (x * s + y * c) * Math.cos(lean.tilt), 0));
+    const lean2 = screenRight(stage).multiplyScalar(k * 0.25);
+    void flashLight(stage, mouth, 0xff8a2a, 5, 1300);
+    stage.sound.play("knock", { gain: 0.3 });
+    for (let i = 0; i < 9 && on; i++) {
+      const card = effectCard(stage, flames(), 14, 0.35, 0.5, mouth.clone());
+      void tween(stage.clock, 650, (t) => {
+        card.mesh.position
+          .copy(mouth)
+          .addScaledVector(lean2, t)
+          .add(new Vector3(0, t * 2.2, 0));
+        card.mesh.scale.set(0.35 + t * 0.5, 0.5 + t * 0.7, 1);
+        if (t >= 1) card.remove();
+      });
+      stage.fx.burst(mouth.clone().add(new Vector3(0, 0.3, 0)), 0xffb040, 3, { glow: true, speed: 0.8, up: 2.4, size: 0.04, life: 700, gravity: 1 });
+      await wait(stage.clock, 110);
+    }
+    await wait(stage.clock, 250);
+    setAct(f, "idle");
+    await tween(stage.clock, 420, (t) => (a.roll = k * 0.5 * (1 - t)), ease.inOut);
+  }
+  return () => {
+    on = false;
+    a.roll = 0;
+  };
+}
 
 /** The screen's rightward direction in the world. */
 const screenRight = (stage: Stage) => new Vector3().setFromMatrixColumn(stage.camera.matrixWorld, 0).setY(0).normalize();

@@ -268,6 +268,16 @@ export class LegionsScene {
     this.live.delete(f);
   }
 
+  /** A menu's hero: a figure off the board acting out its tribe's showcase; the returned function takes it away. */
+  showHero(f: Fig) {
+    this.addFigure(f);
+    const stop = this.tribes[f.side].hero?.(this.stage, f);
+    return () => {
+      stop?.();
+      this.removeFigure(f);
+    };
+  }
+
   /** Anything else for a menu's shot (its own lights): added to and removed from the scene. */
   addObject(o: Object3D) {
     this.scene.add(o);

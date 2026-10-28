@@ -1,6 +1,7 @@
 // A campaign page's hero shot: the chapter's court and board in the engine's
 // own scene, its army drawn up on the far side, and its leading piece in front,
-// ready for battle, now and then leaping toward the player. One scene serves
+// facing the player and idling in its tribe's character (the tribe's hero()
+// showcase: lightning, vines, fire). One scene serves
 // every page; changing chapter swaps the court, tribe and hero.
 import { useEffect, useRef } from "react";
 import { DirectionalLight, SpotLight } from "three";
@@ -8,6 +9,8 @@ import { LegionsScene } from "@outofbook/legions/scene";
 import { tribe } from "@outofbook/legions/tribes";
 import type { Fig } from "@outofbook/legions/figures";
 import type { Chapter } from "../campaign";
+
+type Shot = Parameters<LegionsScene["setShowcase"]>[0] & {};
 
 /** The chapter's army on the far side of the board, facing the player. */
 const ARMY = "rnbqkbnr/pppppppp/8/8/8/8/8/8 b - - 0 1";
@@ -17,6 +20,8 @@ const SPOT = 4.4;
 export function CampaignHero({ chapter, glow, onReady }: { chapter: Chapter; glow: boolean; onReady?: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<LegionsScene | null>(null);
+  const hero = useRef<Fig | null>(null);
+  const facing = useRef(0);
   const ready = useRef(onReady);
   ready.current = onReady;
 
@@ -28,9 +33,16 @@ export function CampaignHero({ chapter, glow, onReady }: { chapter: Chapter; glo
     // On tall screens the card takes the lower part: the camera stands back and looks lower, so the hero stands in the upper part, whole.
     const frame = () => {
       const a = innerWidth / innerHeight;
-      if (a >= 4 / 3) s.setShowcase({ pos: [-1.1, 0.8, 8.4], target: [-1.1, 1.3, 2.5], fov: 40 });
-      else if (a >= 0.8) s.setShowcase({ pos: [0, 1, 10], target: [0, 0.9, 2.5], fov: 42 });
-      else s.setShowcase({ pos: [0, 1.2, 11], target: [0, 0.45, 2.5], fov: 46 });
+      const shot: Shot =
+        a >= 4 / 3
+          ? { pos: [-1.1, 0.8, 8.4], target: [-1.1, 1.3, 2.5], fov: 40 }
+          : a >= 0.8
+            ? { pos: [0, 1, 10], target: [0, 0.9, 2.5], fov: 42 }
+            : { pos: [0, 1.2, 11], target: [0, 0.45, 2.5], fov: 46 };
+      s.setShowcase(shot);
+      // The hero turns to the camera, and a touch past it toward the middle of the screen.
+      facing.current = Math.atan2(shot.pos[0], shot.pos[2] - SPOT) * 1.2;
+      if (hero.current) hero.current.root.rotation.y = facing.current;
     };
     frame();
     addEventListener("resize", frame);
@@ -56,9 +68,8 @@ export function CampaignHero({ chapter, glow, onReady }: { chapter: Chapter; glo
     const s = scene.current;
     if (!s) return;
     const t = tribe(chapter.tribe);
-    let hero: Fig | null = null;
     let gone = false;
-    let timer = 0;
+    let stop: (() => void) | null = null;
     s.setTribes({ w: t, b: t });
     s.setCourt(chapter.court);
     s.setPosition(ARMY);
@@ -67,35 +78,16 @@ export function CampaignHero({ chapter, glow, onReady }: { chapter: Chapter; glo
       if (gone) return;
       const f = t.figure(chapter.hero.role, "b");
       f.root.position.set(0, 0, SPOT);
-      s.addFigure(f);
-      hero = f;
-      const { idle, action, leap = 0 } = chapter.hero;
-      if (f.anim && idle) void f.play(idle, { loop: true });
+      // Modelled figures turn to face the camera; a sprite card always does, and turns itself to the middle.
+      if (!f.root.userData.pixels) f.root.rotation.y = facing.current;
+      hero.current = f;
+      stop = s.showHero(f);
       ready.current?.();
-      // Now and then: the action (a clip, or a hop for a sprite) with a leap toward the player and back.
-      const act = async () => {
-        if (gone) return;
-        const start = performance.now();
-        const run = f.anim && action ? f.play(action, { fade: 0.2 }) : new Promise<void>((r) => setTimeout(r, 900));
-        const sprite = !f.anim;
-        const step = () => {
-          if (gone) return;
-          const k = Math.min(1, (performance.now() - start) / 900);
-          f.root.position.z = SPOT + Math.sin(k * Math.PI) * leap;
-          if (sprite) f.root.position.y = Math.sin(k * Math.PI) * 0.6;
-          if (k < 1) requestAnimationFrame(step);
-        };
-        step();
-        await run;
-        if (f.anim && idle && !gone) void f.play(idle, { loop: true, fade: 0.3 });
-        timer = window.setTimeout(act, 5200);
-      };
-      timer = window.setTimeout(act, 1400);
     })();
     return () => {
       gone = true;
-      clearTimeout(timer);
-      if (hero) s.removeFigure(hero);
+      stop?.();
+      hero.current = null;
     };
   }, [chapter]);
 

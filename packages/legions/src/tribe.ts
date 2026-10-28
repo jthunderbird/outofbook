@@ -48,4 +48,6 @@ export interface Tribe {
   ready?(): Promise<void>;
   /** Acts out a move (and its kill) by a figure of this tribe. */
   play(stage: Stage, move: TribeMove): Promise<void>;
+  /** A menu's showcase (a campaign page's hero): the figure, off the board, idles in its tribe's character until the returned stop is called. */
+  hero?(stage: Stage, f: Fig): () => void;
 }
