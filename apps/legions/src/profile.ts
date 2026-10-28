@@ -2,6 +2,7 @@
 // charges and campaign results. Saved on the device. Owned items are one list,
 // whatever unlocked them (a level, a campaign win, later a purchase).
 import { useSyncExternalStore } from "react";
+import { COURTS } from "@outofbook/legions/courts";
 import { MODES, type Mode } from "@outofbook/legions/modes";
 import { NEW_TREK, type Trek } from "./puzzles";
 
@@ -103,7 +104,12 @@ export function useProfile() {
 
 export const getProfile = () => profile;
 export const update = (fn: (p: Profile) => Profile) => save(fn(profile));
-export const owns = (p: Profile, id: ItemId) => p.owned.includes(id);
+/** Owned outright, or (a skin's court) owned with its skin. */
+export const owns = (p: Profile, id: ItemId): boolean => {
+  if (p.owned.includes(id)) return true;
+  const skin = id.startsWith("court:") ? COURTS.find((c) => `court:${c.id}` === id)?.skin : undefined;
+  return !!skin && p.owned.includes(`mode:${skin}`);
+};
 
 /** The look the player's own pieces wear (only what they own). */
 export function myLook(p: Profile) {

@@ -35,7 +35,7 @@ export function GameSettings() {
         <span>
           Retro mode
           <div className="muted" style={{ fontSize: 13, maxWidth: 360 }}>
-            {owns(p, "mode:retro") ? "Every battle drawn as a 16-bit game would, 3D tribes included." : "Finish the puzzle trek to unlock."}
+            {owns(p, "mode:retro") ? "The tribes drawn as a 16-bit game would, 3D ones included." : "Finish the puzzle trek to unlock."}
           </div>
         </span>
         {owns(p, "mode:retro") ? (
@@ -46,8 +46,8 @@ export function GameSettings() {
       </div>
       {(
         [
-          ["noir", "Noir", "A black-and-white film, grain and all."],
-          ["sketch", "Sketch", "Every battle drawn in pencil on paper."],
+          ["noir", "Noir", "The tribes as a black-and-white film, grain and all."],
+          ["sketch", "Sketch", "The tribes drawn in pencil on paper."],
         ] as const
       )
         .filter(([id]) => owns(p, `mode:${id}`))

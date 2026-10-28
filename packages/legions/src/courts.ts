@@ -57,6 +57,8 @@ export interface Court {
   name: string;
   /** The tribe whose home this is, if any. */
   tribe?: string;
+  /** The skin it was made for, if any (it comes with the skin). */
+  skin?: string;
   /** Colors for menus and for the scene behind it until its art has loaded. */
   top: string;
   bottom: string;
@@ -1041,13 +1043,193 @@ function epochFlat(scene: Scene, board: Board): CourtSet {
   };
 }
 
+// ---------- The skins' courts: a sketchbook desk (Sketch), a back alley (Noir) ----------
+
+/** A picture as the scene's background, fitted to cover the screen (16:9); returns its resize and its removal. */
+function backdrop(scene: Scene, url: string) {
+  const prev = scene.background;
+  let bg: Texture | null = null;
+  let size: [number, number] = [16, 9];
+  void texture(url).then((t) => {
+    bg = t.clone();
+    bg.needsUpdate = true;
+    cover(bg, ...size);
+    scene.background = bg;
+  });
+  return {
+    resize(w: number, h: number) {
+      size = [w, h];
+      if (bg) cover(bg, w, h);
+    },
+    dispose() {
+      if (scene.background === bg) scene.background = prev;
+      bg?.dispose();
+    },
+  };
+}
+
+/** A square of sketchbook paper: faint grain and, for a dark square, pencil hatching both ways. */
+function paperSquare(dark: boolean) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#f3eee1";
+  g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 1400; i++) {
+    g.fillStyle = `rgba(120,110,90,${Math.random() * 0.06})`;
+    g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  }
+  if (dark) {
+    g.strokeStyle = "rgba(40,40,48,0.8)";
+    g.lineCap = "round";
+    for (const dir of [1, -1])
+      for (let k = -256; k < 512; k += 7) {
+        g.lineWidth = 1.2 + Math.random() * 0.8;
+        g.beginPath();
+        g.moveTo(k + (Math.random() - 0.5) * 3, dir > 0 ? 0 : 256);
+        g.lineTo(k + 256 * dir + (Math.random() - 0.5) * 3, dir > 0 ? 256 : 0);
+        g.stroke();
+      }
+  }
+  // A drawn edge, not quite straight.
+  g.strokeStyle = "rgba(40,40,48,0.7)";
+  g.lineWidth = 2.5;
+  g.strokeRect(2 + Math.random() * 2, 2 + Math.random() * 2, 251 - Math.random() * 3, 251 - Math.random() * 3);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
+ * The Sketch skin's court: a board drawn in pencil on paper, on a real study
+ * desk in a bedroom at night, among the drawings of the game's characters (the
+ * Storm King, the Epoch dragon, the Dryad Queen), some half under the board,
+ * with pencils and an eraser, under a warm desk lamp.
+ */
+function sketchDesk(scene: Scene, board: Board): CourtSet {
+  const group = new Group();
+  scene.add(group);
+  const TABLE = -0.11;
+  const paper = [paperSquare(false), paperSquare(true)];
+  for (const sq of board.squares.values()) {
+    (sq.material as MeshStandardMaterial).dispose();
+    sq.material = new MeshStandardMaterial({ map: paper[sq.userData.light ? 0 : 1], roughness: 0.95 });
+  }
+  const edge = new MeshStandardMaterial({ map: paperSquare(false), color: 0xe8e2d2, roughness: 0.95 });
+  for (const w of board.walls) {
+    (w.material as MeshStandardMaterial).dispose();
+    w.material = edge;
+  }
+  // The desk: one plank of warm oak.
+  const deskTex = woodPanel("#a87444", "#5a3418", 23).clone();
+  deskTex.repeat.set(1, 1);
+  const desk = new Mesh(new PlaneGeometry(34, 20).rotateX(-Math.PI / 2), new MeshStandardMaterial({ map: deskTex, roughness: 0.55 }));
+  desk.position.y = TABLE - 0.02;
+  desk.receiveShadow = true;
+  group.add(desk);
+  // The drawings, loose on the desk, some slipped under the board.
+  for (const [file, x, z, rot] of [
+    ["king.webp", -5.6, -2.2, 0.28],
+    ["dragon.webp", 5.2, 2.6, -0.22],
+    ["queen.webp", 4.9, -3.4, 0.12],
+    ["dragon.webp", -5.4, 3.6, -0.4],
+  ] as const) {
+    // A touch below white, so the lamp and glow do not wash the drawings out.
+    const m = new MeshStandardMaterial({ color: 0xbdb8ae, roughness: 0.95 });
+    void texture(art("sketch", file)).then((t) => {
+      m.map = t;
+      m.needsUpdate = true;
+    });
+    const sheet = new Mesh(new PlaneGeometry(3.6, 3.6).rotateX(-Math.PI / 2), m);
+    sheet.position.set(x, TABLE - 0.01 + Math.random() * 0.004, z);
+    sheet.rotation.y = rot;
+    sheet.receiveShadow = true;
+    group.add(sheet);
+  }
+  // Pencils and an eraser.
+  const yellow = new MeshStandardMaterial({ color: 0xf2c22a, roughness: 0.5 });
+  const wood = new MeshStandardMaterial({ color: 0xe8c890, roughness: 0.8 });
+  const lead = new MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.4 });
+  for (const [x, z, a] of [
+    [5.9, -0.4, 0.4],
+    [-5.8, 0.9, -1.1],
+  ]) {
+    const pencil = new Group();
+    const body = new Mesh(new CylinderGeometry(0.09, 0.09, 2.6, 6).rotateZ(Math.PI / 2), yellow);
+    const tip = new Mesh(new ConeGeometry(0.09, 0.3, 6).rotateZ(-Math.PI / 2), wood);
+    tip.position.x = 1.45;
+    const point = new Mesh(new ConeGeometry(0.03, 0.1, 6).rotateZ(-Math.PI / 2), lead);
+    point.position.x = 1.62;
+    pencil.add(body, tip, point);
+    pencil.position.set(x, TABLE + 0.09, z);
+    pencil.rotation.y = a;
+    pencil.traverse((o) => (o.castShadow = true));
+    group.add(pencil);
+  }
+  const eraser = new Mesh(new BoxGeometry(0.8, 0.22, 0.4), new MeshStandardMaterial({ color: 0xff8aa8, roughness: 0.9 }));
+  eraser.position.set(-5.2, TABLE + 0.11, -0.6);
+  eraser.rotation.y = 0.5;
+  eraser.castShadow = true;
+  group.add(eraser);
+  // The desk lamp's warm pool of light.
+  const lamp = new PointLight(0xffc888, 7, 30, 1.5);
+  lamp.position.set(-7, 9, -4);
+  lamp.castShadow = true;
+  group.add(lamp);
+  const room = backdrop(scene, art("sketch", "bedroom.webp"));
+  return {
+    resize: room.resize,
+    update() {},
+    dispose() {
+      group.removeFromParent();
+      room.dispose();
+      paper.forEach((t) => t.dispose());
+      edge.dispose();
+    },
+  };
+}
+
+/**
+ * The Noir skin's court: a clean marble board on the wet cobbles of a 1950s
+ * back alley at night, under a street lamp's cold light, the speakeasy's sign
+ * glowing beyond.
+ */
+function backAlley(scene: Scene, board: Board): CourtSet {
+  const group = new Group();
+  scene.add(group);
+  // Wet stone under the board, catching the lamp; the alley's picture beyond.
+  const ground = new Mesh(new CircleGeometry(9, 40).rotateX(-Math.PI / 2), new MeshStandardMaterial({ color: 0x15171c, roughness: 0.18, metalness: 0.3, transparent: true, opacity: 0.85 }));
+  ground.position.y = -0.14;
+  ground.receiveShadow = true;
+  group.add(ground);
+  const lamp = new PointLight(0xdfe6ff, 10, 30, 1.4);
+  lamp.position.set(8, 9, -9);
+  lamp.castShadow = true;
+  const sign = new PointLight(0xffb070, 6, 14, 1.5);
+  sign.position.set(-6, 3, -7);
+  group.add(lamp, sign);
+  const street = backdrop(scene, art("noir", "alley.webp"));
+  void board;
+  return {
+    resize: street.resize,
+    update() {},
+    dispose() {
+      group.removeFromParent();
+      street.dispose();
+    },
+  };
+}
+
 export const COURTS: Court[] = [
   { id: "staunton", name: "Tournament Hall", tribe: "staunton", top: "#4a3020", bottom: "#060403", dress: tournamentHall },
   { id: "epoch-drifters", name: "Epoch Plains", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: epochPlains },
-  { id: "epoch-flat", name: "Epoch Plains (2D)", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: epochFlat },
+  { id: "epoch-flat", name: "Epoch Plains (2D)", tribe: "epoch-drifters", skin: "retro", top: "#c45a96", bottom: "#3b2a78", dress: epochFlat },
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
   { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
+  { id: "sketch", name: "Sketchbook Desk", skin: "sketch", top: "#6a4a30", bottom: "#1a120a", preview: art("sketch", "bedroom.webp"), dress: sketchDesk },
+  { id: "noir", name: "Back Alley", skin: "noir", top: "#2a2e38", bottom: "#05060a", preview: art("noir", "alley.webp"), dress: backAlley },
 ];
 
 export const court = (id: string) => COURTS.find((c) => c.id === id) ?? COURTS[0];

@@ -3,7 +3,8 @@
 // to stand on a shelf); ?court=<id> shows a court from a steep angle, tall, with
 // a little of its scenery. window.shelfReady turns true when everything has
 // loaded; advance(ms) steps time for capture under software rendering.
-import type { Object3D, Scene } from "three";
+import { Color, type Object3D, type Scene } from "three";
+import type { Role } from "@outofbook/legions/figures";
 import { LegionsScene } from "@outofbook/legions/scene";
 import { tribe } from "@outofbook/legions/tribes";
 
@@ -17,7 +18,23 @@ const s = new LegionsScene(document.getElementById("stage")!);
 // The scene's insides, for a cutout: no board, no labels, no sky.
 const inner = s as unknown as { scene: Scene; board: { group: Object3D }; labels: Object3D };
 
-if (tribeId || look) {
+const drawing = q.get("drawing");
+if (drawing) {
+  // A pencil drawing of one of the game's characters on paper ("stormcourt:k"), for the Sketch court's desk.
+  const [tid, role] = drawing.split(":");
+  const t = tribe(tid);
+  await t.ready?.();
+  s.setTribes({ w: t, b: t });
+  s.setPosition("8/8/8/8/8/8/8/8 w - - 0 1");
+  const f = t.figure(role as Role, "w");
+  f.root.rotation.y = 0.5;
+  s.addFigure(f);
+  s.setMode("sketch");
+  s.setShowcase({ pos: [0, 1.3, 4.2], target: [0, 0.85, 0], fov: 34 });
+  inner.scene.background = new Color(0xf4efe2);
+  inner.board.group.visible = false;
+  inner.labels.visible = false;
+} else if (tribeId || look) {
   const t = tribe(tribeId ?? "staunton");
   await t.ready?.();
   s.setTribes({ w: t, b: t });

@@ -17,9 +17,9 @@ const ABOUT: Record<string, string> = {
   "tribe:stormcourt": "A king who rules by magic, thunder bishops, stone rooks and a queen who opens a pit of fire.",
   "tribe:thornwood": "An ancient forest: root-walking priests, treant rooks, a flytrap queen and the Elder Oak.",
   "tribe:epoch-drifters": "Heroes out of a 16-bit RPG: a sword-swinging hero, a fire-breathing dragon, a cleric, a stone guardian, a princess and their king.",
-  "mode:retro": "Every battle drawn as a 16-bit game would, 3D tribes included. Also in Settings.",
-  "mode:noir": "Every battle as a black-and-white film: hard light, grain and a dark edge. Also in Settings.",
-  "mode:sketch": "Every battle drawn in pencil on paper, lines and hatching. Also in Settings.",
+  "mode:retro": "Your tribes drawn as a 16-bit game would, 3D ones included. Comes with the Epoch Plains (2D) court. Also in Settings.",
+  "mode:noir": "Your tribes as a black-and-white film: hard light and grain. Comes with the Back Alley court. Also in Settings.",
+  "mode:sketch": "Your tribes drawn in pencil on paper, lines and hatching. Comes with the Sketchbook Desk court. Also in Settings.",
   "finish:original": "Your tribe as it was made.",
   "finish:gold": "Your tribe cast in gold: bright gold for the light side, old gold for the dark.",
   "finish:crystal": "Your tribe in clear crystal.",
@@ -40,7 +40,9 @@ function howToGet(id: ItemId) {
   if (id === "tribe:stormcourt" || id === "court:stormcourt") return "Beat the Storm King in the campaign";
   if (id === "tribe:thornwood" || id === "court:thornwood") return "Beat the Elder Oak in the campaign";
   if (id === "tribe:epoch-drifters" || id === "court:epoch-drifters") return "Beat the Princess in the campaign";
-  if (id === "court:epoch-flat" || /^(finish|color):|^mode:(noir|sketch)$/.test(id)) return "Buy with credits (coming soon)";
+  const skin = COURTS.find((c) => `court:${c.id}` === id)?.skin;
+  if (skin) return `Comes with the ${skin === "retro" ? "Retro" : skin[0].toUpperCase() + skin.slice(1)} skin`;
+  if (/^(finish|color):|^mode:(noir|sketch)$/.test(id)) return "Buy with credits (coming soon)";
   if (id === "mode:retro") return "Finish the puzzle trek";
   return "Coming soon";
 }
@@ -48,7 +50,7 @@ function howToGet(id: ItemId) {
 /** How an item is had, for ordering a shelf: bought first, then won in the campaign, then by level, then the starters. */
 function source(id: ItemId) {
   const how = howToGet(id);
-  return how.startsWith("Buy") ? 0 : how.startsWith("Beat") ? 1 : how.startsWith("Reach") ? 2 : 3;
+  return how.startsWith("Buy") || how.startsWith("Comes") ? 0 : how.startsWith("Beat") ? 1 : how.startsWith("Reach") ? 2 : 3;
 }
 
 /** Every item that can be won, by shelf, and the modes. */
