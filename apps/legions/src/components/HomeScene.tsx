@@ -10,7 +10,8 @@ const ASPECT = 16 / 9;
 
 /** The art's size and where it sits on a screen of w by h. */
 function fit(w: number, h: number) {
-  if (w >= h) {
+  // Wide or nearly square (a foldable opened flat): the art covers the screen and is cropped at the sides.
+  if (w >= h * 0.75) {
     const sw = Math.max(w, h * ASPECT) * 1.06;
     return { sw, sh: sw / ASPECT, top: (h - sw / ASPECT) / 2, tall: false };
   }

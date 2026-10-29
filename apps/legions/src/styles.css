@@ -1438,7 +1438,7 @@ input[type="range"] {
   inset: 0;
   background: radial-gradient(70% 60% at 50% 55%, rgb(5 3 12 / 0.55), transparent 75%), linear-gradient(180deg, rgb(5 3 12 / 0.5), transparent 28%, transparent 70%, rgb(5 3 12 / 0.7));
 }
-@media (max-aspect-ratio: 1/1) {
+@media (max-aspect-ratio: 3/4) {
   /* A tall screen: the art above, melting into the dark, the menu at the bottom. */
   .hs-shade {
     background: linear-gradient(180deg, #07050d 11%, rgb(5 3 12 / 0.5) 17%, transparent 27%, rgb(5 3 12 / 0.5) 62%, #07050d 82%);
