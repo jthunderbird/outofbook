@@ -12,6 +12,8 @@ export type ItemId = `${ItemKind}:${string}`;
 
 export interface Profile {
   xp: number;
+  /** Credits: earned by playing, spent in the store (not yet in use). */
+  credits: number;
   owned: ItemId[];
   /** finish and color: "original" for the tribe as it was made. */
   equipped: { tribe: string; court: string; finish: string; color: string };
@@ -37,6 +39,7 @@ export interface Profile {
 const KEY = "legions.profile";
 const FRESH: Profile = {
   xp: 0,
+  credits: 0,
   owned: ["tribe:staunton", "court:staunton", "court:night"],
   equipped: { tribe: "staunton", court: "staunton", finish: "original", color: "original" },
   perks: { hint: 3, takeback: 3, retry: 0 },

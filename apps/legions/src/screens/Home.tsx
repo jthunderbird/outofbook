@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Screen } from "../App";
 import { levelOf, useProfile, XP_PER_LEVEL } from "../profile";
-import { Castle, ChessKnight, Globe, Puzzle, Settings as SettingsIcon, Swords } from "lucide-react";
+import { Castle, Coins, Star, ChessKnight, Globe, Puzzle, Settings as SettingsIcon, Swords } from "lucide-react";
 
 export function Home({ go }: { go: (s: Screen) => void }) {
   const p = useProfile();
@@ -18,16 +18,13 @@ export function Home({ go }: { go: (s: Screen) => void }) {
         </h1>
         <p>Every piece fights its own way</p>
       </div>
-      <div className="xp">
-        <div className="row">
-          <span>Level {level}</span>
-          <span className="muted">
-            {into} / {XP_PER_LEVEL} XP
-          </span>
-        </div>
-        <div className="bar">
-          <div style={{ width: `${(into / XP_PER_LEVEL) * 100}%` }} />
-        </div>
+      <div className="home-stats">
+        <span title={`${into} / ${XP_PER_LEVEL} XP to level ${level + 1}`}>
+          <Star size={13} /> Level {level}
+        </span>
+        <span title="Credits">
+          <Coins size={13} /> {p.credits}
+        </span>
       </div>
       <div className="menu">
         <button className="btn gold" style={{ ["--i" as string]: 0 }} onClick={() => go({ name: "campaign" })}>
