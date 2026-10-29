@@ -10,7 +10,9 @@ import { COLORS, FINISHES } from "@outofbook/legions/looks";
 import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { LEVEL_UNLOCKS, owns, update, useProfile, type ItemId, type Profile } from "../profile";
-import { ArrowLeft, Lock, Trophy, X } from "lucide-react";
+import { Wallet } from "../components/Wallet";
+import { PRODUCTS } from "../economy";
+import { ArrowLeft, Lock, ShoppingCart, Trophy, X } from "lucide-react";
 
 const ABOUT: Record<string, string> = {
   "tribe:staunton": "A classic wooden set. Pieces slide, the knight hops, and a capture knocks the other piece flat.",
@@ -42,7 +44,7 @@ function howToGet(id: ItemId) {
   if (id === "tribe:epoch-drifters" || id === "court:epoch-drifters") return "Beat the Princess in the campaign";
   const skin = COURTS.find((c) => `court:${c.id}` === id)?.skin;
   if (skin) return `Comes with the ${skin === "retro" ? "Retro" : skin[0].toUpperCase() + skin.slice(1)} skin`;
-  if (/^(finish|color):|^mode:(noir|sketch)$/.test(id)) return "Buy with credits (coming soon)";
+  if (/^(finish|color):|^mode:(noir|sketch)$/.test(id)) return "Buy in the Store";
   if (id === "mode:retro") return "Finish the puzzle trek";
   return "Coming soon";
 }
@@ -119,6 +121,7 @@ export function Collection({ go }: { go: (s: Screen) => void }) {
         <span className="collection-count">
           {owned} of {all.length} won
         </span>
+        <Wallet />
       </div>
       {it ? (
         <div className="collection-card">
@@ -127,7 +130,11 @@ export function Collection({ go }: { go: (s: Screen) => void }) {
           </button>
           <h3>{it.name}</h3>
           <div className="muted">{ABOUT[it.id] ?? KIND_ABOUT[kind!] ?? (court?.tribe ? `Home of ${TRIBES[court.tribe]?.name.replace(/^The /, "the ")}.` : "A board for any tribe.")}</div>
-          {it.locked ? (
+          {it.locked && PRODUCTS.some((x) => x.id === it.id) ? (
+            <button className="btn shop small" onClick={() => go({ name: "store" })}>
+              <ShoppingCart size={15} /> Buy in the Store
+            </button>
+          ) : it.locked ? (
             <button className="btn dark small" disabled>
               <Lock size={15} /> {it.note}
             </button>

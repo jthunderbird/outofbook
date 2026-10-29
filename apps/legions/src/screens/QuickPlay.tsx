@@ -8,6 +8,7 @@ import { COURTS } from "@outofbook/legions/courts";
 import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { owns, update, useProfile } from "../profile";
+import { Wallet } from "../components/Wallet";
 import { ArrowLeft, Lock, Swords } from "lucide-react";
 
 export function QuickPlay({ go }: { go: (s: Screen) => void }) {
@@ -29,6 +30,8 @@ export function QuickPlay({ go }: { go: (s: Screen) => void }) {
           <ArrowLeft size={22} />
         </button>
         <h2>Quick play</h2>
+        <div className="spacer" />
+        <Wallet />
       </div>
       <div className="panel" style={{ width: "min(620px, 100%)", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
         <div>

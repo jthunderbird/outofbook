@@ -9,6 +9,7 @@ import { tribe } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { CHALLENGES, MEDAL_NAMES, STAGES, challengeOpen, clock, duration, medalCounts, medalTimes, nextChallenge, NEW_TALLY, worldOf, type Trek as TrekState } from "../puzzles";
 import { myLook, update, useProfile } from "../profile";
+import { Wallet } from "../components/Wallet";
 import { ArrowLeft, Check, Clock, Lock, Play, Puzzle, RotateCcw, Trophy, X } from "lucide-react";
 
 /** Where the hero was last shown standing (this visit). */
@@ -77,6 +78,7 @@ export function Trek({ go }: { go: (s: Screen) => void }) {
         <div className="trek-progress" title="Challenges passed on this run">
           <Trophy size={16} /> {t.cleared.length} / {CHALLENGES.length}
         </div>
+        <Wallet />
         <Tallies t={t} />
       </div>
 

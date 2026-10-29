@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { Screen } from "../App";
 import { levelOf, useProfile, XP_PER_LEVEL } from "../profile";
-import { Castle, Coins, Star, ChessKnight, Globe, Puzzle, Settings as SettingsIcon, Swords } from "lucide-react";
+import { money } from "../economy";
+import { Castle, Coins, Star, ChessKnight, Globe, Puzzle, Settings as SettingsIcon, ShoppingCart, Swords } from "lucide-react";
 
 export function Home({ go }: { go: (s: Screen) => void }) {
   const p = useProfile();
@@ -22,7 +23,7 @@ export function Home({ go }: { go: (s: Screen) => void }) {
         <span title={`${into} / ${XP_PER_LEVEL} XP to level ${level + 1}`}>
           <Star size={13} /> Level {level}
         </span>
-        <span title="Credits">
+        <span title={money(p.credits)}>
           <Coins size={13} /> {p.credits}
         </span>
       </div>
@@ -67,7 +68,10 @@ export function Home({ go }: { go: (s: Screen) => void }) {
           <button className="btn dark small" style={{ ["--i" as string]: 4 }} onClick={() => setOnline(true)}>
             <Globe size={18} /> Play online
           </button>
-          <button className="btn dark small" style={{ ["--i" as string]: 5 }} onClick={() => go({ name: "settings" })}>
+          <button className="btn shop small" style={{ ["--i" as string]: 5 }} onClick={() => go({ name: "store" })}>
+            <ShoppingCart size={18} /> Store
+          </button>
+          <button className="btn dark small" style={{ ["--i" as string]: 6 }} onClick={() => go({ name: "settings" })}>
             <SettingsIcon size={18} /> Settings
           </button>
         </div>

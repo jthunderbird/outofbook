@@ -262,6 +262,13 @@ button {
   --c2: #d8342a;
   --lip: #6e1210;
 }
+.btn.shop {
+  --c1: #6fe6ff;
+  --c2: #1b9bd0;
+  --lip: #0a4a6e;
+  color: #02202e;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.45);
+}
 .btn.dark {
   --c1: #3a2d63;
   --c2: #241a45;
@@ -1470,4 +1477,108 @@ input[type="range"] {
 }
 .home-stats svg {
   color: var(--gold);
+}
+
+/* ---------- Credits in the top bars, and the Store ---------- */
+.wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(14 10 36 / 0.7);
+  border: 1px solid var(--edge);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--gold);
+}
+.home .row-btns .btn,
+.menu .row-btns .btn {
+  padding-inline: 6px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.store-section h3 {
+  margin: 8px 0 10px;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.product {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.12s,
+    border-color 0.12s;
+}
+.product:not(:disabled):hover {
+  transform: translateY(-2px);
+  border-color: #6fe6ff88;
+}
+.product.owned {
+  opacity: 0.55;
+  cursor: default;
+}
+.product-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: rgb(5 2 15 / 0.45);
+  overflow: hidden;
+  color: var(--gold);
+}
+.product-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.product-name {
+  font-weight: 800;
+  font-size: 16px;
+}
+.product-blurb {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.product-price {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(255 211 107 / 0.16);
+  color: var(--gold);
+  font-weight: 800;
+  font-size: 14px;
+}
+.product-price.short {
+  background: rgb(255 106 106 / 0.14);
+  color: var(--bad);
+}
+.product-price.got {
+  background: rgb(79 224 138 / 0.14);
+  color: var(--good);
 }

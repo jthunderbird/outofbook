@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import { COURTS } from "@outofbook/legions/courts";
 import { MODES, type Mode } from "@outofbook/legions/modes";
 import { NEW_TREK, type Trek } from "./puzzles";
+import { price, type Product } from "./economy";
 
 export type ItemKind = "tribe" | "court" | "mode" | "finish" | "color" | "outfit";
 /** "tribe:staunton", "court:night", "mode:retro", "finish:gold", "color:ruby", ... (a court is a board with its scenery; a mode a way of drawing the game; a finish and a color the look of the player's own pieces). */
@@ -12,7 +13,7 @@ export type ItemId = `${ItemKind}:${string}`;
 
 export interface Profile {
   xp: number;
-  /** Credits: earned by playing, spent in the store (not yet in use). */
+  /** Credits: earned by playing, spent in the Store. */
   credits: number;
   owned: ItemId[];
   /** finish and color: "original" for the tribe as it was made. */
@@ -128,13 +129,14 @@ export const myMode = (p: Profile) => ((MODES as readonly string[]).includes(p.m
 /** What a game's end brought: XP, a level reached, items unlocked. */
 export interface Reward {
   xp: number;
+  credits: number;
   levelFrom: number;
   levelTo: number;
   unlocked: ItemId[];
 }
 
-/** Adds XP (and any items won), rewarding each new level with items and a perk charge of each kind. */
-export function award(xp: number, items: ItemId[] = []): Reward {
+/** Adds XP and credits (and any items won), rewarding each new level with items and a perk charge of each kind. */
+export function award(xp: number, items: ItemId[] = [], credits = 0): Reward {
   const p = profile;
   const levelFrom = levelOf(p.xp);
   const total = p.xp + xp;
@@ -146,8 +148,18 @@ export function award(xp: number, items: ItemId[] = []): Reward {
     perks.hint++;
     perks.takeback++;
   }
-  save({ ...p, xp: total, owned: [...p.owned, ...unlocked], perks, rewardedLevel: Math.max(p.rewardedLevel, levelTo) });
-  return { xp, levelFrom, levelTo, unlocked };
+  save({ ...p, xp: total, credits: p.credits + credits, owned: [...p.owned, ...unlocked], perks, rewardedLevel: Math.max(p.rewardedLevel, levelTo) });
+  return { xp, credits, levelFrom, levelTo, unlocked };
+}
+
+/** Buys a Store product with credits; false if it cannot be afforded or an item is already owned. */
+export function buy(product: Product): boolean {
+  const p = profile;
+  const cost = price(product);
+  if (p.credits < cost || (product.item && owns(p, product.item))) return false;
+  const perks = product.perk ? { ...p.perks, [product.perk.id]: p.perks[product.perk.id] + product.perk.n } : p.perks;
+  save({ ...p, credits: p.credits - cost, owned: product.item ? [...p.owned, product.item] : p.owned, perks });
+  return true;
 }
 
 export function resetProfile() {

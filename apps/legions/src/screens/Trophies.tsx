@@ -7,6 +7,7 @@ import type { Screen } from "../App";
 import { CHAPTERS } from "../campaign";
 import { CHALLENGES, MEDAL_NAMES, STAGES, medalCounts } from "../puzzles";
 import { useProfile } from "../profile";
+import { Wallet } from "../components/Wallet";
 import { ArrowLeft, Lock } from "lucide-react";
 
 /** A cup drawn in SVG: gold, silver or bronze, or dimmed. */
@@ -51,6 +52,7 @@ export function Trophies({ go }: { go: (s: Screen) => void }) {
             </span>
           ))}
         </span>
+        <Wallet />
       </div>
 
       <section className="trophy-shelf">

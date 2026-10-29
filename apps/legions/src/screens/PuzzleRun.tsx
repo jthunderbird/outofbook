@@ -13,7 +13,8 @@ import { TRIBES } from "@outofbook/legions/tribes";
 import type { Screen } from "../App";
 import { CHALLENGES, MEDAL_NAMES, TREK_XP, challengeXp, clock, drawPuzzles, findChallenge, medalFor, medalTimes, worldOf, type Medal, type Puzzle, type Tally } from "../puzzles";
 import { award, getProfile, myLook, myMode, owns, update, useProfile, type Reward } from "../profile";
-import { Check, Clock, LockOpen, RotateCcw, Trophy, Volume2, VolumeX, X } from "lucide-react";
+import { money, puzzleCredits } from "../economy";
+import { Check, Clock, Coins, LockOpen, RotateCcw, Trophy, Volume2, VolumeX, X } from "lucide-react";
 
 type State = "loading" | "opening" | "play" | "reply" | "solved" | "failed" | "passed" | "error";
 const RETRY_WINDOW = 3000;
@@ -120,7 +121,7 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
     if (first) {
       // The whole trek done: Retro mode the first time, a large XP lump after.
       const items = finishing && before.runs === 0 ? (["mode:retro"] as const) : [];
-      setReward(award(challengeXp(c) + (finishing && before.runs > 0 ? TREK_XP : 0), [...items]));
+      setReward(award(challengeXp(c) + (finishing && before.runs > 0 ? TREK_XP : 0), [...items], puzzleCredits(c.stage)));
       setComplete(finishing);
     }
   };
@@ -332,6 +333,9 @@ export function PuzzleRun({ id, go }: { id: string; go: (s: Screen) => void }) {
             {reward && (
               <>
                 <div style={{ margin: "14px 0 6px", fontSize: 22, color: "var(--gold)" }}>+{reward.xp} XP</div>
+                <div className="unlock">
+                  <Coins size={16} style={{ verticalAlign: -3 }} /> +{money(reward.credits)}
+                </div>
                 {reward.unlocked.map((i) => (
                   <div key={i} className="unlock">
                     <LockOpen size={16} style={{ verticalAlign: -3 }} /> Unlocked {i === "mode:retro" ? "Retro mode" : i}

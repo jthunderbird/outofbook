@@ -15,7 +15,8 @@ import type { Screen } from "../App";
 import { findBattle } from "../campaign";
 import { bestMove, getMaia, maiaMove, unwatchMaia, type MaiaStatus } from "../opponent";
 import { award, myLook, myMode, owns, update, useProfile, type ItemId, type Reward } from "../profile";
-import { CircleArrowUp, Flag, Lightbulb, LockOpen, Settings as Cog, Undo2, Volume2, VolumeX, X } from "lucide-react";
+import { gameCredits, money } from "../economy";
+import { CircleArrowUp, Coins, Flag, Lightbulb, LockOpen, Settings as Cog, Undo2, Volume2, VolumeX, X } from "lucide-react";
 import { Captured } from "../components/Captured";
 import { GameSettings } from "../components/GameSettings";
 import { TribeBanner } from "../components/TribeBanner";
@@ -121,7 +122,7 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
         if (found.battle.boss) items.push(...found.chapter.reward);
       }
     } else xp = outcome.result === "win" ? Math.round(setup.elo / 10) : outcome.result === "draw" ? Math.round(setup.elo / 30) : 5;
-    setReward(award(xp, items));
+    setReward(award(xp, items, gameCredits(outcome.result, { tier: found?.chapter.tier, elo: setup.elo })));
   }, [outcome]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Dev: load any position, for trying out the screen: legionsGame.load(fen).
@@ -279,6 +280,11 @@ export function Game({ setup, go }: { setup: GameSetup; go: (s: Screen) => void 
             {reward && (
               <>
                 <div style={{ margin: "14px 0 6px", fontSize: 22, color: "var(--gold)" }}>+{reward.xp} XP</div>
+                {reward.credits > 0 && (
+                  <div className="unlock">
+                    <Coins size={16} style={{ verticalAlign: -3 }} /> +{money(reward.credits)}
+                  </div>
+                )}
                 {reward.levelTo > reward.levelFrom && (
                   <div className="unlock">
                     <CircleArrowUp size={16} style={{ verticalAlign: -3 }} /> Level {reward.levelTo}! +1 hint, +1 take-back

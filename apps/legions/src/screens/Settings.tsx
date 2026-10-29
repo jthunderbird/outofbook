@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Screen } from "../App";
 import { resetProfile, update } from "../profile";
+import { Wallet } from "../components/Wallet";
 import { COURTS } from "@outofbook/legions/courts";
 import { COLORS, FINISHES } from "@outofbook/legions/looks";
 import { TRIBES } from "@outofbook/legions/tribes";
@@ -16,6 +17,8 @@ export function Settings({ go }: { go: (s: Screen) => void }) {
           <ArrowLeft size={22} />
         </button>
         <h2>Settings</h2>
+        <div className="spacer" />
+        <Wallet />
       </div>
       <div className="panel" style={{ width: "min(520px, 100%)", margin: "0 auto" }}>
         <GameSettings />

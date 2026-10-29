@@ -13,6 +13,7 @@ import { Settings } from "./screens/Settings";
 import { Trek } from "./screens/Trek";
 import { PuzzleRun } from "./screens/PuzzleRun";
 import { Trophies } from "./screens/Trophies";
+import { Store } from "./screens/Store";
 
 export type Screen =
   | { name: "home" }
@@ -21,6 +22,7 @@ export type Screen =
   | { name: "collection" }
   | { name: "trophies" }
   | { name: "settings" }
+  | { name: "store" }
   | { name: "game"; setup: GameSetup }
   | { name: "trek" }
   | { name: "puzzle"; challenge: string; nonce: number };
@@ -38,6 +40,7 @@ export function App() {
       {screen.name === "quick" && <QuickPlay go={go} />}
       {screen.name === "collection" && <Collection go={go} />}
       {screen.name === "trophies" && <Trophies go={go} />}
+      {screen.name === "store" && <Store go={go} />}
       {screen.name === "settings" && <Settings go={go} />}
       {screen.name === "game" && <Game key={screen.setup.nonce} setup={screen.setup} go={go} />}
       {screen.name === "trek" && <Trek go={go} />}

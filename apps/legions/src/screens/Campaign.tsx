@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 import type { Screen } from "../App";
 import { battleOpen, chapterOpen, CHAPTERS } from "../campaign";
 import { owns, update, useProfile } from "../profile";
+import { Wallet } from "../components/Wallet";
 import { TRIBES } from "@outofbook/legions/tribes";
 import { COURTS } from "@outofbook/legions/courts";
 import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Lock, Star, Swords } from "lucide-react";
@@ -72,6 +73,7 @@ export function Campaign({ go }: { go: (s: Screen) => void }) {
               ))}
           </select>
         </label>
+        <Wallet />
       </div>
 
       <button className="btn dark round side left" aria-label="Previous chapter" disabled={i === 0} onClick={() => turn(-1)}>
