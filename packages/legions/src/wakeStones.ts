@@ -19,7 +19,7 @@ import {
   Vector3,
   type Material,
 } from "three";
-import { canvas, clamp01, fbm, normalFrom, smooth, stream } from "./wakeCourt";
+import { canvas, clamp01, fbm, normalFrom, smooth, stream } from "./wakeKit";
 
 // ----- The weathering shader -----
 
@@ -90,7 +90,7 @@ export function weather<T extends MeshStandardMaterial>(mat: T, moss = 0.6, bump
 
 // ----- Inscriptions -----
 
-type Carving = "rip" | "cross" | "scroll" | "name" | "none";
+export type Carving = "rip" | "cross" | "scroll" | "name" | "skull" | "none";
 
 /** What is carved on a stone's face: a light picture with the letters dark, and a normal map from it so they sink in. */
 function inscription(kind: Carving, seed: number) {
@@ -153,6 +153,42 @@ function inscription(kind: Carving, seed: number) {
     verse.forEach((v, i) => line(v, 450 + i * 46, 28));
     g.font = "40px serif";
     g.fillText("❦", W / 2, 640);
+  } else if (kind === "skull") {
+    // A memento mori: a skull over crossed bones, and a name.
+    g.fillStyle = ink();
+    g.strokeStyle = ink();
+    g.lineWidth = 9;
+    g.beginPath();
+    g.ellipse(256, 210, 78, 88, 0, 0, 7);
+    g.stroke();
+    g.beginPath();
+    g.ellipse(224, 205, 22, 28, 0, 0, 7);
+    g.ellipse(288, 205, 22, 28, 0, 0, 7);
+    g.fill();
+    g.beginPath();
+    g.moveTo(256, 232);
+    g.lineTo(244, 262);
+    g.lineTo(268, 262);
+    g.closePath();
+    g.fill();
+    g.lineWidth = 5;
+    for (let i = 0; i < 5; i++) {
+      g.beginPath();
+      g.moveTo(222 + i * 17, 280);
+      g.lineTo(222 + i * 17, 300);
+      g.stroke();
+    }
+    g.lineWidth = 14;
+    g.lineCap = "round";
+    g.beginPath();
+    g.moveTo(150, 340);
+    g.lineTo(362, 420);
+    g.moveTo(362, 340);
+    g.lineTo(150, 420);
+    g.stroke();
+    line("Memento mori", 500, 40);
+    line(name, 580, 40);
+    line(years(), 640, 34);
   } else if (kind === "name") {
     line(name, 250, 50);
     line(years(), 330, 40);
@@ -202,13 +238,17 @@ interface SlabOptions {
   erode?: number;
   /** Narrower towards the top (0 none). */
   taper?: number;
+  /** Vertices per unit; the default is fine for a headstone, less for a small block in a crowd. */
+  res?: number;
   seed: number;
 }
 
 /** A hand-carved block: a subdivided box rounded at the edges, its top shaped, eroded and gouged. */
-function slab(w: number, h: number, d: number, o: SlabOptions): BufferGeometry {
+export function slab(w: number, h: number, d: number, o: SlabOptions): BufferGeometry {
   const r = stream(o.seed);
-  const seg = [Math.max(8, Math.round(w * 64)), Math.max(12, Math.round(h * 64)), Math.max(4, Math.round(d * 48))];
+  const res = o.res ?? 64;
+  const min = Math.max(2, Math.round((8 * res) / 64));
+  const seg = [Math.max(min, Math.round(w * res)), Math.max(min, Math.round(h * res)), Math.max(Math.ceil(min / 2), Math.round(d * res * 0.75))];
   const geo = new BoxGeometry(w, h, d, seg[0], seg[1], seg[2]);
   const pos = geo.getAttribute("position");
   const nor = geo.getAttribute("normal");
@@ -262,7 +302,7 @@ function slab(w: number, h: number, d: number, o: SlabOptions): BufferGeometry {
 }
 
 /** Where a box's faces meet, their vertices sit together but lit apart; give those the same, averaged normal. */
-function smoothSeams(geo: BufferGeometry) {
+export function smoothSeams(geo: BufferGeometry) {
   const pos = geo.getAttribute("position");
   const nor = geo.getAttribute("normal");
   const sums = new Map<string, Vector3>();
@@ -285,16 +325,20 @@ export interface StoneKind {
   id: string;
   name: string;
   note: string;
+  /** How many of it may stand in the court (at most 3). */
+  copies?: number;
+  /** Room it takes on the ground, for placing. */
+  radius?: number;
   build(): Group;
 }
 
-const stoneColor = (seed: number) => {
+export const stoneColor = (seed: number) => {
   const r = stream(seed);
-  return new Color().setHSL(0.09 + r() * 0.08, 0.06 + r() * 0.08, 0.3 + r() * 0.12);
+  return new Color().setHSL(0.09 + r() * 0.08, 0.06 + r() * 0.08, 0.2 + r() * 0.1);
 };
 
 /** The six materials of a box-shaped stone: the front (index 4) carries the inscription. */
-function faces(carving: Carving, seed: number, moss: number, tint = stoneColor(seed)): Material[] {
+export function faces(carving: Carving, seed: number, moss: number, tint = stoneColor(seed)): Material[] {
   const base = () => weather(new MeshStandardMaterial({ color: tint, roughness: 0.92, metalness: 0 }), moss);
   const mats: Material[] = [0, 1, 2, 3, 5].map(base);
   const front = base() as MeshStandardMaterial;
@@ -308,13 +352,31 @@ function faces(carving: Carving, seed: number, moss: number, tint = stoneColor(s
   return mats;
 }
 
-function solid(geo: BufferGeometry, mats: Material | Material[], at = new Vector3(), rot = new Vector3()) {
+export function solid(geo: BufferGeometry, mats: Material | Material[], at = new Vector3(), rot = new Vector3()) {
   const m = new Mesh(geo, mats);
   m.position.copy(at);
   m.rotation.set(rot.x, rot.y, rot.z);
   m.castShadow = true;
   m.receiveShadow = true;
   return m;
+}
+
+/** Roughens any smooth shape (a lathe, a sphere) into worn stone: waves and pits along its normals. */
+export function erode(geo: BufferGeometry, seed: number, amp = 0.02, pit = 0.012) {
+  const pos = geo.getAttribute("position");
+  const nor = geo.getAttribute("normal");
+  const p = new Vector3();
+  const n = new Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i);
+    n.fromBufferAttribute(nor, i);
+    const d = (fbm(p.x * 4 + 3, p.y * 4 + p.z * 4, seed, 1 << 16, 4) - 0.5) * amp + (fbm(p.x * 22, p.y * 22 + p.z * 22, seed + 1, 1 << 16, 2) - 0.5) * pit;
+    p.addScaledVector(n, d);
+    pos.setXYZ(i, p.x, p.y, p.z);
+  }
+  geo.computeVertexNormals();
+  smoothSeams(geo);
+  return geo;
 }
 
 export const STONES: StoneKind[] = [
@@ -469,3 +531,16 @@ export const STONES: StoneKind[] = [
     },
   },
 ];
+
+const META: Record<string, [number, number]> = {
+  arch: [3, 0.7],
+  gothic: [2, 0.7],
+  ogee: [2, 0.8],
+  cross: [2, 0.8],
+  obelisk: [2, 0.8],
+  broken: [2, 0.9],
+  urn: [2, 0.7],
+  ledger: [2, 1.2],
+  sunken: [2, 0.7],
+};
+for (const k of STONES) [k.copies, k.radius] = META[k.id] ?? [2, 0.8];

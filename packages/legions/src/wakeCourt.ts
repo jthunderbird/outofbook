@@ -7,12 +7,14 @@ import {
   CanvasTexture,
   Color,
   Euler,
+  BoxGeometry,
   BufferGeometry,
   Float32BufferAttribute,
   IcosahedronGeometry,
   Fog,
   Group,
   HemisphereLight,
+  type Light,
   DirectionalLight,
   InstancedMesh,
   Matrix4,
@@ -28,132 +30,15 @@ import {
 } from "three";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Board } from "./board";
-import { weather } from "./wakeStones";
+import { slab, weather } from "./wakeStones";
+import { GRAVES } from "./wakeGraves";
+import { body, canvas, clamp01, fbm, mix, normalFrom, smooth, stream, wrapped } from "./wakeKit";
 import type { CourtSet } from "./courts";
 
 /** Where the dirt lies under the board; the slabs and the mud sit in it. */
 export const GROUND = -0.05;
 /** The haze the far ground and the sky's foot meet in. */
 export const HAZE = 0x424c54;
-
-/** A steady pseudo-random stream from a seed. */
-export function stream(seed: number) {
-  let s = seed >>> 0 || 1;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
-// ----- Noise -----
-
-function hash(x: number, y: number, s: number) {
-  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-/** Smooth value noise, repeating every `per` cells. */
-function vnoise(x: number, y: number, s: number, per: number) {
-  const ix = Math.floor(x);
-  const iy = Math.floor(y);
-  const fx = x - ix;
-  const fy = y - iy;
-  const u = fx * fx * (3 - 2 * fx);
-  const v = fy * fy * (3 - 2 * fy);
-  const w = (a: number) => ((a % per) + per) % per;
-  const a = hash(w(ix), w(iy), s);
-  const b = hash(w(ix + 1), w(iy), s);
-  const c = hash(w(ix), w(iy + 1), s);
-  const d = hash(w(ix + 1), w(iy + 1), s);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-}
-
-/** Layered noise in 0..1; repeats every `per` cells of the first layer. */
-export function fbm(x: number, y: number, s: number, per: number, octaves: number) {
-  let sum = 0;
-  let amp = 0.5;
-  let tot = 0;
-  let f = 1;
-  for (let o = 0; o < octaves; o++) {
-    sum += amp * vnoise(x * f, y * f, s + o * 17, per * f);
-    tot += amp;
-    amp *= 0.5;
-    f *= 2;
-  }
-  return sum / tot;
-}
-
-export const mix = (a: number, b: number, t: number) => a + (b - a) * t;
-export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-export const smooth = (a: number, b: number, x: number) => {
-  const t = clamp01((x - a) / (b - a));
-  return t * t * (3 - 2 * t);
-};
-
-export function canvas(size: number) {
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  return { c, g: c.getContext("2d", { willReadFrequently: true })! };
-}
-
-/** Per-pixel color at a lower resolution, scaled up smooth: the stone's or soil's body, before the sharp detail goes on. */
-function body(size: number, low: number, color: (u: number, v: number) => [number, number, number]) {
-  const { c, g } = canvas(size);
-  const lo = canvas(low);
-  const img = lo.g.createImageData(low, low);
-  for (let y = 0; y < low; y++)
-    for (let x = 0; x < low; x++) {
-      const [r, gr, b] = color(x / low, y / low);
-      const i = (y * low + x) * 4;
-      img.data[i] = r;
-      img.data[i + 1] = gr;
-      img.data[i + 2] = b;
-      img.data[i + 3] = 255;
-    }
-  lo.g.putImageData(img, 0, 0);
-  g.imageSmoothingEnabled = true;
-  g.imageSmoothingQuality = "high";
-  g.drawImage(lo.c, 0, 0, size, size);
-  return { c, g };
-}
-
-/** A normal map worked out from a canvas's light and dark: what is dark sinks, what is light stands. */
-export function normalFrom(src: HTMLCanvasElement, strength: number, wrap: boolean) {
-  const size = Math.min(1024, src.width);
-  const { c, g } = canvas(size);
-  g.drawImage(src, 0, 0, size, size);
-  const px = g.getImageData(0, 0, size, size);
-  const lum = new Float32Array(size * size);
-  for (let i = 0; i < size * size; i++) lum[i] = (0.299 * px.data[i * 4] + 0.587 * px.data[i * 4 + 1] + 0.114 * px.data[i * 4 + 2]) / 255;
-  const at = (x: number, y: number) => lum[Math.min(size - 1, Math.max(0, y)) * size + Math.min(size - 1, Math.max(0, x))];
-  const wrapAt = (x: number, y: number) => lum[((y + size) % size) * size + ((x + size) % size)];
-  const get = wrap ? wrapAt : at;
-  const out = g.createImageData(size, size);
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      const dx = (get(x + 1, y) - get(x - 1, y)) * strength;
-      const dy = (get(x, y + 1) - get(x, y - 1)) * strength;
-      const len = Math.hypot(dx, dy, 1);
-      const i = (y * size + x) * 4;
-      out.data[i] = ((-dx / len) * 0.5 + 0.5) * 255;
-      out.data[i + 1] = ((dy / len) * 0.5 + 0.5) * 255;
-      out.data[i + 2] = ((1 / len) * 0.5 + 0.5) * 255;
-      out.data[i + 3] = 255;
-    }
-  g.putImageData(out, 0, 0);
-  return new CanvasTexture(c);
-}
-
-/** Runs a drawing at a spot and again at the wrapped copies of it, so a tiling picture has no seam. */
-function wrapped(size: number, x: number, y: number, r: number, draw: (x: number, y: number) => void) {
-  for (const dx of [-size, 0, size])
-    for (const dy of [-size, 0, size]) {
-      const px = x + dx;
-      const py = y + dy;
-      if (px > -r && px < size + r && py > -r && py < size + r) draw(px, py);
-    }
-}
 
 // ----- The dirt -----
 
@@ -444,21 +329,24 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   const geo = new PlaneGeometry(size, size, segs, segs).rotateX(-Math.PI / 2);
   const pos = geo.getAttribute("position");
   const colors = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    // Flat under the board, rising into humps and hollows beyond it.
+  /** The dirt's height at a spot: flat under the board, rising into humps and hollows beyond it. */
+  const heightAt = (x: number, z: number) => {
     const out = smooth(4.4, 9, Math.max(Math.abs(x), Math.abs(z)));
     const hump = fbm(x * 0.18 + 40, z * 0.18, 5, 1 << 16, 5) - 0.42;
     const ridge = fbm(x * 0.6, z * 0.6 + 70, 6, 1 << 16, 3) - 0.5;
-    pos.setY(i, GROUND + out * (hump * 1.6 + ridge * 0.25) + 0.004 * (1 - out) * Math.sin(x * 7) * Math.cos(z * 5));
+    return GROUND + out * (hump * 1.6 + ridge * 0.25) + 0.004 * (1 - out) * Math.sin(x * 7) * Math.cos(z * 5);
+  };
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    pos.setY(i, heightAt(x, z));
     // Patches of the dirt darker, damper or paler, to break up its tiling.
     const k = mix(0.7, 1.12, fbm(x * 0.25, z * 0.25, 12, 1 << 16, 4));
     colors.set([k, k * 0.98, k * 0.95], i * 3);
   }
   geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const soil = new MeshStandardMaterial({ map: dirt.map, normalMap: dirt.normal, vertexColors: true, roughness: 1, color: 0xb0aaa2 });
+  const soil = new MeshStandardMaterial({ map: dirt.map, normalMap: dirt.normal, vertexColors: true, roughness: 1, color: 0xe0d6c8 });
   soil.normalScale.set(2, 2);
   const ground = new Mesh(geo, soil);
   ground.receiveShadow = true;
@@ -482,12 +370,15 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     sq.material = mats[Math.floor(rng() * mats.length)];
     was.map?.dispose();
     was.dispose();
-    // Each square's picture turned a quarter-turn or so, so no two read alike.
-    const g = sq.geometry.clone();
+    // A worn block of its own: rounded, chipped and eroded like the stones, its picture turned a quarter-turn or so.
+    const sd = 800 + Math.round((sq.position.x + 4) * 8 + (sq.position.z + 4) * 64);
+    const g = isLight ? slab(1, 0.14, 1, { round: 0.045, chips: 3, erode: 1.7, res: 34, seed: sd }) : slab(1, 0.14, 1, { round: 0.07, erode: 2.8, res: 30, seed: sd });
+    const par = (g as BoxGeometry).parameters;
     const uv = g.getAttribute("uv");
+    const top0 = 2 * (par.depthSegments + 1) * (par.heightSegments + 1);
     const turn = Math.floor(rng() * 4);
     const flip = rng() < 0.5 ? -1 : 1;
-    for (let i = 8; i < 12; i++) {
+    for (let i = top0; i < top0 + (par.widthSegments + 1) * (par.depthSegments + 1); i++) {
       let u = uv.getX(i) - 0.5;
       let v = uv.getY(i) - 0.5;
       for (let k = 0; k < turn; k++) [u, v] = [-v, u];
@@ -499,12 +390,13 @@ export function theWake(scene: Scene, board: Board): CourtSet {
       // The slabs stand a hair apart and a touch out of true, their tops just above the dirt.
       sq.scale.set(0.96, 1, 0.96);
       sq.rotation.set((rng() - 0.5) * 0.014, (rng() - 0.5) * 0.04, (rng() - 0.5) * 0.014);
-      sq.position.y = -0.075;
+      sq.position.y = -0.16;
       sq.castShadow = false;
       light.push(sq);
     } else {
-      // Mud: flush with the dirt around it.
-      sq.position.y = -0.082;
+      // Mud: flush with the dirt around it, its edge ragged.
+      sq.scale.set(1.01, 1, 1.01);
+      sq.position.y = -0.17;
     }
   }
 
@@ -637,18 +529,74 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(moss);
   dispose.push(tuft, mossMat, moss);
 
-  // ----- Light and haze -----
-  const moonLight = new DirectionalLight(0xb4c8d8, 1.5);
-  moonLight.position.set(-9, 3.5, 5);
+  // ----- The graves, scattered round the board: no kind more than three times -----
+  const taken: { x: number; z: number; r: number }[] = [{ x: 0, z: 0, r: 6.2 }];
+  const holders: Group[] = [];
+  const FIXED: Record<string, [number, number]> = { chapel: [-17, -21], mausoleum: [14, -17], vault: [-15, -3] };
+  const facing = (x: number, z: number) => Math.atan2(-x, -z);
+  for (const [id, [x, z]] of Object.entries(FIXED)) taken.push({ x, z, r: GRAVES.find((k) => k.id === id)?.radius ?? 2 });
+  const pr = stream(77);
+  for (const kind of GRAVES) {
+    const built = kind.build();
+    const n = Math.min(3, kind.copies ?? 1);
+    for (let c = 0; c < n; c++) {
+      const radius = kind.radius ?? 0.8;
+      let x = 0;
+      let z = 0;
+      let ok = false;
+      if (FIXED[kind.id]) {
+        [x, z] = FIXED[kind.id];
+        ok = true;
+      } else
+        for (let t = 0; t < 300 && !ok; t++) {
+          const a = pr() * Math.PI * 2;
+          const d = 6.4 + 24 * Math.pow(pr(), 1.5);
+          x = Math.sin(a) * d;
+          z = Math.cos(a) * d;
+          // Keep the camera's side of the board clear, and each piece off its neighbors.
+          if (z > 3 && Math.abs(x) < 8 && z < 16) continue;
+          ok = taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + radius + 0.5);
+        }
+      if (!ok) continue;
+      taken.push({ x, z, r: radius });
+      const holder = new Group();
+      holder.position.set(x, heightAt(x, z) - 0.03, z);
+      holder.rotation.y = facing(x, z) + (pr() < 0.2 ? (pr() - 0.5) * 6 : (pr() - 0.5) * 1.1);
+      const piece = c === 0 ? built : built.clone();
+      if (c > 0 && !FIXED[kind.id]) piece.scale.multiplyScalar(0.9 + pr() * 0.2);
+      holder.add(piece);
+      group.add(holder);
+      holders.push(holder);
+    }
+  }
+
+  // ----- Light and haze: the moon low behind the graves, so their edges are lit and their shadows fall toward you -----
+  const moonLight = new DirectionalLight(0xb8ccdf, 2.4);
+  moonLight.position.set(-12, 14, -18);
   moonLight.castShadow = true;
-  Object.assign(moonLight.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9 });
-  moonLight.shadow.mapSize.set(1024, 1024);
-  const hemi = new HemisphereLight(0x6a7e8c, 0x0c1012, 0.7);
-  group.add(moonLight, moonLight.target, hemi);
+  Object.assign(moonLight.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 90 });
+  moonLight.shadow.mapSize.set(4096, 4096);
+  moonLight.shadow.bias = -0.0004;
+  moonLight.shadow.normalBias = 0.02;
+  const fill = new DirectionalLight(0x8aa4bd, 1.1);
+  fill.position.set(6, 5, 16);
+  const hemi = new HemisphereLight(0x8aa0b0, 0x2a2018, 2.0);
+  group.add(moonLight, moonLight.target, fill, hemi);
+  // The scene's own studio lights and reflections would wash the night out; put them down for this court.
+  const dimmed: [Light, number][] = [];
+  for (const o of scene.children) {
+    const l = o as Light;
+    if (l.isLight && o !== group && l.intensity > 0) {
+      dimmed.push([l, l.intensity]);
+      l.intensity = 0;
+    }
+  }
+  const prevEnv = scene.environmentIntensity;
+  scene.environmentIntensity = 0.2;
   const prevBg = scene.background;
   const prevFog = scene.fog;
   scene.background = new Color(HAZE);
-  scene.fog = new Fog(HAZE, 10, 60);
+  scene.fog = new Fog(HAZE, 14, 80);
 
   return {
     markY: 0.02,
@@ -657,8 +605,22 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     dispose() {
       group.removeFromParent();
       scene.background = prevBg;
+      scene.environmentIntensity = prevEnv;
+      for (const [l, i] of dimmed) l.intensity = i;
       scene.fog = prevFog;
       dispose.forEach((d) => d.dispose());
+      for (const h of holders)
+        h.traverse((o) => {
+          const m = o as Mesh;
+          if (!m.isMesh) return;
+          m.geometry.dispose();
+          for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+            const t = mat as MeshStandardMaterial;
+            t.map?.dispose();
+            t.normalMap?.dispose();
+            mat.dispose();
+          }
+        });
     },
   };
 }
