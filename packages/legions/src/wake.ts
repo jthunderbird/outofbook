@@ -50,7 +50,7 @@ import type { Stage, Tribe, TribeMove } from "./tribe";
 // ---------- Figures ----------
 
 const MODEL: Record<Exclude<Role, "r" | "p">, string> = { k: "restless-king", q: "restless-queen", b: "restless-bishop", n: "restless-knight" };
-const HEIGHT: Record<Role, number> = { k: 1.85, q: 1.65, b: 1.4, n: 0.62, r: 1.2, p: 0.8 };
+const HEIGHT: Record<Role, number> = { k: 1.5, q: 1.4, b: 1.4, n: 0.62, r: 1.2, p: 0.8 };
 const BLOOD = 0x9a0f14;
 
 function wakeFigure(role: Role, side: Side): Fig {
@@ -60,6 +60,14 @@ function wakeFigure(role: Role, side: Side): Fig {
   const f = modelFig(name, role, side, HEIGHT[role], { tint: role === "p" ? { w: "none" } : { w: "pallid" } });
   if (!f) return staunton.figure(role, side);
   f.root.rotation.y = side === "w" ? Math.PI : 0;
+  // The lord and his bride are slimmer, so a hand can reach round them to the pieces in front.
+  if (role === "k" || role === "q") {
+    const model = f.body.children[0];
+    const slim = new Group();
+    f.body.add(slim);
+    slim.add(model);
+    slim.scale.set(0.78, 1, 0.78);
+  }
   // Witches and the bride hover.
   if (role === "b" || role === "q") f.floating = true;
   return f;
@@ -590,11 +598,11 @@ class Graveyard extends Actor {
   }
 
   /** A floating figure gliding to b, trailing petals. */
-  private async glide(f: Fig, b: Vector3, ms = 480) {
+  private async glide(f: Fig, b: Vector3, ms = 480, lift = 0.12) {
     const a = f.root.position.clone();
     await this.turn(f, Math.atan2(b.x - a.x, b.z - a.z), 140);
     await tween(this.clock, Math.max(ms, a.distanceTo(b) * 150), (t) => {
-      f.root.position.set(a.x + (b.x - a.x) * t, Math.sin(Math.PI * t) * 0.12, a.z + (b.z - a.z) * t);
+      f.root.position.set(a.x + (b.x - a.x) * t, Math.sin(Math.PI * t) * lift, a.z + (b.z - a.z) * t);
       if (Math.random() < 0.4)
         this.fx.spawn(f.root.position.clone().setY(0.3), {
           color: 0x7a1020,
@@ -741,24 +749,40 @@ class Graveyard extends Actor {
     let sketch: HTMLCanvasElement | null = null;
     if (victim) {
       sketch = this.stage.portrait(victim);
-      const side = Math.atan2(b.x - a.x, b.z - a.z) + Math.PI / 2;
-      const claws = this.grab(victim.root.position, { dist: 0.46, lift: victim.height * 0.5, s: 0.9 + victim.height * 0.55, angle: side });
-      await claws.raise(300, 0.7);
-      this.hurt(victim);
+      const sink = victim.height + 0.2;
+      const facing = victim.root.rotation.y;
+      const size = 0.9 + victim.height * 0.55;
       const home = victim.root.position.clone();
+      this.hurt(victim);
       const struggle = this.loop(() => {
         victim.body.rotation.z = Math.sin(this.clock.now * 0.03) * 0.16;
         victim.root.position.x = home.x + Math.sin(this.clock.now * 0.05) * 0.04;
       });
-      this.sound.play("slash", { gain: 0.45, rate: 0.7 });
-      await claws.claw(700);
-      struggle();
-      this.blood(victim.root.position.clone().setY(0.5), 10);
+      // One hand comes up behind it, claws into it and drags it down to the waist.
+      const behind = this.grab(home, { dist: 0.42, lift: victim.height * 0.6, s: size, n: 1, angle: facing + Math.PI });
+      await behind.raise(300, 0.7);
+      this.sound.play("slash", { gain: 0.5, rate: 0.7 });
+      await behind.claw(420);
+      this.blood(victim.root.position.clone().setY(victim.height * 0.6), 10);
       this.sound.play("grind", { gain: 0.5, rate: 0.8 });
-      const sink = victim.height + 0.2;
-      await claws.drag(520, sink + 0.3, (t) => (victim.root.position.y = -sink * t));
+      await behind.drag(520, sink * 0.5, (t) => (victim.root.position.y = -sink * 0.5 * t));
+      // The second comes up in front, claws its chest and pulls it the rest of the way under.
+      const front = this.grab(home, { dist: 0.42, lift: victim.height * 0.3, s: size, n: 1, angle: facing });
+      await front.raise(280, 0.7);
+      this.sound.play("slash", { gain: 0.55, rate: 0.65 });
+      await front.claw(380);
+      this.blood(victim.root.position.clone().setY(victim.height * 0.3), 14);
+      this.sound.play("grind", { gain: 0.55, rate: 0.65 });
+      const rest = sink * 0.5 + 0.35;
+      const backY = behind.list[0].position.y;
+      await front.drag(560, rest, (t) => {
+        victim.root.position.y = -sink * 0.5 - sink * 0.5 * t;
+        behind.list[0].position.y = backY - rest * t;
+      });
+      struggle();
       victim.root.removeFromParent();
-      claws.clear();
+      behind.clear();
+      front.clear();
     }
     f.root.position.set(b.x, -depth, b.z);
     const up = this.grab(b, hold);
@@ -1240,7 +1264,9 @@ class Graveyard extends Actor {
       this.dropBats(bats);
       f.rest();
     }
-    await this.glide(f, b);
+    // She walks (her own gait, in her gown), not slides.
+    await this.walk(f, b, 340, { speed: 0.95 });
+    await this.settle(f);
   }
 
   // ----- Bats -----
@@ -1280,6 +1306,12 @@ class Graveyard extends Actor {
   private async lord(f: Fig, to: string, victim?: Fig) {
     const a = f.root.position.clone();
     const b = squareAt(to);
+    // Only a kill turns him to bats; he otherwise drifts over the board, cloak trailing.
+    if (!victim) {
+      this.sound.play("whoosh", { gain: 0.25, rate: 0.7 });
+      await this.glide(f, b, 560, 0.3);
+      return;
+    }
     const dir = b.clone().sub(a).setY(0).normalize();
     const bats = this.bats(a.clone().setY(1.0), 30);
     f.root.visible = false;
