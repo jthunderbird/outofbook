@@ -24,6 +24,7 @@ import {
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   MirroredRepeatWrapping,
+  Fog,
   Path,
   PointLight,
   LinearFilter,
@@ -92,6 +93,10 @@ export interface CourtSet {
   resize?(w: number, h: number): void;
   /** Height at which move markers lie, when the squares stand proud of the board. */
   markY?: number;
+  /** How far (radians) the camera may turn either way from the player's side; unlimited if not given. */
+  turn?: number;
+  /** The player's side: 1 for white, -1 for black (a court with a front turns to face them). */
+  orient?(s: 1 | -1): void;
   update(ms: number): void;
   dispose(): void;
 }
@@ -1336,12 +1341,12 @@ function sketchDesk(scene: Scene, board: Board): CourtSet {
 }
 
 /**
- * The Noir skin's court, drawn as HD-2D games draw their worlds: the alley
- * itself is the painted picture (alley.webp), filling the screen behind the
- * board and sliding a little as the camera turns and tilts, so the board seems
- * to stand in it. The marble board, its sides in black lacquer, stands on the
- * wet cobbles in a pool of shadow, lit from behind by the alley's street lamp
- * and coldly from the front; nothing else is built, so the eye stays on the pieces.
+ * The Noir skin's court: a 1950s back alley at night, one 3D model (Meshy,
+ * from a diorama picture): two brick tenements meeting at a corner behind the
+ * board, the Blue Dahlia's door and sign, fire escapes, crates, trash cans, a
+ * street lamp in the gap between them. The board stands on the alley's open
+ * cobble square, turned so the corner is straight ahead and the buildings rise
+ * on both sides; the camera turns only so far as the buildings close the view.
  */
 function backAlley(scene: Scene, board: Board): CourtSet {
   const group = new Group();
@@ -1387,84 +1392,75 @@ function backAlley(scene: Scene, board: Board): CourtSet {
     sq.material = new MeshStandardMaterial({ map, roughness: was.roughness, metalness: was.metalness });
     was.dispose();
   }
-  // The picture: a touch soft and dark, as a background out of focus, and a little larger than the screen so it can slide.
-  const OVER = 1.18;
-  const cv = document.createElement("canvas");
-  const bg = new CanvasTexture(cv);
-  bg.colorSpace = SRGBColorSpace;
-  let size = [16, 9];
-  const fit = () => {
-    const [w, h] = size;
-    const a = w / h / (cv.width / cv.height || 16 / 9);
-    // The part of the picture the screen shows (covering it), then the room left to slide.
-    const rx = (a > 1 ? 1 : a) / OVER;
-    const ry = (a > 1 ? 1 / a : 1) / OVER;
-    bg.repeat.set(rx, ry);
-    return [1 - rx, 1 - ry];
-  };
-  let slack = fit();
-  void texture(art("noir", "alley.webp")).then((t) => {
-    const img = t.image as HTMLImageElement;
-    cv.width = img.width;
-    cv.height = img.height;
-    const g = cv.getContext("2d")!;
-    g.filter = "blur(1px) brightness(0.9)";
-    g.drawImage(img, 0, 0);
-    // A new size: the old upload goes, the next frame makes a new one.
-    bg.dispose();
-    bg.needsUpdate = true;
-    slack = fit();
+  // The alley: the model is 2 across, its cobbles at -0.8 and their open square's middle at (0.29, 0.29); turned so its corner is straight ahead.
+  const S = 11;
+  const alley = new GLTFLoader().loadAsync(art("noir", "alley.glb")).then((g) => {
+    if (!group.parent) return;
+    const m = g.scene;
+    m.scale.setScalar(S);
+    m.rotation.y = -Math.PI / 4;
+    m.position.set(0, GROUND + 0.8 * S, -0.41 * S);
+    m.traverse((o) => {
+      o.receiveShadow = true;
+      o.castShadow = true;
+      // Night: the picture's colors dimmed, the stone a little wet.
+      const mat = (o as Mesh).material as MeshStandardMaterial | undefined;
+      // The game's sun and studio light are meant for the board; the alley takes less of them.
+      if (mat?.color) {
+        mat.color.setScalar(0.32);
+        mat.roughness = 0.6;
+        mat.metalness = 0;
+        mat.envMapIntensity = 0.15;
+        // The picture it was made from had a white background, left on a few walls as white patches: night sky instead.
+        mat.onBeforeCompile = (sh) => {
+          sh.fragmentShader = sh.fragmentShader.replace(
+            "#include <map_fragment>",
+            `#include <map_fragment>
+            float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.004, 0.005, 0.008), smoothstep(0.2, 0.26, lum));`,
+          );
+        };
+      }
+    });
+    group.add(m);
   });
-  // The camera's turn slides the picture sideways, its height up and down (looking down shows more of the cobbles).
-  const tracker = new Mesh(new PlaneGeometry(0.001, 0.001), new MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
-  tracker.frustumCulled = false;
-  tracker.onBeforeRender = (_r, _s, camera) => {
-    const p = camera.position;
-    const az = Math.atan2(p.x, p.z);
-    const polar = Math.atan2(Math.hypot(p.x, p.z), p.y);
-    const up = Math.min(1, Math.max(0, (polar - 0.15) / 1.1));
-    bg.offset.set(slack[0] * (0.5 + 0.5 * Math.sin(az)), slack[1] * (0.15 + 0.7 * up));
-  };
-  group.add(tracker);
-  // A pool of shadow on the cobbles round the board, so it stands on the ground rather than floating on the picture.
-  const pool = document.createElement("canvas");
-  pool.width = pool.height = 128;
-  const pg = pool.getContext("2d")!;
-  const grad = pg.createRadialGradient(64, 64, 20, 64, 64, 64);
-  grad.addColorStop(0, "rgba(0,0,0,0.75)");
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-  pg.fillStyle = grad;
-  pg.fillRect(0, 0, 128, 128);
-  const poolTex = new CanvasTexture(pool);
-  const shade = new Mesh(new PlaneGeometry(22, 22).rotateX(-Math.PI / 2), new MeshBasicMaterial({ map: poolTex, transparent: true, depthWrite: false, toneMapped: false }));
-  shade.position.y = GROUND;
-  group.add(shade);
-  const catcher = new Mesh(new PlaneGeometry(30, 30).rotateX(-Math.PI / 2), new ShadowMaterial({ opacity: 0.45 }));
-  catcher.position.y = GROUND + 0.01;
-  catcher.receiveShadow = true;
-  group.add(catcher);
-  // The street lamp behind the board, as in the picture; a cold glow from the front so the pieces read.
-  const street = new PointLight(0xffe6c0, 30, 70, 1.4);
-  street.position.set(5, 22, -18);
-  street.castShadow = true;
-  street.shadow.mapSize.set(1024, 1024);
-  const front = new DirectionalLight(0x9aa8c8, 0.7);
-  front.position.set(-4, 9, 14);
-  group.add(street, front, new HemisphereLight(0x6a7488, 0x0a0a10, 0.4));
+  void alley;
+  // The street beyond the model's edges, dark and wet, lost in the night's mist.
+  const street = new Mesh(new PlaneGeometry(200, 200).rotateX(-Math.PI / 2), new MeshStandardMaterial({ color: 0x0c0d10, roughness: 0.45 }));
+  street.position.y = GROUND - 0.03;
+  street.receiveShadow = true;
+  group.add(street);
+  // The street lamp in the gap at the back, warm; the speakeasy's sign on the left; a cold moon over the roofs.
+  const lamp = new PointLight(0xffe2b0, 18, 45, 1.3);
+  lamp.position.set(1.5, GROUND + 10, -15);
+  lamp.castShadow = true;
+  lamp.shadow.mapSize.set(1024, 1024);
+  const sign = new PointLight(0xc8d8ff, 14, 16, 1.5);
+  sign.position.set(-9, GROUND + 5, -3);
+  const moon = new DirectionalLight(0x8a9ab8, 0.3);
+  moon.position.set(6, 20, 12);
+  moon.castShadow = true;
+  Object.assign(moon.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 });
+  moon.shadow.mapSize.set(1024, 1024);
+  group.add(lamp, sign, moon, moon.target, new HemisphereLight(0x5a6478, 0x08080c, 0.12));
   const prevBg = scene.background;
-  scene.background = bg;
+  const prevFog = scene.fog;
+  scene.background = new Color(0x050608);
+  scene.fog = new Fog(0x050608, 28, 70);
   return {
-    resize(w, h) {
-      size = [w, h];
-      slack = fit();
+    turn: 0.7,
+    // Lower than the usual view, so the buildings rise behind the board.
+    view: { fixed: false, pitch: 0.68, dist: 17, fov: 36, ty: 0 },
+    orient(side) {
+      // The corner stays straight ahead, whichever side the player has.
+      group.rotation.y = side > 0 ? 0 : Math.PI;
     },
     update() {},
     dispose() {
       group.removeFromParent();
       scene.background = prevBg;
+      scene.fog = prevFog;
       lacquer.dispose();
-      bg.dispose();
-      poolTex.dispose();
       grays.forEach((t) => t.dispose());
       used.forEach((t) => t.dispose());
     },

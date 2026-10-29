@@ -294,6 +294,7 @@ export class LegionsScene {
       this.controls.enabled = false;
       // The orbit's limits would pull a menu's camera back into the game's range.
       Object.assign(this.controls, { minDistance: 0.5, maxDistance: 400, minPolarAngle: 0, maxPolarAngle: Math.PI });
+      this.limitTurn();
       this.camera.fov = this.show.fov;
       this.camera.near = 0.1;
       this.camera.far = 220;
@@ -311,6 +312,7 @@ export class LegionsScene {
     const v = this.court?.view;
     this.controls.enabled = !v?.fixed;
     Object.assign(this.controls, { minPolarAngle: 0.15, maxPolarAngle: 1.25 });
+    this.limitTurn();
     // A fixed view sits far off, with a narrow lens, beyond the orbit's usual range.
     this.controls.minDistance = v?.fixed ? 1 : 6;
     this.controls.maxDistance = v?.fixed ? 400 : 20;
@@ -334,15 +336,25 @@ export class LegionsScene {
     }
   }
 
+  /** A court with a front lets the camera turn only so far from the player's side. */
+  private limitTurn() {
+    const t = this.show ? undefined : this.court?.turn;
+    const mid = this.orientation === "w" ? 0 : Math.PI;
+    this.controls.minAzimuthAngle = t === undefined ? -Infinity : mid - t;
+    this.controls.maxAzimuthAngle = t === undefined ? Infinity : mid + t;
+  }
+
   setOrientation(o: Side) {
     // Turning to the other side keeps the player's own view (their zoom and angle), swung round to the other edge; only the first time, a menu's shot or a fixed view puts the camera in place.
     const turn = this.oriented && o !== this.orientation && !this.show && !this.court?.view?.fixed;
     this.oriented = true;
     this.orientation = o;
     const s = o === "w" ? 1 : -1;
+    this.court?.orient?.(s);
     if (turn) {
       for (const v of [this.camera.position, this.controls.target]) v.set(-v.x, v.y, -v.z);
       this.camera.lookAt(this.controls.target);
+      this.limitTurn();
     } else this.applyView();
     this.sun.position.set(4 * s, 12, 6 * s);
     this.controls.update();
@@ -395,6 +407,7 @@ export class LegionsScene {
     this.scene.background = courtBackground(id);
     const c = court(id);
     if (c.dress) this.court = c.dress(this.scene, this.board);
+    this.court?.orient?.(this.orientation === "w" ? 1 : -1);
     this.court?.resize?.(this.host.clientWidth || 1, this.host.clientHeight || 1);
     this.applyView();
     // A bare court is drawn over a picture the page supplies: no board, no labels, a clear background.
