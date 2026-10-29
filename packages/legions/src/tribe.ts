@@ -22,6 +22,10 @@ export interface Stage {
   readonly camera: Camera;
   /** The court being played on (courts.ts), for effects that differ on a tribe's home. */
   readonly court: string;
+  /** Every figure on the board now (a move's own pieces included). */
+  figures(): Fig[];
+  /** A pencil sketch of a figure seen from the front, ink on clear (for a gravestone's face). */
+  portrait(f: Fig): HTMLCanvasElement;
   /** Shakes the camera for this many ms. */
   shake: number;
 }

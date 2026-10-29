@@ -30,11 +30,14 @@ type Tick = (ms: number) => boolean | void;
 
 export class Clock {
   private ticks = new Set<Tick>();
+  /** Milliseconds of animation time so far (for steady waves). */
+  now = 0;
   /** Runs fn each frame with the frame's milliseconds until it returns true. */
   add(fn: Tick) {
     this.ticks.add(fn);
   }
   update(ms: number) {
+    this.now += ms * SPEED;
     for (const t of [...this.ticks]) if (t(ms * SPEED)) this.ticks.delete(t);
   }
   clear() {

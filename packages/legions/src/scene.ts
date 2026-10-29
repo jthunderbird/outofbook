@@ -7,11 +7,14 @@ import { Chess, type Move, type Square } from "chess.js";
 import {
   ACESFilmicToneMapping,
   AdditiveBlending,
+  Box3,
   CanvasTexture,
+  Color,
   CircleGeometry,
   DirectionalLight,
   Group,
   HemisphereLight,
+  Line,
   Mesh,
   MeshBasicMaterial,
   PCFSoftShadowMap,
@@ -20,13 +23,16 @@ import {
   PlaneGeometry,
   PMREMGenerator,
   PointLight,
+  Points,
   Raycaster,
   RingGeometry,
   Scene,
   SRGBColorSpace,
+  Sprite,
   Vector2,
   Vector3,
   WebGLRenderer,
+  WebGLRenderTarget,
   type Object3D,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -134,6 +140,8 @@ export class LegionsScene {
       get fx() {
         return self.fx;
       },
+      figures: () => [...self.figs.values()],
+      portrait: (f) => self.portrait(f),
       get shake() {
         return self.shake;
       },
@@ -758,6 +766,82 @@ export class LegionsScene {
       f.rest();
     }
     this.shown = fen;
+  }
+
+  /** A pencil sketch of a figure, front on: the figure alone is drawn small, then turned to lines and hatching on clear. */
+  private portrait(f: Fig): HTMLCanvasElement {
+    const W = 192;
+    const H = 256;
+    const rt = new WebGLRenderTarget(W, H);
+    const box = new Box3().setFromObject(f.root);
+    const c = box.getCenter(new Vector3());
+    const size = box.getSize(new Vector3());
+    const cam = new PerspectiveCamera(24, W / H, 0.1, 50);
+    const dist = (Math.max(size.y, (size.x * H) / W) * 0.62) / Math.tan((12 * Math.PI) / 180);
+    cam.position.copy(c).addScaledVector(new Vector3(0, 0, 1).applyQuaternion(f.root.quaternion), dist);
+    cam.lookAt(c);
+    // Only the figure (and the lights) are drawn.
+    const mine = new Set<Object3D>();
+    f.root.traverse((o) => mine.add(o));
+    const hidden: Object3D[] = [];
+    this.scene.traverse((o) => {
+      const d = o as Mesh;
+      if ((d.isMesh || (o as Sprite).isSprite || (o as Points).isPoints || (o as Line).isLine) && o.visible && !mine.has(o)) {
+        o.visible = false;
+        hidden.push(o);
+      }
+    });
+    const bg = this.scene.background;
+    const fog = this.scene.fog;
+    this.scene.background = null;
+    this.scene.fog = null;
+    const clear = new Color();
+    this.renderer.getClearColor(clear);
+    const alpha = this.renderer.getClearAlpha();
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.setRenderTarget(rt);
+    this.renderer.clear();
+    this.renderer.render(this.scene, cam);
+    const px = new Uint8Array(W * H * 4);
+    this.renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
+    this.renderer.setRenderTarget(null);
+    this.renderer.setClearColor(clear, alpha);
+    this.scene.background = bg;
+    this.scene.fog = fog;
+    for (const o of hidden) o.visible = true;
+    rt.dispose();
+
+    // Brightness (clear is bright, the picture is upside down), then edges and hatching.
+    const lum = new Float32Array(W * H);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const i = ((H - 1 - y) * W + x) * 4;
+        const a = px[i + 3] / 255;
+        const l = (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]) / 255;
+        lum[y * W + x] = Math.pow(Math.min(1, l / Math.max(a, 0.001)), 1 / 2.2) * a + (1 - a) * 1.5;
+      }
+    const out = document.createElement("canvas");
+    out.width = W;
+    out.height = H;
+    const g = out.getContext("2d")!;
+    const img = g.createImageData(W, H);
+    const at = (x: number, y: number) => lum[Math.min(H - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))];
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const gx = -at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1) + at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1);
+        const gy = -at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1) + at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1);
+        const edge = Math.min(1, Math.max(0, (Math.hypot(gx, gy) - 0.1) / 0.3));
+        const l = lum[y * W + x];
+        const hatch = l < 1.2 ? ((x + y) % 6 < 3 && l < 0.45 ? 0.35 : 0) + ((x - y + 600) % 6 < 3 && l < 0.22 ? 0.35 : 0) : 0;
+        const ink = Math.min(1, edge + hatch);
+        const i = (y * W + x) * 4;
+        img.data[i] = 30;
+        img.data[i + 1] = 30;
+        img.data[i + 2] = 38;
+        img.data[i + 3] = Math.round(ink * 235);
+      }
+    g.putImageData(img, 0, 0);
+    return out;
   }
 
   /** Acts out the move that led to next; false if it could not (a jump), and the board will snap. */
