@@ -37,6 +37,8 @@ import {
   Shape,
   ShapeGeometry,
   SphereGeometry,
+  CatmullRomCurve3,
+  TubeGeometry,
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
@@ -146,6 +148,83 @@ function groundTexture(base: [number, number, number], seed: number, cracks = 3)
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   t.wrapS = t.wrapT = RepeatWrapping;
+  return t;
+}
+
+/** A weathered paving slab: pale cracked marble, or dark stone furred with moss; its edge chipped and dark. */
+function slabTexture(light: boolean, seed: number) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  const r = stream(seed);
+  const base = light ? [166, 165, 160] : [40, 48, 45];
+  g.fillStyle = `rgb(${base})`;
+  g.fillRect(0, 0, 256, 256);
+  // Clouds in the stone.
+  for (let i = 0; i < 16; i++) {
+    const x = r() * 256;
+    const y = r() * 256;
+    const rad = 30 + r() * 70;
+    const d = (r() - 0.5) * (light ? 40 : 22);
+    const grad = g.createRadialGradient(x, y, 0, x, y, rad);
+    grad.addColorStop(0, `rgba(${base[0] + d},${base[1] + d},${base[2] + d + (light ? -4 : 2)},0.55)`);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  for (let i = 0; i < 2600; i++) {
+    const d = (r() - 0.5) * (light ? 34 : 26);
+    g.fillStyle = `rgba(${base[0] + d},${base[1] + d},${base[2] + d},0.5)`;
+    g.fillRect(r() * 256, r() * 256, 1 + r() * 2.5, 1 + r() * 2.5);
+  }
+  // Rust-pink stains on the marble.
+  if (light)
+    for (let i = 0; i < 6; i++) {
+      const x = r() * 256;
+      const y = r() * 256;
+      const rad = 20 + r() * 40;
+      const grad = g.createRadialGradient(x, y, 0, x, y, rad);
+      grad.addColorStop(0, "rgba(176,140,134,0.28)");
+      grad.addColorStop(1, "rgba(176,140,134,0)");
+      g.fillStyle = grad;
+      g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+  // Moss, thick at the edges and along the cracks.
+  const mossN = light ? 18 : 70;
+  for (let i = 0; i < mossN; i++) {
+    const edge = r() < 0.65;
+    const x = edge ? (r() < 0.5 ? r() * 40 : 216 + r() * 40) : r() * 256;
+    const y = edge ? r() * 256 : r() * 256;
+    const rad = 4 + r() * (light ? 8 : 20);
+    const grad = g.createRadialGradient(x, y, 0, x, y, rad);
+    grad.addColorStop(0, `rgba(${58 + r() * 24},${96 + r() * 36},${44},${light ? 0.35 : 0.55})`);
+    grad.addColorStop(1, "rgba(60,100,46,0)");
+    g.fillStyle = grad;
+    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // Cracks, with branches.
+  g.strokeStyle = light ? "rgba(34,30,30,0.75)" : "rgba(8,10,10,0.8)";
+  const crack = (x: number, y: number, ang: number, len: number, w: number) => {
+    g.lineWidth = w;
+    g.beginPath();
+    g.moveTo(x, y);
+    for (let i = 0; i < len; i++) {
+      ang += (r() - 0.5) * 0.9;
+      x += Math.cos(ang) * (8 + r() * 10);
+      y += Math.sin(ang) * (8 + r() * 10);
+      g.lineTo(x, y);
+      if (r() < 0.14 && len > 3) crack(x, y, ang + (r() < 0.5 ? 1 : -1) * (0.5 + r()), Math.floor(len / 2), w * 0.7);
+    }
+    g.stroke();
+  };
+  for (let k = 0; k < (light ? 4 : 3); k++) crack(r() * 256, r() < 0.5 ? 0 : 256, r() * Math.PI * 2, 9, light ? 1.9 : 1.5);
+  // The chipped dark edge.
+  g.strokeStyle = "rgba(6,8,8,0.6)";
+  g.lineWidth = 9;
+  g.strokeRect(0, 0, 256, 256);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
   return t;
 }
 
@@ -269,7 +348,7 @@ const WATCHERS: [string, number, number, number, number, "peek" | "perch" | "flo
 
 const GROUND = -0.02;
 /** The haze: far ground, far trees and the sky's foot all meet in it. */
-const HAZE = 0x3b6068;
+const HAZE = 0x424c54;
 
 export function theWake(scene: Scene, board: Board): CourtSet {
   const group = new Group();
@@ -281,28 +360,30 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   // ----- The board in the ground -----
   const squares = new Set(board.squares.values());
   for (const o of board.group.children) if (!squares.has(o as Mesh)) o.visible = false;
-  const gravel = [0, 1, 2].map((i) => groundTexture([104 + i * 4, 112, 110], 200 + i * 40));
-  const dirt = [0, 1, 2, 3].map((i) => groundTexture([36, 30, 27], 500 + i * 40));
-  dispose.push(...gravel, ...dirt);
-  const lightAt: Vector3[] = [];
-  const darkAt: Vector3[] = [];
+  const slabs = {
+    light: [0, 1, 2, 3].map((i) => slabTexture(true, 300 + i * 53)),
+    dark: [0, 1, 2, 3].map((i) => slabTexture(false, 700 + i * 53)),
+  };
+  dispose.push(...slabs.light, ...slabs.dark);
   for (const sq of board.squares.values()) {
     const was = sq.material as MeshStandardMaterial;
-    const pool = sq.userData.light ? gravel : dirt;
+    const pool = sq.userData.light ? slabs.light : slabs.dark;
     const map = pool[Math.floor(rng() * pool.length)].clone();
     map.needsUpdate = true;
-    map.repeat.set(0.4, 0.4);
-    map.offset.set(rng() * 0.6, rng() * 0.6);
-    map.wrapS = map.wrapT = RepeatWrapping;
+    // Each slab turned about at random, so no two read alike.
+    map.center.set(0.5, 0.5);
+    map.rotation = Math.floor(rng() * 4) * (Math.PI / 2);
     dispose.push(map);
-    sq.material = new MeshStandardMaterial({ map, roughness: 1, metalness: 0 });
+    sq.material = new MeshStandardMaterial({ map, roughness: sq.userData.light ? 0.75 : 0.9, metalness: 0 });
     was.dispose();
-    (sq.userData.light ? lightAt : darkAt).push(sq.position.clone());
+    // The slabs stand a little apart, the ground showing in the joints, some a touch tilted and sunk.
+    sq.scale.set(0.95, 1, 0.95);
+    sq.rotation.set((rng() - 0.5) * 0.012, (rng() - 0.5) * 0.03, (rng() - 0.5) * 0.012);
   }
-  // Broken stone standing up from the pale squares, pebbles on the dirt, and a rim of fallen stone round the plot.
+  // A rim of fallen stone round the plot.
   const chunkGeo = new DodecahedronGeometry(0.5, 0);
-  const chunkMat = new MeshStandardMaterial({ color: 0x5c6460, roughness: 1, flatShading: true });
-  const total = lightAt.length * 7 + darkAt.length * 3 + 110;
+  const chunkMat = new MeshStandardMaterial({ color: 0x484e4e, roughness: 1, flatShading: true });
+  const total = 110;
   const chunks = new InstancedMesh(chunkGeo, chunkMat, total);
   const m4 = new Matrix4();
   const q4 = new Quaternion();
@@ -316,8 +397,6 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     chunks.setColorAt(n, new Color().setScalar(tint));
     n++;
   };
-  for (const p of lightAt) for (let i = 0; i < 7; i++) chunk(p.x + (rng() - 0.5) * 0.8, p.z + (rng() - 0.5) * 0.8, 0.14 + rng() * 0.24, 0.06 + rng() * 0.12, 0.14 + rng() * 0.22, 0.6 + rng() * 0.6);
-  for (const p of darkAt) for (let i = 0; i < 3; i++) chunk(p.x + (rng() - 0.5) * 0.8, p.z + (rng() - 0.5) * 0.8, 0.07 + rng() * 0.09, 0.04 + rng() * 0.05, 0.07 + rng() * 0.09, 0.4 + rng() * 0.3);
   for (let i = 0; i < 110 && n < total; i++) {
     const side = Math.floor(rng() * 4);
     const along = (rng() - 0.5) * 9.4;
@@ -361,33 +440,39 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     (t, n) => {
       soil.map = t;
       soil.normalMap = n;
-      soil.color.set(0xb0aea8);
+      soil.color.set(0x7c8584);
       soil.needsUpdate = true;
     },
     26,
   );
 
-  const swap = (file: string, light: boolean) =>
-    photo(file, (t, n) => {
-      for (const sq of board.squares.values()) {
-        if (!!sq.userData.light !== light) continue;
-        const m = sq.material as MeshStandardMaterial;
-        const map = t.clone();
-        map.repeat.set(0.45, 0.45);
-        map.offset.set(Math.random() * 0.55, Math.random() * 0.55);
-        map.needsUpdate = true;
-        const nm = n.clone();
-        nm.repeat.copy(map.repeat);
-        nm.offset.copy(map.offset);
-        nm.needsUpdate = true;
-        dispose.push(map, nm);
-        m.map = map;
-        m.normalMap = nm;
-        m.needsUpdate = true;
-      }
-    });
-  swap("board-stone.webp", true);
-  swap("board-dirt.webp", false);
+  // Roots creeping over the ground and under the edge of the slabs.
+  const rootGeos: BufferGeometry[] = [];
+  for (let i = 0; i < 26; i++) {
+    const a = rng() * Math.PI * 2;
+    const r0 = 4.3 + rng() * 2;
+    const len = 5 + rng() * 9;
+    const pts: Vector3[] = [];
+    let ang = a + (rng() - 0.5) * 0.8;
+    let x = Math.sin(a) * r0;
+    let z = Math.cos(a) * r0;
+    for (let k = 0; k < 7; k++) {
+      pts.push(new Vector3(x, GROUND + 0.02 + (k % 2) * 0.04 + rng() * 0.05, z));
+      ang += (rng() - 0.5) * 0.9;
+      x += (Math.sin(ang) * len) / 7;
+      z += (Math.cos(ang) * len) / 7;
+    }
+    const w = 0.07 + rng() * 0.12;
+    const tube = new TubeGeometry(new CatmullRomCurve3(pts), 24, w, 5);
+    tube.scale(1, 0.7, 1);
+    rootGeos.push(tube);
+  }
+  const rootMat = new MeshStandardMaterial({ color: 0x2c2724, roughness: 1 });
+  const roots = new Mesh(mergeGeometries(rootGeos)!, rootMat);
+  rootGeos.forEach((g) => g.dispose());
+  roots.receiveShadow = true;
+  group.add(roots);
+  dispose.push(rootMat, roots.geometry);
 
   // ----- Sky, turning slowly, and the moon -----
   const skyMat = new MeshBasicMaterial({ side: BackSide, fog: false });
@@ -430,46 +515,72 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(moonSprite, halo);
   dispose.push(moonMat, halo.material);
 
-  // ----- Far views: pictures of distant woods and ruins stand in the haze all round -----
-  // far-1 is the ruined castle (behind the black side); far-2.. are more views, put to either side of it in turn.
-  const farAngles = [0, 72, -72, 144, -144, 36, -36];
-  const panelWidth = 150;
-  for (let i = 1; i <= 7; i++) {
-    const t = optional(`far-${i}.webp`);
-    if (!t) continue;
-    const mat = new MeshBasicMaterial({ fog: false, transparent: true, depthWrite: false, color: 0xc4d6d8, side: DoubleSide });
-    const panel = new Mesh(new PlaneGeometry(panelWidth, panelWidth * (672 / 1584)), mat);
-    const a = Math.PI + (farAngles[i - 1] * Math.PI) / 180;
-    panel.position.set(Math.sin(a) * 88, GROUND + (panelWidth * (672 / 1584)) / 2 - 9, Math.cos(a) * 88);
-    panel.lookAt(0, panel.position.y, 0);
-    panel.renderOrder = -7 + i * 0.01;
-    group.add(panel);
-    dispose.push(mat, panel.geometry);
-    void t.then((tex) => {
-      mat.map = tex;
+  // ----- Far woods and the ruins, cut from the painted picture: ridges of dead trees, three deep, all round -----
+  // Each ridge is many slices of the picture's treeline (random widths, some turned about), standing in a ring
+  // and tinted lighter the farther off it is, so the forest edge reads in layers; the castle stands on the back one.
+  const woodsTex = optional("woods-tile.webp");
+  if (woodsTex)
+    void woodsTex.then((tex) => {
+      const SRC_W = 880;
+      const SRC_H = 672;
+      [
+        { r: 58, tint: 0x586870, order: -7, hgt: 24, y: -1.2 },
+        { r: 78, tint: 0x748690, order: -8, hgt: 30, y: -1.6 },
+        { r: 100, tint: 0x94a4ae, order: -9, hgt: 38, y: -2.2 },
+      ].forEach((ring) => {
+        const parts: BufferGeometry[] = [];
+        let ang = rng() * 6;
+        const end = ang + Math.PI * 2;
+        while (ang < end) {
+          const sw = 300 + Math.floor(rng() * 420);
+          const u0 = Math.floor(rng() * (SRC_W - sw));
+          const flip = rng() < 0.5;
+          const w = (ring.hgt * sw) / SRC_H;
+          const g = new PlaneGeometry(w, ring.hgt);
+          const uv = g.getAttribute("uv");
+          for (let i = 0; i < uv.count; i++) {
+            const u = uv.getX(i);
+            uv.setX(i, (u0 + (flip ? 1 - u : u) * sw) / SRC_W);
+          }
+          const arc = w / ring.r;
+          const am = ang + arc / 2;
+          g.rotateY(Math.PI);
+          g.translate(0, 0, ring.r);
+          g.rotateY(am + Math.PI);
+          g.translate(0, GROUND + ring.hgt / 2 + ring.y, 0);
+          parts.push(g);
+          ang += arc * 0.82;
+        }
+        const geo = mergeGeometries(parts)!;
+        parts.forEach((p) => p.dispose());
+        const mat = new MeshBasicMaterial({ map: tex, color: ring.tint, fog: false, transparent: true, depthWrite: false, side: DoubleSide, alphaTest: 0.04 });
+        const mesh = new Mesh(geo, mat);
+        mesh.renderOrder = ring.order;
+        mesh.frustumCulled = false;
+        group.add(mesh);
+        dispose.push(geo, mat);
+      });
+    });
+  // The castle on its cliff, high behind the black side, and the iron gate with its gargoyle at the far end of the board (both cut from the concept picture).
+  const standee = (file: string, w: number, h: number, at: Vector3, fog: boolean, tint: number, order: number) => {
+    const tex = optional(file);
+    if (!tex) return;
+    const mat = new MeshBasicMaterial({ fog, transparent: true, depthWrite: false, color: tint, alphaTest: 0.12, side: DoubleSide });
+    const m = new Mesh(new PlaneGeometry(w, h), mat);
+    m.position.copy(at);
+    m.lookAt(0, at.y, 0);
+    m.renderOrder = order;
+    group.add(m);
+    dispose.push(mat, m.geometry);
+    void tex.then((t) => {
+      const img = t.image as { width: number; height: number };
+      m.scale.x = (h * img.width) / img.height / w;
+      mat.map = t;
       mat.needsUpdate = true;
     });
-  }
-  // Far trees: photographs of dead trees cut out, standing in the fog (tree-1.. if given).
-  const treePics = [1, 2, 3, 4, 5, 6].map((i) => optional(`tree-${i}.webp`)).filter((x): x is Promise<Texture> => !!x);
-  treePics.forEach((p, k) => {
-    void p.then((tex) => {
-      const img = tex.image as { width: number; height: number };
-      for (let i = 0; i < 14; i++) {
-        const mat = new SpriteMaterial({ map: tex, color: 0x9cb0b2, alphaTest: 0.2, transparent: true });
-        const s = new Sprite(mat);
-        const a = rng() * Math.PI * 2;
-        const d = 34 + rng() * 40;
-        const h = 14 + rng() * 14;
-        s.center.set(0.5, 0.04);
-        s.scale.set(((h * img.width) / img.height) * (rng() < 0.5 ? -1 : 1), h, 1);
-        s.position.set(Math.sin(a) * d, GROUND, Math.cos(a) * d);
-        group.add(s);
-        dispose.push(mat);
-      }
-      void k;
-    });
-  });
+  };
+  standee("castle-hill.webp", 60, 74, new Vector3(34, GROUND + 28, -82), false, 0x8c9aa4, -6);
+  standee("gate.webp", 11, 14, new Vector3(0, GROUND + 6.6, -25), true, 0xb4bec4, 1);
 
   // ----- Dead trees all round, swaying -----
   const bark = barkTexture();
@@ -549,15 +660,23 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     dispose.push(m);
     return m;
   });
-  photo("stone.webp", (t, n) => {
-    t.repeat.set(1.1, 1.1);
-    n.repeat.set(1.1, 1.1);
-    for (const m of stoneMats) {
-      m.map = t;
-      m.normalMap = n;
-      m.color.set(0x9aa0a0);
+  photo("stone-face.webp", (t, n) => {
+    // The photograph of a real headstone (its carving and moss): each variant shows a different part of it.
+    stoneMats.forEach((m, i) => {
+      const map = t.clone();
+      map.repeat.set(0.9, 0.6);
+      map.offset.set(0.05 + (i % 2) * 0.05, i < 2 ? 0.38 : 0.0);
+      map.needsUpdate = true;
+      const nm = n.clone();
+      nm.repeat.copy(map.repeat);
+      nm.offset.copy(map.offset);
+      nm.needsUpdate = true;
+      dispose.push(map, nm);
+      m.map = map;
+      m.normalMap = nm;
+      m.color.set(0xa0a8a8);
       m.needsUpdate = true;
-    }
+    });
   });
   HEAD_KINDS.forEach((kind, ki) => {
     const list = stones.get(kind);
@@ -773,9 +892,9 @@ export function theWake(scene: Scene, board: Board): CourtSet {
 
   // ----- Fog on the ground, in layers, and wisps -----
   const layers = [
-    { y: 0.12, color: 0x6a9096, alpha: 0.5, scale: 0.12, speed: 0.012 },
-    { y: 0.7, color: 0x547c84, alpha: 0.4, scale: 0.08, speed: -0.008 },
-    { y: 1.5, color: 0x486c76, alpha: 0.3, scale: 0.05, speed: 0.006 },
+    { y: 0.12, color: 0x8a9aa4, alpha: 0.5, scale: 0.12, speed: 0.012 },
+    { y: 0.7, color: 0x6e808c, alpha: 0.4, scale: 0.08, speed: -0.008 },
+    { y: 1.5, color: 0x5a6c78, alpha: 0.3, scale: 0.05, speed: 0.006 },
   ].map((l) => {
     const m = fogLayer(l.color, l.alpha, l.scale, l.speed, time);
     const p = new Mesh(new PlaneGeometry(190, 190).rotateX(-Math.PI / 2), m);
@@ -796,11 +915,11 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   });
 
   // ----- Light -----
-  const moonLight = new DirectionalLight(0x9ad0e0, 1.0);
+  const moonLight = new DirectionalLight(0xb4c8d8, 1.0);
   moonLight.castShadow = true;
   Object.assign(moonLight.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9 });
   moonLight.shadow.mapSize.set(1024, 1024);
-  const hemi = new HemisphereLight(0x5a8a98, 0x0a1210, 0.55);
+  const hemi = new HemisphereLight(0x6a7e8c, 0x0c1012, 0.55);
   group.add(moonLight, moonLight.target, hemi);
 
   const prevBg = scene.background;
@@ -818,7 +937,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   return {
     // The rubble stands up to about 0.1 from the pale squares.
     markY: 0.12,
-    view: { fixed: false, pitch: 0.28, dist: 16, fov: 50, ty: 1.8 },
+    view: { fixed: false, pitch: 0.22, dist: 15, fov: 50, ty: 1.4 },
     orient(side) {
       group.rotation.y = side > 0 ? 0 : Math.PI;
     },
