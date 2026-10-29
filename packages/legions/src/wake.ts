@@ -1,4 +1,4 @@
-// The Wake (working name): classic monsters in a graveyard. A mock for now: the
+// The Restless: classic monsters in a graveyard (home court: The Wake). A mock for now: the
 // moves and kills are real, the figures borrow the Thornwood's models (a Thornling
 // stands in for a skeleton or zombie, a Thornpriest for a witch, the stag for a
 // werewolf, the Dryad Queen for the vampire bride, the Elder Oak for the vampire
@@ -59,8 +59,8 @@ function wakeFigure(role: Role, side: Side): Fig {
 }
 
 export const wake: Tribe = {
-  id: "wake",
-  name: "The Wake",
+  id: "restless",
+  name: "The Restless",
   figure: wakeFigure,
   ready: () => loadModels("thornwood-"),
   play: (stage, move) => new Graveyard(stage).play(move),
@@ -74,7 +74,10 @@ const noise = (n: number) => {
 };
 
 /** Weathered stone with a crack, moss at the foot and a worn cross, for one side's color. */
+const stoneCache = new Map<Side, CanvasTexture>();
 function stoneTexture(side: Side) {
+  const hit = stoneCache.get(side);
+  if (hit) return hit;
   const c = document.createElement("canvas");
   c.width = c.height = 256;
   const g = c.getContext("2d")!;
@@ -122,12 +125,12 @@ function stoneTexture(side: Side) {
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   t.wrapS = t.wrapT = RepeatWrapping;
+  stoneCache.set(side, t);
   return t;
 }
 
 /** A tall headstone with a chipped, arched top and a slight lean, on a low plinth. */
-function gravestone(side: Side): Fig {
-  const f = new Fig("r", side, HEIGHT.r);
+export function headstone(side: Side, lean: [number, number] = [-0.03, 0.07]) {
   const pts: [number, number][] = [
     [-0.36, 0],
     [0.36, 0],
@@ -150,18 +153,28 @@ function gravestone(side: Side): Fig {
   const stone = new MeshStandardMaterial({ map: tex, roughness: 0.95 });
   const slab = new Mesh(geo, stone);
   slab.position.y = 0.08;
-  slab.rotation.set(-0.03, 0, 0.07);
+  slab.rotation.set(lean[0], 0, lean[1]);
   slab.castShadow = slab.receiveShadow = true;
-  const plinth = new Mesh(new BoxGeometry(0.92, 0.1, 0.46), new MeshStandardMaterial({ color: side === "w" ? 0x8e8a80 : 0x3c3e48, roughness: 1 }));
+  const base = new MeshStandardMaterial({ color: side === "w" ? 0x8e8a80 : 0x3c3e48, roughness: 1 });
+  const plinth = new Mesh(new BoxGeometry(0.92, 0.1, 0.46), base);
   plinth.position.y = 0.05;
   plinth.castShadow = plinth.receiveShadow = true;
+  const group = new Group();
+  group.add(plinth, slab);
+  return { group, mats: [stone, base] as Material[] };
+}
+
+/** A tall headstone with a chipped, arched top and a slight lean, on a low plinth. */
+function gravestone(side: Side): Fig {
+  const f = new Fig("r", side, HEIGHT.r);
+  const { group, mats } = headstone(side);
   // The face the dead are drawn on: clear until a piece is taken.
   const epitaph = new Mesh(new PlaneGeometry(0.46, 0.6), new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
   epitaph.position.set(0.0, 0.62, 0.15);
   epitaph.rotation.set(-0.03, 0, 0.07);
-  f.body.add(plinth, slab, epitaph);
+  f.body.add(group, epitaph);
   epitaphs.set(f, epitaph);
-  f.mats = [stone, plinth.material as Material];
+  f.mats = mats;
   return f;
 }
 

@@ -25,7 +25,7 @@ const DEMOS: Record<string, Demo> = {
 
 const s = new LegionsScene(document.getElementById("stage")!);
 s.setGlow(true);
-s.setCourt("night");
+s.setCourt(new URLSearchParams(location.search).get("court") ?? "wake");
 s.setTribes({ w: wake, b: wake });
 await wake.ready?.();
 const log = document.createElement("div");

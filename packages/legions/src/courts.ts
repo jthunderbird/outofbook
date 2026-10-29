@@ -54,6 +54,7 @@ import { glowMap } from "./figures";
 import { woodPanel, woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
 import { Backdrop, cliff, FlatMap, hiTile } from "./pixel/world";
+import { headstone } from "./wake";
 
 export interface Court {
   id: string;
@@ -1467,6 +1468,286 @@ function backAlley(scene: Scene, board: Board): CourtSet {
   };
 }
 
+// ---------- The Restless's home: The Wake ----------
+
+/** Weathered slate for a square: base color, speckle and a few cracks. */
+function slateTexture(base: [number, number, number], seed: number) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  g.fillStyle = `rgb(${base})`;
+  g.fillRect(0, 0, 256, 256);
+  const rnd = (n: number) => {
+    const x = Math.sin((n + seed) * 127.1) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  for (let i = 0; i < 3000; i++) {
+    const d = (rnd(i + 1) - 0.5) * 40;
+    g.fillStyle = `rgba(${base[0] + d},${base[1] + d},${base[2] + d},0.5)`;
+    g.fillRect(rnd(i + 2) * 256, rnd(i + 3) * 256, 1 + rnd(i + 4) * 3, 1 + rnd(i + 5) * 3);
+  }
+  g.strokeStyle = "rgba(10,12,14,0.55)";
+  g.lineWidth = 1.6;
+  for (let k = 0; k < 3; k++) {
+    g.beginPath();
+    let x = rnd(k + 90) * 256;
+    let y = 0;
+    g.moveTo(x, y);
+    for (let i = 0; i < 8; i++) {
+      x += (rnd(k * 20 + i + 100) - 0.5) * 50;
+      y += 20 + rnd(k * 20 + i + 200) * 20;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+/** A soft round glow (mist, moon halo). */
+function softSprite(color: number, opacity: number, w: number, h: number, additive = false) {
+  const s = new Sprite(new SpriteMaterial({ map: glowMap(), color, opacity, transparent: true, depthWrite: false, blending: additive ? AdditiveBlending : undefined, toneMapped: false }));
+  s.scale.set(w, h, 1);
+  return s;
+}
+
+/** The creatures that watch from the dark: [file, height, angle behind the board (deg), distance, lift, pace]. */
+const WATCHERS: [string, number, number, number, number, number][] = [
+  ["zombie", 2.2, -62, 10.5, 0, 0.6],
+  ["ghost", 3.1, -38, 12.5, 0.5, 0.4],
+  ["brute", 3.4, 8, 14.5, 0, 0.3],
+  ["wraith", 3.2, 36, 11.5, 0.6, 0.5],
+  ["hound", 1.25, 62, 9.5, 0, 0.9],
+  ["crawler", 1.5, -18, 9.2, 0, 0.5],
+  ["zombie", 2.0, 80, 12, 0, 0.5],
+  ["wraith", 2.9, -84, 12.5, 0.5, 0.4],
+  ["crow", 0.55, 24, 8.4, 1.15, 0],
+  ["crow", 0.5, -50, 8.2, 1.0, 0],
+  ["owl", 1.0, 0, 11, 3.4, 0.7],
+];
+
+function theWake(scene: Scene, board: Board): CourtSet {
+  const group = new Group();
+  scene.add(group);
+  const GROUND = -1.4;
+  const R = 19;
+  const ARC = (150 * Math.PI) / 180;
+  const H = (R * ARC) / (1584 / 672);
+  const disposables: { dispose(): void }[] = [];
+
+  // Squares of weathered slate, walls of dark stone.
+  const slates = [0, 1, 2].map((i) => slateTexture([146 + i * 3, 158, 164], i * 40));
+  const darks = [0, 1, 2].map((i) => slateTexture([34 + i * 3, 40, 48], 500 + i * 40));
+  disposables.push(...slates, ...darks);
+  for (const sq of board.squares.values()) {
+    const was = sq.material as MeshStandardMaterial;
+    const pool = sq.userData.light ? slates : darks;
+    const map = pool[Math.floor(Math.random() * pool.length)].clone();
+    map.needsUpdate = true;
+    map.repeat.set(0.4, 0.4);
+    map.offset.set(Math.random() * 0.6, Math.random() * 0.6);
+    map.wrapS = map.wrapT = RepeatWrapping;
+    disposables.push(map);
+    sq.material = new MeshStandardMaterial({ map, roughness: sq.userData.light ? 0.7 : 0.55, metalness: 0.05 });
+    was.dispose();
+  }
+  const wallMat = new MeshStandardMaterial({ color: 0x232a30, roughness: 0.9 });
+  disposables.push(wallMat);
+  for (const w of board.walls) {
+    (w.material as MeshStandardMaterial).dispose();
+    w.material = wallMat;
+  }
+
+  // The painted woods and ruins, a wide arc behind the black side.
+  const back = new MeshBasicMaterial({ side: BackSide, fog: false, color: 0xb8c4c8 });
+  void texture(art("wake", "backdrop.webp")).then((t) => {
+    back.map = t;
+    back.needsUpdate = true;
+  });
+  const wall = new Mesh(new CylinderGeometry(R, R, H, 48, 1, true, Math.PI - ARC / 2, ARC), back);
+  const top = GROUND + 0.78 * H + 0.4;
+  wall.position.y = top - H / 2;
+  // Ground to the painted woods, lost in mist.
+  const soilMap = slateTexture([30, 38, 34], 900);
+  soilMap.wrapS = soilMap.wrapT = RepeatWrapping;
+  soilMap.repeat.set(10, 10);
+  const soil = new MeshStandardMaterial({ map: soilMap, color: 0x56645f, roughness: 1 });
+  const ground = new Mesh(new CircleGeometry(R + 4, 48).rotateX(-Math.PI / 2), soil);
+  ground.position.y = GROUND;
+  ground.receiveShadow = true;
+  group.add(wall, ground);
+  disposables.push(back, soil, soilMap, wall.geometry, ground.geometry);
+
+  // Headstones and crosses round the board, leaning, facing it.
+  const rng = (i: number) => {
+    const x = Math.sin(i * 91.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  for (let i = 0; i < 26; i++) {
+    const a = rng(i) * Math.PI * 2;
+    const r = 5.4 + rng(i + 40) * 6.5;
+    const { group: stone, mats } = headstone("b", [(rng(i + 120) - 0.5) * 0.3, (rng(i + 160) - 0.5) * 0.3]);
+    const sc = 0.7 + rng(i + 200) * 0.6;
+    for (const m of mats) (m as MeshStandardMaterial).color.multiplyScalar(0.6);
+    stone.scale.setScalar(sc);
+    stone.position.set(Math.cos(a) * r, GROUND, Math.sin(a) * r);
+    stone.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a)) + (rng(i + 240) - 0.5) * 0.7;
+    group.add(stone);
+  }
+  const crossMat = new MeshStandardMaterial({ color: 0x4a5058, roughness: 1 });
+  disposables.push(crossMat);
+  for (let i = 0; i < 6; i++) {
+    const a = rng(i + 300) * Math.PI * 2;
+    const r = 6 + rng(i + 340) * 5;
+    const cross = new Group();
+    const post = new Mesh(new BoxGeometry(0.14, 1.5, 0.14), crossMat);
+    post.position.y = 0.75;
+    const bar = new Mesh(new BoxGeometry(0.7, 0.14, 0.14), crossMat);
+    bar.position.y = 1.15;
+    cross.add(post, bar);
+    cross.position.set(Math.cos(a) * r, GROUND, Math.sin(a) * r);
+    cross.rotation.set((rng(i + 380) - 0.5) * 0.3, rng(i + 420) * 6, (rng(i + 460) - 0.5) * 0.35);
+    cross.traverse((o) => (o.castShadow = true));
+    group.add(cross);
+  }
+
+  // The watchers: creatures standing and drifting among the graves, staring.
+  const watchers: { s: Sprite; home: Vector3; pace: number; phase: number; lift: number }[] = [];
+  for (const [file, h, deg, dist, lift, pace] of WATCHERS) {
+    const url = art("wake", `watch-${file}.webp`);
+    if (!url) continue;
+    const mat = new SpriteMaterial({ color: 0xa8bcc4, transparent: true });
+    void texture(url).then((t) => {
+      mat.map = t;
+      mat.needsUpdate = true;
+      const img = t.image as { width: number; height: number };
+      s.scale.set((h * img.width) / img.height, h, 1);
+    });
+    const s = new Sprite(mat);
+    s.center.set(0.5, 0);
+    const a = Math.PI + (deg * Math.PI) / 180;
+    const home = new Vector3(Math.sin(a) * dist, GROUND + lift, Math.cos(a) * dist);
+    s.position.copy(home);
+    group.add(s);
+    disposables.push(mat);
+    watchers.push({ s, home, pace, phase: Math.random() * 20, lift });
+  }
+
+  // A witch crosses the sky now and then, bats now and then.
+  const witch = new Sprite(new SpriteMaterial({ fog: false, transparent: true, color: 0x020608 }));
+  void texture(art("wake", "witch.webp")).then((t) => {
+    witch.material.map = t;
+    witch.material.needsUpdate = true;
+  });
+  witch.scale.set(1.7, 1.05, 1);
+  witch.visible = false;
+  const flock = new Sprite(new SpriteMaterial({ fog: false, transparent: true, color: 0x050a0c, opacity: 0.9 }));
+  void texture(art("wake", "watch-bats.webp")).then((t) => {
+    flock.material.map = t;
+    flock.material.needsUpdate = true;
+  });
+  flock.scale.set(3.4, 2.5, 1);
+  flock.visible = false;
+  group.add(witch, flock);
+  disposables.push(witch.material, flock.material);
+
+  // Mist along the ground, a halo round the painted moon.
+  const mists: { s: Sprite; home: Vector3; phase: number }[] = [];
+  for (let i = 0; i < 9; i++) {
+    const s = softSprite(0x7a9a9e, 0.14, 11, 2.6);
+    const a = (i / 9) * Math.PI * 2;
+    const home = new Vector3(Math.cos(a) * (6 + (i % 3) * 3), GROUND + 0.6, Math.sin(a) * (6 + (i % 3) * 3));
+    s.position.copy(home);
+    group.add(s);
+    mists.push({ s, home, phase: i * 1.7 });
+    disposables.push(s.material);
+  }
+  // A band of mist along the foot of the painted woods, so ground and painting meet in it.
+  for (let i = 0; i < 7; i++) {
+    const a = Math.PI + (((i / 6) * 2 - 1) * ARC) / 2.4;
+    const s = softSprite(0x5a7e84, 0.4, 16, 4.5);
+    s.position.set(Math.sin(a) * (R - 1.5), GROUND + 1.0, Math.cos(a) * (R - 1.5));
+    group.add(s);
+    disposables.push(s.material);
+  }
+  const halo = softSprite(0x9ae8ff, 0.3, 11, 11, true);
+  halo.position.set(0, top - 0.21 * H, -R + 0.6);
+  group.add(halo);
+  disposables.push(halo.material);
+
+  // Moonlight from behind, cold and low; the ground a little lifted by the sky.
+  const moon = new DirectionalLight(0x9ad0e0, 0.9);
+  moon.position.set(-5, 14, -16);
+  moon.castShadow = true;
+  Object.assign(moon.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9 });
+  moon.shadow.mapSize.set(1024, 1024);
+  const fill = new HemisphereLight(0x5a8090, 0x0a1210, 0.45);
+  group.add(moon, moon.target, fill);
+
+  const prevBg = scene.background;
+  const prevFog = scene.fog;
+  scene.background = new Color(0x050909);
+  scene.fog = new Fog(0x1c3236, 10, 42);
+
+  let t = 0;
+  let nextWitch = 5000;
+  let witchAt = -1;
+  let nextFlock = 14000;
+  let flockAt = -1;
+  return {
+    turn: 0.65,
+    view: { fixed: false, pitch: 0.25, dist: 16, fov: 48, ty: 1.6 },
+    orient(side) {
+      group.rotation.y = side > 0 ? 0 : Math.PI;
+    },
+    update(ms) {
+      t += ms;
+      const s = t / 1000;
+      for (const w of watchers) {
+        const k = s * 0.25 * w.pace + w.phase;
+        w.s.position.set(w.home.x + Math.cos(k) * 1.2 * w.pace, w.home.y + (w.lift > 0 ? Math.sin(s * 0.7 + w.phase) * 0.15 : Math.abs(Math.sin(k * 3)) * 0.04), w.home.z + Math.sin(k) * 0.8 * w.pace);
+      }
+      for (const m of mists) {
+        const k = s * 0.03 + m.phase;
+        m.s.position.set(m.home.x + Math.sin(k) * 2, m.home.y, m.home.z + Math.cos(k * 0.8) * 2);
+        m.s.material.opacity = 0.1 + 0.05 * Math.sin(s * 0.3 + m.phase);
+      }
+      halo.material.opacity = 0.26 + 0.05 * Math.sin(s * 0.5);
+      if (witchAt < 0 && t > nextWitch) witchAt = t;
+      if (witchAt >= 0) {
+        const k = (t - witchAt) / 16000;
+        if (k >= 1) {
+          witch.visible = false;
+          witchAt = -1;
+          nextWitch = t + 40000 + Math.random() * 40000;
+        } else {
+          witch.visible = true;
+          witch.position.set(-22 + 44 * k, top - 0.3 * H + Math.sin(k * 9) * 0.6, -R + 1);
+        }
+      }
+      if (flockAt < 0 && t > nextFlock) flockAt = t;
+      if (flockAt >= 0) {
+        const k = (t - flockAt) / 22000;
+        if (k >= 1) {
+          flock.visible = false;
+          flockAt = -1;
+          nextFlock = t + 25000 + Math.random() * 35000;
+        } else {
+          flock.visible = true;
+          flock.position.set(20 - 40 * k, top - 0.35 * H + Math.sin(k * 14) * 0.5, -R + 1.2);
+        }
+      }
+    },
+    dispose() {
+      group.removeFromParent();
+      scene.background = prevBg;
+      scene.fog = prevFog;
+      disposables.forEach((d) => d.dispose());
+    },
+  };
+}
+
 export const COURTS: Court[] = [
   { id: "staunton", name: "Tournament Hall", tribe: "staunton", top: "#4a3020", bottom: "#060403", dress: tournamentHall },
   { id: "epoch-drifters", name: "Epoch Plains", tribe: "epoch-drifters", top: "#c45a96", bottom: "#3b2a78", dress: epochPlains },
@@ -1478,7 +1759,10 @@ export const COURTS: Court[] = [
   { id: "noir", name: "Back Alley", skin: "noir", top: "#2a2e38", bottom: "#05060a", preview: art("noir", "alley.webp"), dress: backAlley },
 ];
 
-export const court = (id: string) => COURTS.find((c) => c.id === id) ?? COURTS[0];
+/** Courts being built: playable where asked for by id (the mock pages), not yet in the Collection or the lists. */
+const DRAFT_COURTS: Court[] = [{ id: "wake", name: "The Wake", tribe: "restless", top: "#14262c", bottom: "#030708", preview: art("wake", "backdrop.webp"), dress: theWake }];
+
+export const court = (id: string) => COURTS.find((c) => c.id === id) ?? DRAFT_COURTS.find((c) => c.id === id) ?? COURTS[0];
 
 /** The plain courts' sky: their gradient. */
 export const courtBackground = (id: string) => backgroundTexture(court(id).dress ? "night" : id);
