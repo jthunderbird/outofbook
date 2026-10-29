@@ -579,22 +579,32 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     "tall-burnt",
     "twisted",
   ];
+  const plant = (kind: TreeKind, seed: number, x: number, z: number, scale: number, rad: number) => {
+    taken.push({ x, z, r: rad });
+    const holder = new Group();
+    holder.position.set(x, heightAt(x, z) - 0.05, z);
+    holder.rotation.y = tr() * 6.3;
+    holder.add(makeTree(kind, seed, scale));
+    group.add(holder);
+    holders.push(holder);
+  };
+  // Three close to the board, to the sides and back so none hides it.
+  plant("oak", 90, -8.3, -1.2, 0.75, 1);
+  plant("struck", 91, 8.5, -6.2, 0.7, 1);
+  plant("twisted", 92, -6.4, -8.2, 0.62, 1);
   KINDS.forEach((kind, i) => {
     const scale = kind === "hollow-oak" ? 0.8 + tr() * 0.3 : 0.5 + tr() * 0.8;
     const rad = (kind === "hollow-oak" ? 1.8 : 1.1) * scale;
-    for (let t = 0; t < 100; t++) {
-      const x = (tr() - 0.5) * 2 * (YARD - 2);
+    // Left and right in turn, so neither side crowds; the way to the gate stays open.
+    const side = i % 2 ? 1 : -1;
+    for (let t = 0; t < 120; t++) {
+      const x = side * (6.8 + tr() * (YARD - 9));
       const z = (tr() - 0.5) * 2 * (YARD - 2);
       if (Math.abs(x) < 6.6 && Math.abs(z) < 6.6) continue;
       if (z > 3 && Math.abs(x) < 8 && z < 16) continue;
+      if (z < -8 && Math.abs(x) < 7.5) continue;
       if (!taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + rad + 0.8)) continue;
-      taken.push({ x, z, r: rad });
-      const holder = new Group();
-      holder.position.set(x, heightAt(x, z) - 0.05, z);
-      holder.rotation.y = tr() * 6.3;
-      holder.add(makeTree(kind, 100 + i, scale));
-      group.add(holder);
-      holders.push(holder);
+      plant(kind, 100 + i, x, z, scale, rad);
       break;
     }
   });
@@ -698,6 +708,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
       for (let i = 0; i < 18 + Math.floor(pr() * 24); i++) put(hs + (pr() - 0.5) * 0.7, 0.08 + pr() * Math.min(0.9, tall * 0.5), -0.01, 0.035 + pr() * 0.05, 0.35);
     }
   };
+  const same = new Map<string, { x: number; z: number }[]>();
   for (const { k, c } of items) {
     const radius = k.radius ?? 0.8;
     let x = 0;
@@ -711,10 +722,11 @@ export function theWake(scene: Scene, board: Board): CourtSet {
         const s = slots[Math.floor(Math.pow(pr(), 1.2) * slots.length)];
         x = s.x;
         z = s.z;
-        ok = taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + radius + 0.3);
+        ok = taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + radius + 0.3) && (t > 90 || (same.get(k.id) ?? []).every((o) => Math.hypot(o.x - x, o.z - z) > 15));
       }
     if (!ok) continue;
     taken.push({ x, z, r: radius });
+    same.set(k.id, [...(same.get(k.id) ?? []), { x, z }]);
     let proto = built.get(k.id);
     if (!proto) built.set(k.id, (proto = k.build()));
     const piece = c === 0 ? proto : proto.clone();
@@ -725,7 +737,10 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     const sink = big ? pr() * 0.05 : pr() < 0.65 ? 0.02 + pr() * 0.2 : 0;
     holder.position.set(x, heightAt(x, z) - 0.03 - sink, z);
     holder.rotation.set((pr() - 0.5) * lean * (big ? 0.3 : 1), pr() < 0.12 ? (pr() - 0.5) * 2.4 : (pr() - 0.5) * 0.5, (pr() - 0.5) * lean * (big ? 0.3 : 1), "YXZ");
-    if (c > 0 && !FIXED[k.id]) piece.scale.multiplyScalar(0.92 + pr() * 0.16);
+    if (c > 0 && !FIXED[k.id]) {
+      piece.scale.multiplyScalar(0.92 + pr() * 0.16);
+      if (pr() < 0.5) piece.scale.x *= -1;
+    }
     holder.add(piece);
     group.add(holder);
     holders.push(holder);
