@@ -722,6 +722,8 @@ export function theWake(scene: Scene, board: Board): CourtSet {
         const s = slots[Math.floor(Math.pow(pr(), 1.2) * slots.length)];
         x = s.x;
         z = s.z;
+        // The way from the gate to the board stays clear.
+        if (z < -6 && Math.abs(x) < 3 + radius) continue;
         ok = taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + radius + 0.3) && (t > 90 || (same.get(k.id) ?? []).every((o) => Math.hypot(o.x - x, o.z - z) > 15));
       }
     if (!ok) continue;
