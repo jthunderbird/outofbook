@@ -1,113 +1,39 @@
-// The Wake: the Restless's home court, a graveyard at night you stand in. The board
-// is part of the ground (dark soil squares and broken-headstone squares); all round
-// are swaying dead trees, headstones of every kind, crypts, a rusted fence and a few
-// lanterns, in layers of drifting ground fog with wisps among them; beyond them the
-// painted sky turns slowly with the moon crossing it, and the ruined castle stands in
-// the haze behind the black side. Everything is made in code but the sky, the castle
-// and the creatures that watch (pictures made with a free AI, cut out for this).
+// The Wake: the Restless's home court, a graveyard at night. Built from the ground up,
+// one piece at a time. So far: the ground, and the board set into it. The pale squares
+// are old marble slabs, filthy and cracked, ivy growing over them; the dark squares are
+// plain mud, level with the soil round them; the rest of the ground is bumpy dirt.
+// Everything is made in code (canvas textures with normal maps worked out from them).
 import {
-  AdditiveBlending,
-  BackSide,
-  BoxGeometry,
-  BufferGeometry,
   CanvasTexture,
-  CircleGeometry,
   Color,
-  ConeGeometry,
-  CylinderGeometry,
-  DirectionalLight,
-  DodecahedronGeometry,
-  DoubleSide,
   Euler,
   Float32BufferAttribute,
   Fog,
   Group,
   HemisphereLight,
+  DirectionalLight,
   InstancedMesh,
   Matrix4,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
-  MirroredRepeatWrapping,
   PlaneGeometry,
-  PointLight,
   Quaternion,
   RepeatWrapping,
-  ShaderMaterial,
-  Shape,
-  ShapeGeometry,
-  SphereGeometry,
+  SRGBColorSpace,
   CatmullRomCurve3,
   TubeGeometry,
-  Sprite,
-  SpriteMaterial,
-  SRGBColorSpace,
-  TextureLoader,
   Vector3,
+  type BufferGeometry,
   type Scene,
-  type Texture,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Board } from "./board";
 import type { CourtSet } from "./courts";
-import { glowMap } from "./figures";
-import { headGeometry, headstone, stoneTexture, HEAD_KINDS, type HeadKind } from "./wake";
 
-const ART = import.meta.glob<string>("../courts/wake/*", { eager: true, query: "?url", import: "default" });
-const art = (file: string) => ART[`../courts/wake/${file}`];
-const loaded = new Map<string, Promise<Texture>>();
-function texture(url: string) {
-  let t = loaded.get(url);
-  if (!t) {
-    t = new TextureLoader().loadAsync(url).then((x) => {
-      x.colorSpace = SRGBColorSpace;
-      x.anisotropy = 4;
-      return x;
-    });
-    loaded.set(url, t);
-  }
-  return t;
-}
-
-/** A picture dropped into courts/wake under this name, if there is one. */
-const optional = (file: string) => {
-  const url = art(file);
-  return url ? texture(url) : null;
-};
-
-/** A normal map worked out from a picture's light and dark, so a photograph of stone or bark has relief. */
-function normalFrom(t: Texture, strength = 2.5) {
-  const img = t.image as CanvasImageSource & { width: number; height: number };
-  const size = Math.min(1024, img.width);
-  const h = Math.round((size * img.height) / img.width);
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = h;
-  const g = c.getContext("2d", { willReadFrequently: true })!;
-  g.drawImage(img, 0, 0, size, h);
-  const src = g.getImageData(0, 0, size, h);
-  const lum = new Float32Array(size * h);
-  for (let i = 0; i < size * h; i++) lum[i] = (0.299 * src.data[i * 4] + 0.587 * src.data[i * 4 + 1] + 0.114 * src.data[i * 4 + 2]) / 255;
-  const at = (x: number, y: number) => lum[((y + h) % h) * size + ((x + size) % size)];
-  const out = g.createImageData(size, h);
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < size; x++) {
-      const dx = (at(x + 1, y) - at(x - 1, y)) * strength;
-      const dy = (at(x, y + 1) - at(x, y - 1)) * strength;
-      const len = Math.hypot(dx, dy, 1);
-      const i = (y * size + x) * 4;
-      out.data[i] = ((-dx / len) * 0.5 + 0.5) * 255;
-      out.data[i + 1] = ((dy / len) * 0.5 + 0.5) * 255;
-      out.data[i + 2] = ((1 / len) * 0.5 + 0.5) * 255;
-      out.data[i + 3] = 255;
-    }
-  g.putImageData(out, 0, 0);
-  const n = new CanvasTexture(c);
-  n.wrapS = t.wrapS;
-  n.wrapT = t.wrapT;
-  n.repeat.copy(t.repeat);
-  return n;
-}
+/** Where the dirt lies under the board; the slabs and the mud sit in it. */
+const GROUND = -0.05;
+/** The haze the far ground and the sky's foot meet in. */
+const HAZE = 0x424c54;
 
 /** A steady pseudo-random stream from a seed. */
 function stream(seed: number) {
@@ -118,904 +44,617 @@ function stream(seed: number) {
   };
 }
 
-/** Weathered stone or soil: a base color, speckle and a few cracks. */
-function groundTexture(base: [number, number, number], seed: number, cracks = 3) {
-  const c = document.createElement("canvas");
-  c.width = c.height = 256;
-  const g = c.getContext("2d")!;
-  const r = stream(seed);
-  g.fillStyle = `rgb(${base})`;
-  g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 3200; i++) {
-    const d = (r() - 0.5) * 44;
-    g.fillStyle = `rgba(${base[0] + d},${base[1] + d},${base[2] + d},0.5)`;
-    g.fillRect(r() * 256, r() * 256, 1 + r() * 3, 1 + r() * 3);
+// ----- Noise -----
+
+function hash(x: number, y: number, s: number) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Smooth value noise, repeating every `per` cells. */
+function vnoise(x: number, y: number, s: number, per: number) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fy * fy * (3 - 2 * fy);
+  const w = (a: number) => ((a % per) + per) % per;
+  const a = hash(w(ix), w(iy), s);
+  const b = hash(w(ix + 1), w(iy), s);
+  const c = hash(w(ix), w(iy + 1), s);
+  const d = hash(w(ix + 1), w(iy + 1), s);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+/** Layered noise in 0..1; repeats every `per` cells of the first layer. */
+function fbm(x: number, y: number, s: number, per: number, octaves: number) {
+  let sum = 0;
+  let amp = 0.5;
+  let tot = 0;
+  let f = 1;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * vnoise(x * f, y * f, s + o * 17, per * f);
+    tot += amp;
+    amp *= 0.5;
+    f *= 2;
   }
-  g.strokeStyle = "rgba(8,10,12,0.5)";
-  g.lineWidth = 1.5;
-  for (let k = 0; k < cracks; k++) {
+  return sum / tot;
+}
+
+const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const smooth = (a: number, b: number, x: number) => {
+  const t = clamp01((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
+
+function canvas(size: number) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  return { c, g: c.getContext("2d", { willReadFrequently: true })! };
+}
+
+/** Per-pixel color at a lower resolution, scaled up smooth: the stone's or soil's body, before the sharp detail goes on. */
+function body(size: number, low: number, color: (u: number, v: number) => [number, number, number]) {
+  const { c, g } = canvas(size);
+  const lo = canvas(low);
+  const img = lo.g.createImageData(low, low);
+  for (let y = 0; y < low; y++)
+    for (let x = 0; x < low; x++) {
+      const [r, gr, b] = color(x / low, y / low);
+      const i = (y * low + x) * 4;
+      img.data[i] = r;
+      img.data[i + 1] = gr;
+      img.data[i + 2] = b;
+      img.data[i + 3] = 255;
+    }
+  lo.g.putImageData(img, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(lo.c, 0, 0, size, size);
+  return { c, g };
+}
+
+/** A normal map worked out from a canvas's light and dark: what is dark sinks, what is light stands. */
+function normalFrom(src: HTMLCanvasElement, strength: number, wrap: boolean) {
+  const size = Math.min(1024, src.width);
+  const { c, g } = canvas(size);
+  g.drawImage(src, 0, 0, size, size);
+  const px = g.getImageData(0, 0, size, size);
+  const lum = new Float32Array(size * size);
+  for (let i = 0; i < size * size; i++) lum[i] = (0.299 * px.data[i * 4] + 0.587 * px.data[i * 4 + 1] + 0.114 * px.data[i * 4 + 2]) / 255;
+  const at = (x: number, y: number) => lum[Math.min(size - 1, Math.max(0, y)) * size + Math.min(size - 1, Math.max(0, x))];
+  const wrapAt = (x: number, y: number) => lum[((y + size) % size) * size + ((x + size) % size)];
+  const get = wrap ? wrapAt : at;
+  const out = g.createImageData(size, size);
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const dx = (get(x + 1, y) - get(x - 1, y)) * strength;
+      const dy = (get(x, y + 1) - get(x, y - 1)) * strength;
+      const len = Math.hypot(dx, dy, 1);
+      const i = (y * size + x) * 4;
+      out.data[i] = ((-dx / len) * 0.5 + 0.5) * 255;
+      out.data[i + 1] = ((dy / len) * 0.5 + 0.5) * 255;
+      out.data[i + 2] = ((1 / len) * 0.5 + 0.5) * 255;
+      out.data[i + 3] = 255;
+    }
+  g.putImageData(out, 0, 0);
+  return new CanvasTexture(c);
+}
+
+/** Runs a drawing at a spot and again at the wrapped copies of it, so a tiling picture has no seam. */
+function wrapped(size: number, x: number, y: number, r: number, draw: (x: number, y: number) => void) {
+  for (const dx of [-size, 0, size])
+    for (const dy of [-size, 0, size]) {
+      const px = x + dx;
+      const py = y + dy;
+      if (px > -r && px < size + r && py > -r && py < size + r) draw(px, py);
+    }
+}
+
+// ----- The dirt -----
+
+/** Bumpy dirt that tiles: clods, pebbles, grit and dead twigs on a mottled brown. */
+function dirtMaps(seed: number) {
+  const size = 1024;
+  const r = stream(seed);
+  const { c, g } = body(size, 512, (u, v) => {
+    const big = fbm(u * 4, v * 4, seed, 4, 5);
+    const fine = fbm(u * 16, v * 16, seed + 5, 16, 3);
+    const t = clamp01(big * 0.8 + fine * 0.4 - 0.1);
+    const damp = smooth(0.55, 0.8, fbm(u * 3, v * 3, seed + 9, 3, 3));
+    const k = mix(0.55, 1.15, t) * mix(1, 0.62, damp);
+    return [66 * k, 56 * k, 46 * k];
+  });
+  // Clods, each lit from the upper left, with a shadow under it.
+  for (let i = 0; i < 700; i++) {
+    const x = r() * size;
+    const y = r() * size;
+    const rad = 6 + r() * r() * 30;
+    const tint = 0.7 + r() * 0.6;
+    wrapped(size, x, y, rad * 1.4, (px, py) => {
+      g.fillStyle = "rgba(10,8,6,0.2)";
+      g.beginPath();
+      g.ellipse(px + rad * 0.3, py + rad * 0.35, rad, rad * 0.8, 0, 0, 7);
+      g.fill();
+      const grad = g.createRadialGradient(px - rad * 0.3, py - rad * 0.3, rad * 0.1, px, py, rad);
+      grad.addColorStop(0, `rgba(${84 * tint},${72 * tint},${60 * tint},0.55)`);
+      grad.addColorStop(1, `rgba(${40 * tint},${33 * tint},${27 * tint},0.55)`);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(px, py, rad, rad * (0.7 + r() * 0.3), r() * 3, 0, 7);
+      g.fill();
+    });
+  }
+  // Pebbles.
+  for (let i = 0; i < 110; i++) {
+    const x = r() * size;
+    const y = r() * size;
+    const rad = 1.5 + r() * r() * 6;
+    const base = 62 + r() * 44;
+    wrapped(size, x, y, rad * 2, (px, py) => {
+      g.fillStyle = "rgba(6,6,6,0.5)";
+      g.beginPath();
+      g.ellipse(px + rad * 0.3, py + rad * 0.4, rad, rad * 0.75, 0.4, 0, 7);
+      g.fill();
+      const grad = g.createRadialGradient(px - rad * 0.35, py - rad * 0.35, 0.5, px, py, rad);
+      grad.addColorStop(0, `rgb(${base + 40},${base + 38},${base + 30})`);
+      grad.addColorStop(1, `rgb(${base - 30},${base - 32},${base - 36})`);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(px, py, rad, rad * 0.78, 0.4, 0, 7);
+      g.fill();
+    });
+  }
+  // Dead twigs and rootlets.
+  g.lineCap = "round";
+  for (let i = 0; i < 60; i++) {
+    let x = r() * size;
+    let y = r() * size;
+    let a = r() * 6.3;
+    g.strokeStyle = `rgba(${28 + r() * 22},${22 + r() * 16},${16 + r() * 10},0.9)`;
+    g.lineWidth = 1 + r() * 2.2;
     g.beginPath();
-    let x = r() * 256;
-    let y = 0;
+    g.moveTo(x, y);
+    for (let k = 0; k < 6; k++) {
+      a += (r() - 0.5) * 0.7;
+      x += Math.cos(a) * (8 + r() * 12);
+      y += Math.sin(a) * (8 + r() * 12);
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  // Grit.
+  for (let i = 0; i < 60000; i++) {
+    const d = r() < 0.5 ? 1 : -1;
+    const v = d > 0 ? 120 + r() * 60 : 10 + r() * 30;
+    g.fillStyle = `rgba(${v},${v * 0.92},${v * 0.8},${0.25 + r() * 0.4})`;
+    g.fillRect(r() * size, r() * size, 1 + r() * 1.6, 1 + r() * 1.6);
+  }
+  const map = new CanvasTexture(c);
+  map.colorSpace = SRGBColorSpace;
+  map.wrapS = map.wrapT = RepeatWrapping;
+  map.anisotropy = 8;
+  const normal = normalFrom(c, 5, true);
+  normal.wrapS = normal.wrapT = RepeatWrapping;
+  normal.anisotropy = 8;
+  return { map, normal };
+}
+
+/** Wet, dark mud for a square: smooth swirls, a few puddle sheens, dried cracks, a pebble or two. */
+function mudMaps(seed: number) {
+  const size = 512;
+  const r = stream(seed);
+  const { c, g } = body(size, 256, (u, v) => {
+    const warp = fbm(u * 3 + 5, v * 3, seed, 1 << 16, 3);
+    const t = fbm(u * 5 + warp * 2, v * 5 - warp, seed + 3, 1 << 16, 5);
+    const pool = smooth(0.55, 0.68, fbm(u * 2.5, v * 2.5, seed + 7, 1 << 16, 3));
+    const k = mix(0.5, 1.1, t);
+    // Standing water gives back a little of the cold sky.
+    return [mix(46 * k, 58, pool * 0.45), mix(36 * k, 56, pool * 0.45), mix(27 * k, 54, pool * 0.45)];
+  });
+  g.lineCap = "round";
+  // Drying cracks.
+  g.strokeStyle = "rgba(12,9,7,0.7)";
+  for (let k = 0; k < 7; k++) {
+    let x = r() * size;
+    let y = r() * size;
+    let a = r() * 6.3;
+    g.lineWidth = 1 + r() * 1.4;
+    g.beginPath();
     g.moveTo(x, y);
     for (let i = 0; i < 8; i++) {
-      x += (r() - 0.5) * 50;
-      y += 20 + r() * 20;
+      a += (r() - 0.5) * 1.3;
+      x += Math.cos(a) * (10 + r() * 14);
+      y += Math.sin(a) * (10 + r() * 14);
       g.lineTo(x, y);
     }
     g.stroke();
   }
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  t.wrapS = t.wrapT = RepeatWrapping;
-  return t;
-}
-
-/** A weathered paving slab: pale cracked marble, or dark stone furred with moss; its edge chipped and dark. */
-function slabTexture(light: boolean, seed: number) {
-  const c = document.createElement("canvas");
-  c.width = c.height = 256;
-  const g = c.getContext("2d")!;
-  const r = stream(seed);
-  const base = light ? [166, 165, 160] : [40, 48, 45];
-  g.fillStyle = `rgb(${base})`;
-  g.fillRect(0, 0, 256, 256);
-  // Clouds in the stone.
-  for (let i = 0; i < 16; i++) {
-    const x = r() * 256;
-    const y = r() * 256;
-    const rad = 30 + r() * 70;
-    const d = (r() - 0.5) * (light ? 40 : 22);
-    const grad = g.createRadialGradient(x, y, 0, x, y, rad);
-    grad.addColorStop(0, `rgba(${base[0] + d},${base[1] + d},${base[2] + d + (light ? -4 : 2)},0.55)`);
-    grad.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = grad;
-    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-  }
-  for (let i = 0; i < 2600; i++) {
-    const d = (r() - 0.5) * (light ? 34 : 26);
-    g.fillStyle = `rgba(${base[0] + d},${base[1] + d},${base[2] + d},0.5)`;
-    g.fillRect(r() * 256, r() * 256, 1 + r() * 2.5, 1 + r() * 2.5);
-  }
-  // Rust-pink stains on the marble.
-  if (light)
-    for (let i = 0; i < 6; i++) {
-      const x = r() * 256;
-      const y = r() * 256;
-      const rad = 20 + r() * 40;
-      const grad = g.createRadialGradient(x, y, 0, x, y, rad);
-      grad.addColorStop(0, "rgba(176,140,134,0.28)");
-      grad.addColorStop(1, "rgba(176,140,134,0)");
-      g.fillStyle = grad;
-      g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-    }
-  // Moss, thick at the edges and along the cracks.
-  const mossN = light ? 18 : 70;
-  for (let i = 0; i < mossN; i++) {
-    const edge = r() < 0.65;
-    const x = edge ? (r() < 0.5 ? r() * 40 : 216 + r() * 40) : r() * 256;
-    const y = edge ? r() * 256 : r() * 256;
-    const rad = 4 + r() * (light ? 8 : 20);
-    const grad = g.createRadialGradient(x, y, 0, x, y, rad);
-    grad.addColorStop(0, `rgba(${58 + r() * 24},${96 + r() * 36},${44},${light ? 0.35 : 0.55})`);
-    grad.addColorStop(1, "rgba(60,100,46,0)");
-    g.fillStyle = grad;
-    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-  }
-  // Cracks, with branches.
-  g.strokeStyle = light ? "rgba(34,30,30,0.75)" : "rgba(8,10,10,0.8)";
-  const crack = (x: number, y: number, ang: number, len: number, w: number) => {
-    g.lineWidth = w;
+  // A few stones pressed into it.
+  for (let i = 0; i < 12; i++) {
+    const x = r() * size;
+    const y = r() * size;
+    const rad = 2 + r() * 5;
+    const base = 70 + r() * 50;
+    g.fillStyle = "rgba(4,4,4,0.5)";
     g.beginPath();
-    g.moveTo(x, y);
-    for (let i = 0; i < len; i++) {
-      ang += (r() - 0.5) * 0.9;
-      x += Math.cos(ang) * (8 + r() * 10);
-      y += Math.sin(ang) * (8 + r() * 10);
-      g.lineTo(x, y);
-      if (r() < 0.14 && len > 3) crack(x, y, ang + (r() < 0.5 ? 1 : -1) * (0.5 + r()), Math.floor(len / 2), w * 0.7);
-    }
-    g.stroke();
-  };
-  for (let k = 0; k < (light ? 4 : 3); k++) crack(r() * 256, r() < 0.5 ? 0 : 256, r() * Math.PI * 2, 9, light ? 1.9 : 1.5);
-  // The chipped dark edge.
-  g.strokeStyle = "rgba(6,8,8,0.6)";
-  g.lineWidth = 9;
-  g.strokeRect(0, 0, 256, 256);
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-
-/** Dark bark with long ridges, to wrap along a branch. */
-function barkTexture() {
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 256;
-  const g = c.getContext("2d")!;
-  const r = stream(77);
-  g.fillStyle = "rgb(46,40,38)";
-  g.fillRect(0, 0, 128, 256);
-  for (let i = 0; i < 90; i++) {
-    const x = r() * 128;
-    const w = 1 + r() * 4;
-    const l = 40 + r() * 160;
-    const y = r() * 256;
-    const d = (r() - 0.5) * 60;
-    g.fillStyle = `rgba(${46 + d},${40 + d},${38 + d},0.8)`;
-    g.fillRect(x, y, w, l);
+    g.ellipse(x + rad * 0.3, y + rad * 0.4, rad, rad * 0.75, 0.4, 0, 7);
+    g.fill();
+    g.fillStyle = `rgb(${base},${base - 2},${base - 8})`;
+    g.beginPath();
+    g.ellipse(x, y, rad, rad * 0.78, 0.4, 0, 7);
+    g.fill();
   }
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  t.wrapS = t.wrapT = RepeatWrapping;
-  return t;
-}
-
-/** One dead tree: a gnarled trunk with roots, forking twisting branches, merged into one geometry. `h` of each vertex is 0 at the foot to 1 at the top (for swaying). */
-function treeGeometry(seed: number) {
-  const r = stream(seed);
-  const parts: BufferGeometry[] = [];
-  const up = new Vector3(0, 1, 0);
-  const segment = (a: Vector3, b: Vector3, r0: number, r1: number) => {
-    const len = a.distanceTo(b);
-    const g = new CylinderGeometry(r1, r0, len, 5, 1, true);
-    const q = new Quaternion().setFromUnitVectors(up, b.clone().sub(a).normalize());
-    g.applyQuaternion(q);
-    g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-    parts.push(g);
-  };
-  const branch = (from: Vector3, dir: Vector3, len: number, radius: number, depth: number) => {
-    const n = depth === 0 ? 6 : 4;
-    const p = from.clone();
-    const d = dir.clone();
-    let rad = radius;
-    for (let i = 0; i < n; i++) {
-      d.add(new Vector3((r() - 0.5) * 0.55, (r() - 0.5) * 0.3 + (depth === 0 ? 0.08 : -0.03), (r() - 0.5) * 0.55)).normalize();
-      const end = p.clone().addScaledVector(d, len / n);
-      const radEnd = rad * (depth === 0 ? 0.84 : 0.7);
-      segment(p, end, rad, radEnd);
-      if (depth < 4 && i >= (depth === 0 ? 1 : 1) && r() < 0.72) {
-        const side = new Vector3(r() - 0.5, (r() - 0.3) * 0.5, r() - 0.5).normalize();
-        const cd = d.clone().multiplyScalar(0.55).addScaledVector(side, 0.85).normalize();
-        branch(end, cd, len * (0.5 + r() * 0.2), radEnd * 0.72, depth + 1);
-      }
-      p.copy(end);
-      rad = radEnd;
-    }
-  };
-  // Roots that grip the ground, then the trunk.
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2 + r();
-    segment(new Vector3(Math.cos(a) * 0.5, 0.05, Math.sin(a) * 0.5), new Vector3(0, 0.9, 0), 0.07, 0.22);
+  for (let i = 0; i < 9000; i++) {
+    const v = r() < 0.5 ? 80 + r() * 40 : 8 + r() * 20;
+    g.fillStyle = `rgba(${v},${v * 0.9},${v * 0.8},${0.2 + r() * 0.3})`;
+    g.fillRect(r() * size, r() * size, 1 + r(), 1 + r());
   }
-  branch(new Vector3(0, 0.8, 0), new Vector3((r() - 0.5) * 0.3, 1, (r() - 0.5) * 0.3).normalize(), 5.5 + r() * 2.5, 0.46, 0);
-  const geo = mergeGeometries(parts)!;
-  parts.forEach((p) => p.dispose());
-  geo.computeBoundingBox();
-  const top = geo.boundingBox!.max.y;
-  const pos = geo.getAttribute("position");
-  const h: number[] = [];
-  for (let i = 0; i < pos.count; i++) h.push(Math.max(0, pos.getY(i)) / top);
-  geo.setAttribute("sway", new Float32BufferAttribute(h, 1));
-  return geo;
+  const map = new CanvasTexture(c);
+  map.colorSpace = SRGBColorSpace;
+  map.anisotropy = 8;
+  return { map, normal: normalFrom(c, 2.4, false) };
 }
 
-/** A wide soft ground fog: slow noise, thin near the board. */
-function fogLayer(color: number, alpha: number, scale: number, speed: number, time: { value: number }) {
-  return new ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    uniforms: { uTime: time, uColor: { value: new Color(color) }, uAlpha: { value: alpha }, uScale: { value: scale }, uSpeed: { value: speed } },
-    vertexShader: "varying vec3 vWorld; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }",
-    fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uAlpha; uniform float uScale; uniform float uSpeed; varying vec3 vWorld;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float noise(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f);
-        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y); }
-      float fbm(vec2 p){ float a = 0.5; float s = 0.0; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 11.7; a *= 0.5; } return s; }
-      void main(){
-        vec2 p = vWorld.xz * uScale + vec2(uTime * uSpeed, uTime * uSpeed * 0.6);
-        float n = smoothstep(0.32, 0.78, fbm(p));
-        float d = length(vWorld.xz);
-        float clear = smoothstep(3.5, 12.0, d);
-        float far = 1.0 - smoothstep(55.0, 85.0, d);
-        gl_FragColor = vec4(uColor, n * uAlpha * clear * far);
-      }`,
+// ----- The marble -----
+
+/** One ivy leaf in local space (length 1, pointing along +x): three lobes, a notch at the stalk. */
+function leafPath(g: CanvasRenderingContext2D) {
+  g.beginPath();
+  g.moveTo(-0.25, 0);
+  g.bezierCurveTo(-0.2, 0.5, 0.2, 0.9, 0.45, 0.6);
+  g.bezierCurveTo(0.6, 0.5, 0.8, 0.3, 1, 0);
+  g.bezierCurveTo(0.8, -0.3, 0.6, -0.5, 0.45, -0.6);
+  g.bezierCurveTo(0.2, -0.9, -0.2, -0.5, -0.25, 0);
+  g.closePath();
+}
+
+/** One leaf drawn on a canvas: a dark shadow, a green body lit from one side, veins. */
+function drawLeaf(g: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, shade: number) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(ang);
+  g.scale(len, len);
+  leafPath(g);
+  g.save();
+  g.translate(0.06, 0.08);
+  g.fillStyle = "rgba(0,0,0,0.4)";
+  leafPath(g);
+  g.fill();
+  g.restore();
+  const grad = g.createLinearGradient(0, -0.7, 0, 0.7);
+  grad.addColorStop(0, `rgb(${70 * shade},${112 * shade},${54 * shade})`);
+  grad.addColorStop(1, `rgb(${22 * shade},${46 * shade},${26 * shade})`);
+  g.fillStyle = grad;
+  leafPath(g);
+  g.fill();
+  g.strokeStyle = "rgba(8,20,10,0.8)";
+  g.lineWidth = 0.035;
+  g.stroke();
+  g.strokeStyle = `rgba(${150 * shade},${190 * shade},${120 * shade},0.5)`;
+  g.lineWidth = 0.025;
+  g.beginPath();
+  g.moveTo(-0.2, 0);
+  g.lineTo(0.95, 0);
+  g.moveTo(0.1, 0);
+  g.lineTo(0.42, 0.5);
+  g.moveTo(0.1, 0);
+  g.lineTo(0.42, -0.5);
+  g.stroke();
+  g.restore();
+}
+
+/** A vine across a tile: a woody stem wandering in from the edge, leaves along it, a few tendrils. */
+function drawVine(g: CanvasRenderingContext2D, size: number, r: () => number, reach: number) {
+  const edge = Math.floor(r() * 4);
+  const along = r() * size;
+  let x = edge === 0 ? 0 : edge === 1 ? size : along;
+  let y = edge === 2 ? 0 : edge === 3 ? size : along;
+  let a = Math.atan2(size / 2 - y, size / 2 - x) + (r() - 0.5) * 1.2;
+  const pts: [number, number][] = [[x, y]];
+  const steps = Math.floor(reach / 14);
+  for (let i = 0; i < steps; i++) {
+    a += (r() - 0.5) * 0.55;
+    x += Math.cos(a) * 14;
+    y += Math.sin(a) * 14;
+    pts.push([x, y]);
+  }
+  g.lineCap = g.lineJoin = "round";
+  g.strokeStyle = "rgba(0,0,0,0.4)";
+  g.lineWidth = 6;
+  g.beginPath();
+  pts.forEach(([px, py], i) => (i ? g.lineTo(px + 3, py + 4) : g.moveTo(px + 3, py + 4)));
+  g.stroke();
+  g.strokeStyle = "rgb(38,34,22)";
+  g.lineWidth = 4;
+  g.beginPath();
+  pts.forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py)));
+  g.stroke();
+  g.strokeStyle = "rgb(88,78,50)";
+  g.lineWidth = 1.2;
+  g.beginPath();
+  pts.forEach(([px, py], i) => (i ? g.lineTo(px - 0.8, py - 0.8) : g.moveTo(px - 0.8, py - 0.8)));
+  g.stroke();
+  pts.forEach(([px, py], i) => {
+    if (i % 2) return;
+    const len = 16 + r() * 18;
+    drawLeaf(g, px, py, r() * 6.3, len, 0.7 + r() * 0.5);
+    if (r() < 0.5) drawLeaf(g, px, py, r() * 6.3, len * 0.7, 0.7 + r() * 0.5);
   });
 }
 
-/** A soft round glow. */
-function glow(color: number, opacity: number, w: number, h: number, additive = false) {
-  const s = new Sprite(new SpriteMaterial({ map: glowMap(), color, opacity, transparent: true, depthWrite: false, blending: additive ? AdditiveBlending : undefined, toneMapped: false }));
-  s.scale.set(w, h, 1);
-  return s;
+/** An old paving slab: stained pale marble, veined, cracked, grimed along its edges and in its dips, ivy over it. */
+function marbleMaps(seed: number, ivy: number) {
+  const size = 1024;
+  const r = stream(seed);
+  const { c, g } = body(size, 512, (u, v) => {
+    const w1 = fbm(u * 3 + 9, v * 3, seed, 1 << 16, 3);
+    const w2 = fbm(u * 3, v * 3 + 7, seed + 1, 1 << 16, 3);
+    const cloud = fbm(u * 4 + w1, v * 4 + w2, seed + 2, 1 << 16, 5);
+    let [cr, cg, cb] = [mix(96, 150, cloud), mix(93, 146, cloud), mix(84, 134, cloud)];
+    // Warm yellow-grey age stains.
+    const stain = smooth(0.52, 0.72, fbm(u * 2.5 + 3, v * 2.5, seed + 4, 1 << 16, 4));
+    cr = mix(cr, 156, stain * 0.55);
+    cg = mix(cg, 142, stain * 0.55);
+    cb = mix(cb, 112, stain * 0.55);
+    // Veins.
+    const vein = 1 - Math.abs(2 * fbm(u * 2.2 + w2 * 1.5, v * 2.2 + w1 * 1.5, seed + 6, 1 << 16, 4) - 1);
+    const vv = smooth(0.9, 0.97, vein) * 0.6;
+    cr = mix(cr, 96, vv);
+    cg = mix(cg, 94, vv);
+    cb = mix(cb, 92, vv);
+    // Grime: in the dips and thick along the edges.
+    const edge = Math.min(u, 1 - u, v, 1 - v);
+    const grime = Math.max(smooth(0.26, 0.0, edge) * (0.7 + 0.3 * fbm(u * 8, v * 8, seed + 8, 1 << 16, 3)), smooth(0.5, 0.7, fbm(u * 3.5, v * 3.5, seed + 10, 1 << 16, 4)) * 0.85);
+    return [mix(cr, 52, grime), mix(cg, 46, grime), mix(cb, 36, grime)];
+  });
+  // Fine grain.
+  for (let i = 0; i < 16000; i++) {
+    const v = r() < 0.5 ? 205 : 30;
+    g.fillStyle = `rgba(${v},${v},${v * 0.95},${0.08 + r() * 0.16})`;
+    g.fillRect(r() * size, r() * size, 1 + r() * 1.5, 1 + r() * 1.5);
+  }
+  // Cracks: a dark seam, a lit lip beside it and dirt packed in.
+  const crack = (x: number, y: number, ang: number, n: number, w: number) => {
+    const pts: [number, number][] = [[x, y]];
+    for (let i = 0; i < n; i++) {
+      ang += (r() - 0.5) * 0.9;
+      x += Math.cos(ang) * (14 + r() * 20);
+      y += Math.sin(ang) * (14 + r() * 20);
+      pts.push([x, y]);
+      if (r() < 0.16 && n > 4) crack(x, y, ang + (r() < 0.5 ? 1 : -1) * (0.5 + r()), Math.floor(n / 2), w * 0.7);
+    }
+    const trace = (dx: number, dy: number) => {
+      g.beginPath();
+      pts.forEach(([px, py], i) => (i ? g.lineTo(px + dx, py + dy) : g.moveTo(px + dx, py + dy)));
+      g.stroke();
+    };
+    g.strokeStyle = "rgba(220,218,208,0.35)";
+    g.lineWidth = w;
+    trace(1.5, 1.5);
+    g.strokeStyle = "rgba(36,28,20,0.85)";
+    g.lineWidth = w * 1.5;
+    trace(0, 0);
+    g.strokeStyle = "rgba(8,6,4,0.9)";
+    g.lineWidth = w * 0.6;
+    trace(0, 0);
+  };
+  for (let k = 0; k < 3 + Math.floor(r() * 3); k++) crack(r() * size, r() < 0.5 ? 0 : size, r() * 6.3, 12 + Math.floor(r() * 8), 2.2);
+  // Chipped corners and edges, the dark soil showing through.
+  g.fillStyle = "rgba(34,28,22,0.95)";
+  for (let k = 0; k < 14; k++) {
+    const side = Math.floor(r() * 4);
+    const t = r() * size;
+    const d = 8 + r() * 26;
+    const w = 14 + r() * 40;
+    g.beginPath();
+    if (side < 2) {
+      const e = side === 0 ? 0 : size;
+      const s = side === 0 ? 1 : -1;
+      g.moveTo(e, t);
+      g.lineTo(e + s * d, t + w * 0.3);
+      g.lineTo(e + s * d * 0.5, t + w);
+      g.lineTo(e, t + w);
+    } else {
+      const e = side === 2 ? 0 : size;
+      const s = side === 2 ? 1 : -1;
+      g.moveTo(t, e);
+      g.lineTo(t + w * 0.3, e + s * d);
+      g.lineTo(t + w, e + s * d * 0.5);
+      g.lineTo(t + w, e);
+    }
+    g.closePath();
+    g.fill();
+  }
+  // Dirt and moss caught along the edges.
+  for (let i = 0; i < 90; i++) {
+    const side = Math.floor(r() * 4);
+    const t = r() * size;
+    const x = side === 0 ? r() * 30 : side === 1 ? size - r() * 30 : t;
+    const y = side === 2 ? r() * 30 : side === 3 ? size - r() * 30 : t;
+    const rad = 10 + r() * 34;
+    const moss = r() < 0.35;
+    const grad = g.createRadialGradient(x, y, 0, x, y, rad);
+    grad.addColorStop(0, moss ? `rgba(${50 + r() * 20},${84 + r() * 30},${36},0.6)` : "rgba(40,32,24,0.65)");
+    grad.addColorStop(1, "rgba(30,30,20,0)");
+    g.fillStyle = grad;
+    g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // The ivy.
+  for (let k = 0; k < ivy; k++) drawVine(g, size, r, 160 + r() * 380);
+  // The worn dark rim.
+  g.strokeStyle = "rgba(16,12,8,0.75)";
+  g.lineWidth = 12;
+  g.strokeRect(0, 0, size, size);
+  const map = new CanvasTexture(c);
+  map.colorSpace = SRGBColorSpace;
+  map.anisotropy = 8;
+  return { map, normal: normalFrom(c, 2.8, false) };
 }
 
-/** The creatures that watch from the dark: file, height, angle behind the board (deg), distance, lift, and how it behaves. */
-const WATCHERS: [string, number, number, number, number, "peek" | "perch" | "float"][] = [
-  ["zombie", 2.2, -62, 11, 0, "peek"],
-  ["ghost", 3.1, -38, 13, 0.5, "float"],
-  ["brute", 3.4, 8, 15, 0, "peek"],
-  ["wraith", 3.2, 36, 12, 0.6, "float"],
-  ["hound", 1.25, 62, 10, 0, "peek"],
-  ["crawler", 1.5, -18, 9.6, 0, "peek"],
-  ["zombie", 2.0, 80, 12.5, 0, "peek"],
-  ["wraith", 2.9, -84, 13, 0.5, "float"],
-  ["crow", 0.55, 24, 8.8, 0, "perch"],
-  ["crow", 0.5, -50, 8.6, 0, "perch"],
-  ["owl", 1.0, 0, 11, 3.6, "float"],
-];
+/** A leaf cut-out for the 3D ivy: the same leaf as in the textures, on a clear ground. */
+function leafTexture() {
+  const { c, g } = canvas(128);
+  drawLeaf(g, 36, 64, 0, 84, 1);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
 
-const GROUND = -0.02;
-/** The haze: far ground, far trees and the sky's foot all meet in it. */
-const HAZE = 0x424c54;
+// ----- The court -----
 
 export function theWake(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
   const dispose: { dispose(): void }[] = [];
   const rng = stream(2024);
-  const time = { value: 0 };
 
-  // ----- The board in the ground -----
-  const squares = new Set(board.squares.values());
-  for (const o of board.group.children) if (!squares.has(o as Mesh)) o.visible = false;
-  const slabs = {
-    light: [0, 1, 2, 3].map((i) => slabTexture(true, 300 + i * 53)),
-    dark: [0, 1, 2, 3].map((i) => slabTexture(false, 700 + i * 53)),
-  };
-  dispose.push(...slabs.light, ...slabs.dark);
-  for (const sq of board.squares.values()) {
-    const was = sq.material as MeshStandardMaterial;
-    const pool = sq.userData.light ? slabs.light : slabs.dark;
-    const map = pool[Math.floor(rng() * pool.length)].clone();
-    map.needsUpdate = true;
-    // Each slab turned about at random, so no two read alike.
-    map.center.set(0.5, 0.5);
-    map.rotation = Math.floor(rng() * 4) * (Math.PI / 2);
-    dispose.push(map);
-    sq.material = new MeshStandardMaterial({ map, roughness: sq.userData.light ? 0.75 : 0.9, metalness: 0 });
-    was.dispose();
-    // The slabs stand a little apart, the ground showing in the joints, some a touch tilted and sunk.
-    sq.scale.set(0.95, 1, 0.95);
-    sq.rotation.set((rng() - 0.5) * 0.012, (rng() - 0.5) * 0.03, (rng() - 0.5) * 0.012);
+  // ----- The ground: dirt, humped and bumpy, level with the board where the board lies -----
+  const dirt = dirtMaps(900);
+  dirt.map.repeat.set(22, 22);
+  dirt.normal.repeat.set(22, 22);
+  const size = 200;
+  const segs = 320;
+  const geo = new PlaneGeometry(size, size, segs, segs).rotateX(-Math.PI / 2);
+  const pos = geo.getAttribute("position");
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    // Flat under the board, rising into humps and hollows beyond it.
+    const out = smooth(4.4, 9, Math.max(Math.abs(x), Math.abs(z)));
+    const hump = fbm(x * 0.18 + 40, z * 0.18, 5, 1 << 16, 5) - 0.42;
+    const ridge = fbm(x * 0.6, z * 0.6 + 70, 6, 1 << 16, 3) - 0.5;
+    pos.setY(i, GROUND + out * (hump * 1.6 + ridge * 0.25) + 0.004 * (1 - out) * Math.sin(x * 7) * Math.cos(z * 5));
+    // Patches of the dirt darker, damper or paler, to break up its tiling.
+    const k = mix(0.7, 1.12, fbm(x * 0.25, z * 0.25, 12, 1 << 16, 4));
+    colors.set([k, k * 0.98, k * 0.95], i * 3);
   }
-  // A rim of fallen stone round the plot.
-  const chunkGeo = new DodecahedronGeometry(0.5, 0);
-  const chunkMat = new MeshStandardMaterial({ color: 0x484e4e, roughness: 1, flatShading: true });
-  const total = 110;
-  const chunks = new InstancedMesh(chunkGeo, chunkMat, total);
-  const m4 = new Matrix4();
-  const q4 = new Quaternion();
-  const eu = new Euler();
-  let n = 0;
-  const chunk = (x: number, z: number, w: number, h: number, d: number, tint: number) => {
-    eu.set((rng() - 0.5) * 0.7, rng() * 6.3, (rng() - 0.5) * 0.7);
-    q4.setFromEuler(eu);
-    m4.compose(new Vector3(x, h * 0.18, z), q4, new Vector3(w, h, d));
-    chunks.setMatrixAt(n, m4);
-    chunks.setColorAt(n, new Color().setScalar(tint));
-    n++;
-  };
-  for (let i = 0; i < 110 && n < total; i++) {
-    const side = Math.floor(rng() * 4);
-    const along = (rng() - 0.5) * 9.4;
-    const out = 4.15 + rng() * 0.7;
-    chunk(side < 2 ? along : (side === 2 ? -1 : 1) * out, side < 2 ? (side === 0 ? -1 : 1) * out : along, 0.25 + rng() * 0.45, 0.15 + rng() * 0.3, 0.25 + rng() * 0.35, 0.5 + rng() * 0.5);
-  }
-  chunks.count = n;
-  chunks.instanceMatrix.needsUpdate = true;
-  if (chunks.instanceColor) chunks.instanceColor.needsUpdate = true;
-  chunks.receiveShadow = true;
-  chunks.frustumCulled = false;
-  group.add(chunks);
-  dispose.push(chunkGeo, chunkMat, chunks);
-
-  // ----- Ground -----
-  const soilMap = groundTexture([38, 33, 30], 900);
-  soilMap.repeat.set(30, 30);
-  const soil = new MeshStandardMaterial({ map: soilMap, color: 0x8c8a84, roughness: 1 });
-  const ground = new Mesh(new CircleGeometry(95, 64).rotateX(-Math.PI / 2), soil);
-  ground.position.y = GROUND;
+  geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const soil = new MeshStandardMaterial({ map: dirt.map, normalMap: dirt.normal, vertexColors: true, roughness: 1, color: 0xb0aaa2 });
+  soil.normalScale.set(2, 2);
+  const ground = new Mesh(geo, soil);
   ground.receiveShadow = true;
   group.add(ground);
-  dispose.push(soil, soilMap, ground.geometry);
+  dispose.push(soil, dirt.map, dirt.normal, geo);
 
-  // Photographs, when given, replace the drawn textures (with a normal map worked out from each).
-  const photo = (file: string, use: (t: Texture, n: Texture) => void, repeat?: number) => {
-    const p = optional(file);
-    if (!p) return;
-    void p.then((t) => {
-      const tex = t.clone();
-      tex.wrapS = tex.wrapT = RepeatWrapping;
-      if (repeat) tex.repeat.set(repeat, repeat);
-      tex.needsUpdate = true;
-      const nrm = normalFrom(tex);
-      dispose.push(tex, nrm);
-      use(tex, nrm);
-    });
-  };
-  photo(
-    "ground.webp",
-    (t, n) => {
-      soil.map = t;
-      soil.normalMap = n;
-      soil.color.set(0x7c8584);
-      soil.needsUpdate = true;
-    },
-    26,
-  );
+  // ----- The board, set into the ground -----
+  const squares = new Set(board.squares.values());
+  for (const o of board.group.children) if (!squares.has(o as Mesh)) o.visible = false;
+  const marble = [0, 1, 2, 3, 4].map((i) => marbleMaps(300 + i * 53, i % 3 === 0 ? 3 : 5));
+  const mud = [0, 1, 2].map((i) => mudMaps(700 + i * 29));
+  for (const m of [...marble, ...mud]) dispose.push(m.map, m.normal);
+  const slabMats = marble.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.82, metalness: 0 }));
+  const mudMats = mud.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.38, metalness: 0 }));
+  dispose.push(...slabMats, ...mudMats);
+  const light: Mesh[] = [];
+  for (const sq of board.squares.values()) {
+    const isLight = !!sq.userData.light;
+    const was = sq.material as MeshStandardMaterial;
+    const mats = isLight ? slabMats : mudMats;
+    sq.material = mats[Math.floor(rng() * mats.length)];
+    was.map?.dispose();
+    was.dispose();
+    // Each square's picture turned a quarter-turn or so, so no two read alike.
+    const g = sq.geometry.clone();
+    const uv = g.getAttribute("uv");
+    const turn = Math.floor(rng() * 4);
+    const flip = rng() < 0.5 ? -1 : 1;
+    for (let i = 8; i < 12; i++) {
+      let u = uv.getX(i) - 0.5;
+      let v = uv.getY(i) - 0.5;
+      for (let k = 0; k < turn; k++) [u, v] = [-v, u];
+      uv.setXY(i, 0.5 + u * flip, 0.5 + v);
+    }
+    sq.geometry = g;
+    dispose.push(g);
+    if (isLight) {
+      // The slabs stand a hair apart and a touch out of true, their tops just above the dirt.
+      sq.scale.set(0.96, 1, 0.96);
+      sq.rotation.set((rng() - 0.5) * 0.014, (rng() - 0.5) * 0.04, (rng() - 0.5) * 0.014);
+      sq.position.y = -0.075;
+      sq.castShadow = false;
+      light.push(sq);
+    } else {
+      // Mud: flush with the dirt around it.
+      sq.position.y = -0.082;
+    }
+  }
 
-  // Roots creeping over the ground and under the edge of the slabs.
-  const rootGeos: BufferGeometry[] = [];
-  for (let i = 0; i < 26; i++) {
-    const a = rng() * Math.PI * 2;
-    const r0 = 4.3 + rng() * 2;
-    const len = 5 + rng() * 9;
+  // ----- Ivy creeping over the slabs, in 3D, past their edges onto the dirt -----
+  const stem: BufferGeometry[] = [];
+  const leafAt: Matrix4[] = [];
+  const leafColor: Color[] = [];
+  const q = new Quaternion();
+  const eu = new Euler();
+  const vines = 40;
+  for (let v = 0; v < vines; v++) {
+    const sq = light[Math.floor(rng() * light.length)];
+    // Start at one of the slab's edges (sometimes outside the board) and wander across.
+    const edge = Math.floor(rng() * 4);
+    const t = (rng() - 0.5) * 0.9;
+    let x = sq.position.x + (edge < 2 ? (edge === 0 ? -0.55 : 0.55) : t);
+    let z = sq.position.z + (edge >= 2 ? (edge === 2 ? -0.55 : 0.55) : t);
+    let a = Math.atan2(sq.position.x - x, sq.position.z - z) + (rng() - 0.5) * 1.4;
     const pts: Vector3[] = [];
-    let ang = a + (rng() - 0.5) * 0.8;
-    let x = Math.sin(a) * r0;
-    let z = Math.cos(a) * r0;
-    for (let k = 0; k < 7; k++) {
-      pts.push(new Vector3(x, GROUND + 0.02 + (k % 2) * 0.04 + rng() * 0.05, z));
-      ang += (rng() - 0.5) * 0.9;
-      x += (Math.sin(ang) * len) / 7;
-      z += (Math.cos(ang) * len) / 7;
+    const n = 8 + Math.floor(rng() * 8);
+    for (let i = 0; i < n; i++) {
+      pts.push(new Vector3(x, 0, z));
+      a += (rng() - 0.5) * 0.9;
+      x += Math.sin(a) * 0.16;
+      z += Math.cos(a) * 0.16;
     }
-    const w = 0.07 + rng() * 0.12;
-    const tube = new TubeGeometry(new CatmullRomCurve3(pts), 24, w, 5);
-    tube.scale(1, 0.7, 1);
-    rootGeos.push(tube);
-  }
-  const rootMat = new MeshStandardMaterial({ color: 0x2c2724, roughness: 1 });
-  const roots = new Mesh(mergeGeometries(rootGeos)!, rootMat);
-  rootGeos.forEach((g) => g.dispose());
-  roots.receiveShadow = true;
-  group.add(roots);
-  dispose.push(rootMat, roots.geometry);
-
-  // ----- Sky, turning slowly, and the moon -----
-  const skyMat = new MeshBasicMaterial({ side: BackSide, fog: false });
-  const cloudMat = new MeshBasicMaterial({ side: BackSide, fog: false, transparent: true, opacity: 0.3, blending: AdditiveBlending, depthWrite: false });
-  void texture(art("sky.webp")).then((t) => {
-    const a = t.clone();
-    a.wrapS = MirroredRepeatWrapping;
-    a.repeat.set(2, 2);
-    a.offset.set(0, -1);
-    a.needsUpdate = true;
-    skyMat.map = a;
-    skyMat.needsUpdate = true;
-    const b = t.clone();
-    b.wrapS = MirroredRepeatWrapping;
-    b.repeat.set(3, 2);
-    b.offset.set(0.3, -1);
-    b.needsUpdate = true;
-    cloudMat.map = b;
-    cloudMat.needsUpdate = true;
-  });
-  const sky = new Mesh(new SphereGeometry(100, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), skyMat);
-  const clouds = new Mesh(new SphereGeometry(94, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), cloudMat);
-  for (const m of [sky, clouds]) {
-    m.position.y = GROUND - 2;
-    group.add(m);
-  }
-  sky.renderOrder = -10;
-  clouds.renderOrder = -9;
-  dispose.push(skyMat, cloudMat, sky.geometry, clouds.geometry);
-  const moonMat = new SpriteMaterial({ fog: false, transparent: true, depthWrite: false });
-  void texture(art("moon.webp")).then((t) => {
-    moonMat.map = t;
-    moonMat.needsUpdate = true;
-  });
-  const moonSprite = new Sprite(moonMat);
-  moonSprite.scale.setScalar(13);
-  moonSprite.renderOrder = -8;
-  const halo = glow(0x9ae8ff, 0.3, 40, 40, true);
-  halo.renderOrder = -8;
-  group.add(moonSprite, halo);
-  dispose.push(moonMat, halo.material);
-
-  // ----- Far woods and the ruins, cut from the painted picture: ridges of dead trees, three deep, all round -----
-  // Each ridge is many slices of the picture's treeline (random widths, some turned about), standing in a ring
-  // and tinted lighter the farther off it is, so the forest edge reads in layers; the castle stands on the back one.
-  const woodsTex = optional("woods-tile.webp");
-  if (woodsTex)
-    void woodsTex.then((tex) => {
-      const SRC_W = 880;
-      const SRC_H = 672;
-      [
-        { r: 58, tint: 0x586870, order: -7, hgt: 24, y: -1.2 },
-        { r: 78, tint: 0x748690, order: -8, hgt: 30, y: -1.6 },
-        { r: 100, tint: 0x94a4ae, order: -9, hgt: 38, y: -2.2 },
-      ].forEach((ring) => {
-        const parts: BufferGeometry[] = [];
-        let ang = rng() * 6;
-        const end = ang + Math.PI * 2;
-        while (ang < end) {
-          const sw = 300 + Math.floor(rng() * 420);
-          const u0 = Math.floor(rng() * (SRC_W - sw));
-          const flip = rng() < 0.5;
-          const w = (ring.hgt * sw) / SRC_H;
-          const g = new PlaneGeometry(w, ring.hgt);
-          const uv = g.getAttribute("uv");
-          for (let i = 0; i < uv.count; i++) {
-            const u = uv.getX(i);
-            uv.setX(i, (u0 + (flip ? 1 - u : u) * sw) / SRC_W);
-          }
-          const arc = w / ring.r;
-          const am = ang + arc / 2;
-          g.rotateY(Math.PI);
-          g.translate(0, 0, ring.r);
-          g.rotateY(am + Math.PI);
-          g.translate(0, GROUND + ring.hgt / 2 + ring.y, 0);
-          parts.push(g);
-          ang += arc * 0.82;
-        }
-        const geo = mergeGeometries(parts)!;
-        parts.forEach((p) => p.dispose());
-        const mat = new MeshBasicMaterial({ map: tex, color: ring.tint, fog: false, transparent: true, depthWrite: false, side: DoubleSide, alphaTest: 0.04 });
-        const mesh = new Mesh(geo, mat);
-        mesh.renderOrder = ring.order;
-        mesh.frustumCulled = false;
-        group.add(mesh);
-        dispose.push(geo, mat);
-      });
-    });
-  // The castle on its cliff, high behind the black side, and the iron gate with its gargoyle at the far end of the board (both cut from the concept picture).
-  const standee = (file: string, w: number, h: number, at: Vector3, fog: boolean, tint: number, order: number) => {
-    const tex = optional(file);
-    if (!tex) return;
-    const mat = new MeshBasicMaterial({ fog, transparent: true, depthWrite: false, color: tint, alphaTest: 0.12, side: DoubleSide });
-    const m = new Mesh(new PlaneGeometry(w, h), mat);
-    m.position.copy(at);
-    m.lookAt(0, at.y, 0);
-    m.renderOrder = order;
-    group.add(m);
-    dispose.push(mat, m.geometry);
-    void tex.then((t) => {
-      const img = t.image as { width: number; height: number };
-      m.scale.x = (h * img.width) / img.height / w;
-      mat.map = t;
-      mat.needsUpdate = true;
-    });
-  };
-  standee("castle-hill.webp", 60, 74, new Vector3(34, GROUND + 28, -82), false, 0x8c9aa4, -6);
-  standee("gate.webp", 11, 14, new Vector3(0, GROUND + 6.6, -25), true, 0xb4bec4, 1);
-
-  // ----- Dead trees all round, swaying -----
-  const bark = barkTexture();
-  const barkMat = new MeshStandardMaterial({ map: bark, color: 0x9a928a, roughness: 1, side: DoubleSide });
-  barkMat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = time;
-    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform float uTime;\nattribute float sway;").replace(
-      "#include <begin_vertex>",
-      `#include <begin_vertex>
-        float ph = instanceMatrix[3][0] * 0.7 + instanceMatrix[3][2] * 0.5;
-        float amt = sway * sway;
-        transformed.x += sin(uTime * 0.8 + ph + sway * 2.0) * amt * 0.55 + sin(uTime * 2.3 + ph * 2.0) * amt * sway * 0.08;
-        transformed.z += cos(uTime * 0.6 + ph * 1.3) * amt * 0.4;`,
-    );
-  };
-  dispose.push(bark, barkMat);
-  photo("bark.webp", (t, n) => {
-    t.repeat.set(1, 2);
-    n.repeat.set(1, 2);
-    barkMat.map = t;
-    barkMat.normalMap = n;
-    barkMat.color.set(0xb8b0a8);
-    barkMat.needsUpdate = true;
-  });
-  const variants = [11, 23, 37, 51, 67].map((s) => treeGeometry(s));
-  const perVariant = [10, 10, 10, 10, 10];
-  variants.forEach((geo, v) => {
-    const mesh = new InstancedMesh(geo, barkMat, perVariant[v] * 2);
-    let k = 0;
-    for (let i = 0; i < perVariant[v] * 2; i++) {
-      // Near ones stand beyond the camera's reach; far ones thin out into the haze.
-      const near = i < perVariant[v];
-      const a = rng() * Math.PI * 2;
-      const d = near ? 18 + rng() * 10 : 30 + rng() * 40;
-      const sc = (near ? 1.0 : 1.4) + rng() * 0.8;
-      eu.set((rng() - 0.5) * 0.12, rng() * 6.3, (rng() - 0.5) * 0.12);
-      q4.setFromEuler(eu);
-      m4.compose(new Vector3(Math.sin(a) * d, GROUND - 0.1, Math.cos(a) * d), q4, new Vector3(sc, sc * (0.9 + rng() * 0.4), sc));
-      mesh.setMatrixAt(k++, m4);
-    }
-    mesh.frustumCulled = false;
-    group.add(mesh);
-    dispose.push(geo, mesh);
-  });
-
-  // ----- Headstones of every kind and size (a few draws): leaning, sunk, a few fallen -----
-  const weight: HeadKind[] = ["arch", "arch", "arch", "slab", "slab", "round", "round", "cross", "cross", "stump", "stump", "obelisk", "tomb", "pillar"];
-  const size: Record<HeadKind, [number, number]> = {
-    arch: [0.7, 1.7],
-    slab: [0.6, 1.6],
-    round: [0.6, 1.5],
-    obelisk: [0.8, 1.7],
-    cross: [0.7, 1.9],
-    stump: [0.8, 1.8],
-    tomb: [0.8, 1.6],
-    pillar: [0.9, 2.1],
-  };
-  const stones = new Map<HeadKind, Matrix4[]>();
-  for (let i = 0; i < 80; i++) {
-    const a = rng() * Math.PI * 2;
-    const r = 5.6 + Math.pow(rng(), 0.8) * 11;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    const kind = weight[Math.floor(rng() * weight.length)];
-    let sc = size[kind][0] + rng() * (size[kind][1] - size[kind][0]);
-    // Nothing tall between the camera and the board, whichever side it stands on.
-    if (Math.abs(z) > 4.4 && Math.abs(x) < 8) sc = Math.min(sc, 0.75);
-    const wob = rng() < 0.2 ? 0.45 : 0.18;
-    const fallen = rng() < 0.07 && kind !== "tomb";
-    eu.set(fallen ? -1.35 : (rng() - 0.5) * wob, Math.atan2(-x, -z) + (rng() - 0.5) * 0.9, fallen ? 0.2 : (rng() - 0.5) * wob * 1.4);
-    q4.setFromEuler(eu);
-    const m = new Matrix4().compose(new Vector3(x, GROUND - rng() * 0.18 * sc, z), q4, new Vector3(sc * (0.85 + rng() * 0.35), sc * (0.8 + rng() * 0.5), sc));
-    stones.set(kind, [...(stones.get(kind) ?? []), m]);
-  }
-  const stoneMats = [0, 1, 2, 3].map((v) => {
-    const m = new MeshStandardMaterial({ map: stoneTexture("b", v), color: 0x7c8284, roughness: 0.95 });
-    dispose.push(m);
-    return m;
-  });
-  photo("stone-face.webp", (t, n) => {
-    // The photograph of a real headstone (its carving and moss): each variant shows a different part of it.
-    stoneMats.forEach((m, i) => {
-      const map = t.clone();
-      map.repeat.set(0.9, 0.6);
-      map.offset.set(0.05 + (i % 2) * 0.05, i < 2 ? 0.38 : 0.0);
-      map.needsUpdate = true;
-      const nm = n.clone();
-      nm.repeat.copy(map.repeat);
-      nm.offset.copy(map.offset);
-      nm.needsUpdate = true;
-      dispose.push(map, nm);
-      m.map = map;
-      m.normalMap = nm;
-      m.color.set(0xa0a8a8);
-      m.needsUpdate = true;
-    });
-  });
-  HEAD_KINDS.forEach((kind, ki) => {
-    const list = stones.get(kind);
-    if (!list?.length) return;
-    const mesh = new InstancedMesh(headGeometry(kind), stoneMats[ki % 4], list.length);
-    list.forEach((m, i) => {
-      mesh.setMatrixAt(i, m);
-      mesh.setColorAt(i, new Color().setScalar(0.55 + rng() * 0.6));
-    });
-    mesh.frustumCulled = false;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-    dispose.push(mesh);
-  });
-
-  // ----- Crypts, a rusted fence, lanterns -----
-  const stoneMat = new MeshStandardMaterial({ map: groundTexture([88, 94, 96], 77), color: 0x80888a, roughness: 1 });
-  const darkMat = new MeshStandardMaterial({ color: 0x050808, roughness: 1 });
-  const doorGlow = new MeshBasicMaterial({ color: 0x4af0c8, transparent: true, opacity: 0.5, toneMapped: false });
-  dispose.push(stoneMat, darkMat, doorGlow);
-  const crypt = (x: number, z: number, scale: number) => {
-    const g = new Group();
-    const add = (geo: BufferGeometry, mat: MeshStandardMaterial | MeshBasicMaterial, px: number, py: number, pz: number) => {
-      const m = new Mesh(geo, mat);
-      m.position.set(px, py, pz);
-      g.add(m);
-      dispose.push(geo);
-      return m;
-    };
-    add(new BoxGeometry(3.6, 0.4, 3), stoneMat, 0, 0.2, 0);
-    add(new BoxGeometry(3.2, 2.4, 2.6), stoneMat, 0, 1.6, 0);
-    const roof = new Shape();
-    roof.moveTo(-1.9, 0);
-    roof.lineTo(1.9, 0);
-    roof.lineTo(0, 1.3);
-    const rg = new (class extends BufferGeometry {})();
-    void rg;
-    const prism = new Mesh(new ShapeGeometry(roof), stoneMat);
-    prism.position.set(0, 2.8, 1.5);
-    g.add(prism);
-    const back = prism.clone();
-    back.position.z = -1.5;
-    g.add(back);
-    add(new BoxGeometry(3.9, 0.12, 3.2), stoneMat, 0, 2.86, 0).rotation.z = 0;
-    // The doorway: a dark arch with a cold glow inside.
-    const arch = new Shape();
-    arch.moveTo(-0.55, 0);
-    arch.lineTo(0.55, 0);
-    arch.lineTo(0.55, 1.1);
-    arch.absarc(0, 1.1, 0.55, 0, Math.PI, false);
-    arch.lineTo(-0.55, 0);
-    const door = new Mesh(new ShapeGeometry(arch), darkMat);
-    door.position.set(0, 0.4, 1.32);
-    g.add(door);
-    const inner = new Mesh(new ShapeGeometry(arch), doorGlow);
-    inner.scale.setScalar(0.78);
-    inner.position.set(0, 0.45, 1.33);
-    g.add(inner);
-    dispose.push(door.geometry, inner.geometry, prism.geometry);
-    for (const s of [-1, 1]) add(new CylinderGeometry(0.16, 0.2, 2.4, 8), stoneMat, s * 1.05, 1.6, 1.4);
-    g.position.set(x, GROUND, z);
-    g.rotation.y = Math.atan2(-x, -z);
-    g.scale.setScalar(scale);
-    group.add(g);
-  };
-  crypt(-14, -15, 1.3);
-  crypt(17, -11, 1.1);
-  crypt(-3, 21, 1.2);
-  // Fence: bars with spear tips and two rails, in broken runs round the graveyard.
-  const barGeo = new BoxGeometry(0.05, 1.5, 0.05);
-  const tipGeo = new ConeGeometry(0.06, 0.2, 4);
-  const railGeo = new BoxGeometry(1, 0.05, 0.05);
-  const ironMat = new MeshStandardMaterial({ color: 0x1c1a1a, roughness: 0.7, metalness: 0.5 });
-  dispose.push(barGeo, tipGeo, railGeo, ironMat);
-  const runs = [
-    [-150, -95],
-    [-70, -20],
-    [10, 55],
-    [85, 130],
-    [160, 200],
-    [230, 275],
-  ];
-  const bars: Matrix4[] = [];
-  const rails: Matrix4[] = [];
-  for (const [a0, a1] of runs) {
-    const R = 15.5;
-    for (let a = a0; a < a1; a += 1.8) {
-      if (rng() < 0.12) continue;
-      const ar = (a * Math.PI) / 180;
-      eu.set((rng() - 0.5) * 0.08, ar, (rng() - 0.5) * (rng() < 0.15 ? 0.6 : 0.06));
-      q4.setFromEuler(eu);
-      bars.push(new Matrix4().compose(new Vector3(Math.sin(ar) * R, GROUND + 0.75, Math.cos(ar) * R), q4, new Vector3(1, 0.8 + rng() * 0.35, 1)));
-    }
-    for (const hgt of [0.35, 1.1])
-      for (let a = a0; a < a1 - 5; a += 5.6) {
-        const ar = ((a + 2.8) * Math.PI) / 180;
-        eu.set(0, ar + Math.PI / 2, 0);
-        q4.setFromEuler(eu);
-        rails.push(new Matrix4().compose(new Vector3(Math.sin(ar) * R, GROUND + hgt, Math.cos(ar) * R), q4, new Vector3(1.55, 1, 1)));
+    const surface = (px: number, pz: number) => (Math.abs(px) < 4 && Math.abs(pz) < 4 ? -0.04 : GROUND + 0.02);
+    for (const p of pts) p.y = surface(p.x, p.z) + 0.012;
+    const tube = new TubeGeometry(new CatmullRomCurve3(pts), pts.length * 4, 0.011, 5);
+    stem.push(tube);
+    for (const p of pts) {
+      const count = 2 + Math.floor(rng() * 2);
+      for (let k = 0; k < count; k++) {
+        const s = 0.45 + rng() * 0.6;
+        eu.set((rng() - 0.5) * 0.5, rng() * 6.3, (rng() - 0.5) * 0.5);
+        q.setFromEuler(eu);
+        leafAt.push(new Matrix4().compose(new Vector3(p.x + (rng() - 0.5) * 0.12, p.y + 0.008 + rng() * 0.03, p.z + (rng() - 0.5) * 0.12), q, new Vector3(s, s, s)));
+        leafColor.push(new Color().setScalar(0.45 + rng() * 0.4));
       }
+    }
   }
-  for (const [geo, list] of [
-    [barGeo, bars],
-    [railGeo, rails],
-  ] as const) {
-    const mesh = new InstancedMesh(geo, ironMat, list.length);
-    list.forEach((m, i) => mesh.setMatrixAt(i, m));
-    mesh.frustumCulled = false;
-    group.add(mesh);
-    dispose.push(mesh);
-  }
-  const tips = new InstancedMesh(tipGeo, ironMat, bars.length);
-  bars.forEach((m, i) => {
-    const p = new Vector3().setFromMatrixPosition(m);
-    const s = new Vector3().setFromMatrixScale(m);
-    tips.setMatrixAt(i, new Matrix4().makeTranslation(p.x, p.y + 0.75 * s.y + 0.1, p.z));
+  const stems = new Mesh(mergeGeometries(stem)!, new MeshStandardMaterial({ color: 0x2b2a1c, roughness: 1 }));
+  stem.forEach((s) => s.dispose());
+  group.add(stems);
+  const leafTex = leafTexture();
+  const leafGeo = new PlaneGeometry(0.2, 0.2).rotateX(-Math.PI / 2).translate(0.044, 0, 0);
+  const leafMat = new MeshStandardMaterial({ map: leafTex, alphaTest: 0.5, side: 2, roughness: 0.6 });
+  const leaves = new InstancedMesh(leafGeo, leafMat, leafAt.length);
+  leafAt.forEach((m, i) => {
+    leaves.setMatrixAt(i, m);
+    leaves.setColorAt(i, leafColor[i]);
   });
-  tips.frustumCulled = false;
-  group.add(tips);
-  dispose.push(tips);
-  // Lanterns on iron posts, their light shaking.
-  const lamps: { light: PointLight; bloom: Sprite; phase: number }[] = [];
-  for (const [x, z] of [
-    [-7.5, -8],
-    [8.5, -7],
-  ]) {
-    const post = new Mesh(new CylinderGeometry(0.05, 0.07, 2.6, 6), ironMat);
-    post.position.set(x, GROUND + 1.3, z);
-    const lantern = new Mesh(new BoxGeometry(0.28, 0.4, 0.28), new MeshBasicMaterial({ color: 0xffb860, toneMapped: false }));
-    lantern.position.set(x, GROUND + 2.75, z);
-    const light = new PointLight(0xffa850, 6, 12, 1.6);
-    light.position.set(x, GROUND + 2.7, z);
-    const bloom = glow(0xffa850, 0.55, 1.8, 1.8, true);
-    bloom.position.copy(lantern.position);
-    group.add(post, lantern, light, bloom);
-    dispose.push(post.geometry, lantern.geometry, lantern.material as MeshBasicMaterial, bloom.material);
-    lamps.push({ light, bloom, phase: rng() * 10 });
-  }
+  leaves.frustumCulled = false;
+  group.add(leaves);
+  dispose.push(stems.geometry, stems.material as MeshStandardMaterial, leafTex, leafGeo, leafMat, leaves);
 
-  // ----- The watchers: each behind a stone of its own, looking out now and then -----
-  interface Watcher {
-    s: Sprite;
-    mat: SpriteMaterial;
-    hidden: Vector3;
-    tan: Vector3;
-    h: number;
-    w: number;
-    kind: "peek" | "perch" | "float";
-    period: number;
-    phase: number;
-    side: number;
-  }
-  const watchers: Watcher[] = [];
-  WATCHERS.forEach(([file, h, deg, dist, lift, kind], i) => {
-    const url = art(`watch-${file}.webp`);
-    if (!url) return;
-    const a = Math.PI + (deg * Math.PI) / 180;
-    const dir = new Vector3(Math.sin(a), 0, Math.cos(a));
-    const mat = new SpriteMaterial({ color: 0x9fb4bc, transparent: true, alphaTest: 0.14 });
-    const s = new Sprite(mat);
-    s.center.set(0.5, 0);
-    const w: Watcher = {
-      s,
-      mat,
-      hidden: dir
-        .clone()
-        .multiplyScalar(dist + 0.9)
-        .setY(GROUND + lift),
-      tan: new Vector3(dir.z, 0, -dir.x),
-      h,
-      w: h,
-      kind,
-      period: 14 + rng() * 16,
-      phase: rng(),
-      side: rng() < 0.5 ? -1 : 1,
-    };
-    void texture(url).then((t) => {
-      mat.map = t;
-      mat.needsUpdate = true;
-      const img = t.image as { width: number; height: number };
-      w.w = (h * img.width) / img.height;
-    });
-    const { group: cover } = headstone("b", [0, 0.02], kind === "perch" ? "slab" : i % 2 ? "slab" : "pillar", i % 4);
-    const wide = kind === "perch" ? 1.0 : h > 2.5 ? 2.2 : 3.2;
-    cover.scale.set(kind === "perch" ? 1.2 : wide / 0.7, kind === "perch" ? 1.0 : Math.max(1.2, h * 0.85 + 0.3), kind === "perch" ? 1.2 : 1.6);
-    cover.position.copy(dir.clone().multiplyScalar(dist)).setY(GROUND - 0.05);
-    cover.rotation.y = Math.atan2(-dir.x, -dir.z);
-    group.add(cover);
-    if (kind === "perch") w.hidden.copy(dir.clone().multiplyScalar(dist)).setY(GROUND + 1.05);
-    group.add(s);
-    s.position.copy(w.hidden);
-    dispose.push(mat);
-    watchers.push(w);
-  });
-
-  // A witch crosses the sky now and then, bats now and then.
-  const witch = new Sprite(new SpriteMaterial({ fog: false, transparent: true, color: 0x020608 }));
-  void texture(art("witch.webp")).then((t) => {
-    witch.material.map = t;
-    witch.material.needsUpdate = true;
-  });
-  witch.scale.set(3.4, 2.1, 1);
-  witch.visible = false;
-  const flock = new Sprite(new SpriteMaterial({ fog: false, transparent: true, color: 0x050a0c, opacity: 0.9 }));
-  void texture(art("watch-bats.webp")).then((t) => {
-    flock.material.map = t;
-    flock.material.needsUpdate = true;
-  });
-  flock.scale.set(7, 5.2, 1);
-  flock.visible = false;
-  group.add(witch, flock);
-  dispose.push(witch.material, flock.material);
-
-  // ----- Fog on the ground, in layers, and wisps -----
-  const layers = [
-    { y: 0.12, color: 0x8a9aa4, alpha: 0.5, scale: 0.12, speed: 0.012 },
-    { y: 0.7, color: 0x6e808c, alpha: 0.4, scale: 0.08, speed: -0.008 },
-    { y: 1.5, color: 0x5a6c78, alpha: 0.3, scale: 0.05, speed: 0.006 },
-  ].map((l) => {
-    const m = fogLayer(l.color, l.alpha, l.scale, l.speed, time);
-    const p = new Mesh(new PlaneGeometry(190, 190).rotateX(-Math.PI / 2), m);
-    p.position.y = GROUND + l.y;
-    p.renderOrder = 2;
-    group.add(p);
-    dispose.push(m, p.geometry);
-    return p;
-  });
-  void layers;
-  const wisps = Array.from({ length: 22 }, (_, i) => {
-    const s = glow(i % 3 ? 0x7af0d0 : 0x9ad0ff, 0.7, 0.35, 0.35, true);
-    group.add(s);
-    dispose.push(s.material);
-    const a = rng() * Math.PI * 2;
-    const d = 6 + rng() * 22;
-    return { s, home: new Vector3(Math.sin(a) * d, GROUND + 0.6 + rng() * 1.8, Math.cos(a) * d), phase: rng() * 20, speed: 0.15 + rng() * 0.25 };
-  });
-
-  // ----- Light -----
-  const moonLight = new DirectionalLight(0xb4c8d8, 1.0);
+  // ----- Light and haze -----
+  const moonLight = new DirectionalLight(0xb4c8d8, 1.5);
+  moonLight.position.set(-9, 3.5, 5);
   moonLight.castShadow = true;
   Object.assign(moonLight.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9 });
   moonLight.shadow.mapSize.set(1024, 1024);
-  const hemi = new HemisphereLight(0x6a7e8c, 0x0c1012, 0.55);
+  const hemi = new HemisphereLight(0x6a7e8c, 0x0c1012, 0.7);
   group.add(moonLight, moonLight.target, hemi);
-
   const prevBg = scene.background;
   const prevFog = scene.fog;
   scene.background = new Color(HAZE);
-  scene.fog = new Fog(HAZE, 9, 70);
+  scene.fog = new Fog(HAZE, 10, 60);
 
-  const ease3 = (x: number) => x * x * (3 - 2 * x);
-  let t = 0;
-  let nextWitch = 5000;
-  let witchAt = -1;
-  let nextFlock = 14000;
-  let flockAt = -1;
-  let nextBolt = 20000;
   return {
-    // The rubble stands up to about 0.1 from the pale squares.
-    markY: 0.12,
-    view: { fixed: false, pitch: 0.22, dist: 15, fov: 50, ty: 1.4 },
-    orient(side) {
-      group.rotation.y = side > 0 ? 0 : Math.PI;
-    },
-    update(ms) {
-      t += ms;
-      const s = t / 1000;
-      time.value = s;
-      sky.rotation.y = s * 0.0016;
-      clouds.rotation.y = -s * 0.0034;
-      // The moon: round the sky behind the black side, a little up and down.
-      const az = Math.PI + Math.sin(s * 0.0035) * 2.2;
-      const el = 0.42 + 0.06 * Math.sin(s * 0.011);
-      moonSprite.position.set(Math.sin(az) * Math.cos(el) * 88, GROUND + Math.sin(el) * 88, Math.cos(az) * Math.cos(el) * 88);
-      halo.position.copy(moonSprite.position);
-      halo.material.opacity = 0.26 + 0.05 * Math.sin(s * 0.5);
-      moonLight.position.copy(moonSprite.position).multiplyScalar(0.2);
-      // Lightning, rarely: the sky and the light jump.
-      let flash = 0;
-      if (t > nextBolt) {
-        const k = (t - nextBolt) / 700;
-        if (k > 1) nextBolt = t + 25000 + Math.random() * 35000;
-        else flash = Math.max(0, Math.sin(k * 18) * (1 - k)) * 0.9;
-      }
-      hemi.intensity = 0.55 + flash * 1.4;
-      skyMat.color.setScalar(1 + flash * 1.4);
-      for (const l of lamps) {
-        const f = 0.8 + 0.2 * Math.sin(s * 9 + l.phase) * Math.sin(s * 5.3 + l.phase * 2) + (Math.random() - 0.5) * 0.08;
-        l.light.intensity = 6 * f;
-        l.bloom.material.opacity = 0.45 * f;
-      }
-      for (const w of wisps) {
-        const k = s * w.speed + w.phase;
-        w.s.position.set(w.home.x + Math.sin(k) * 2.2, w.home.y + Math.sin(k * 1.7) * 0.4, w.home.z + Math.cos(k * 0.8) * 2.2);
-        w.s.material.opacity = 0.35 + 0.35 * Math.sin(k * 2.3);
-      }
-      for (const w of watchers) {
-        const u = (s / w.period + w.phase) % 1;
-        const out = w.kind === "peek" ? (u < 0.4 ? 0 : u < 0.5 ? ease3((u - 0.4) / 0.1) : u < 0.78 ? 1 : u < 0.86 ? 1 - ease3((u - 0.78) / 0.08) : 0) : 0;
-        const sway = Math.sin(s * 1.3 + w.phase * 20);
-        const p = w.hidden.clone().addScaledVector(w.tan, w.side * (out * 1.7 + out * Math.sin(s * 0.6 + w.phase * 9) * 0.35));
-        let breathe = 1 + 0.025 * Math.sin(s * 2.2 + w.phase * 11);
-        if (w.kind === "float") {
-          p.y += Math.sin(s * 0.7 + w.phase * 6) * 0.25 + 0.15;
-          p.addScaledVector(w.tan, Math.sin(s * 0.25 + w.phase * 5) * 1.5);
-          w.mat.opacity = 0.75 + 0.25 * Math.sin(s * 0.9 + w.phase * 8);
-        } else if (w.kind === "perch") {
-          p.y += Math.max(0, Math.sin(s * 1.9 + w.phase * 13)) > 0.96 ? 0.07 : 0;
-          breathe = 1 + 0.06 * Math.max(0, Math.sin(s * 0.8 + w.phase * 5));
-        } else p.y += out * Math.abs(Math.sin(s * 3 + w.phase * 7)) * 0.05;
-        w.s.position.copy(p);
-        w.mat.rotation = sway * 0.035 * (0.4 + out);
-        w.s.scale.set(w.w * breathe * (w.side < 0 ? -1 : 1), w.h * (2 - breathe), 1);
-      }
-      if (witchAt < 0 && t > nextWitch) witchAt = t;
-      if (witchAt >= 0) {
-        const k = (t - witchAt) / 18000;
-        if (k >= 1) {
-          witch.visible = false;
-          witchAt = -1;
-          nextWitch = t + 40000 + Math.random() * 40000;
-        } else {
-          witch.visible = true;
-          witch.position.set(-60 + 120 * k, GROUND + 26 + Math.sin(k * 9) * 1.4, -70);
-        }
-      }
-      if (flockAt < 0 && t > nextFlock) flockAt = t;
-      if (flockAt >= 0) {
-        const k = (t - flockAt) / 22000;
-        if (k >= 1) {
-          flock.visible = false;
-          flockAt = -1;
-          nextFlock = t + 25000 + Math.random() * 35000;
-        } else {
-          flock.visible = true;
-          flock.position.set(55 - 110 * k, GROUND + 20 + Math.sin(k * 14) * 1.2, -68);
-        }
-      }
-    },
+    markY: 0.02,
+    view: { fixed: false, pitch: 0.5, dist: 11, fov: 50, ty: 0.6 },
+    update() {},
     dispose() {
       group.removeFromParent();
       scene.background = prevBg;
