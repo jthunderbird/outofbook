@@ -1549,7 +1549,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
   const GROUND = -0.02;
   // The painted world round the board: a sky dome, a ring of far woods with the ruins in one place, great dead trees at several depths.
   const R = 34;
-  const BAND = 9.5;
+  const BAND = 21;
   const disposables: { dispose(): void }[] = [];
   const rng = (i: number) => {
     const x = Math.sin(i * 91.7) * 43758.5453;
@@ -1638,7 +1638,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
     woodsMat.needsUpdate = true;
   });
   const woods = new Mesh(new CylinderGeometry(R, R, BAND, 96, 1, true), woodsMat);
-  woods.position.y = GROUND + BAND / 2 - 0.3;
+  woods.position.y = GROUND + BAND / 2 - 1.2;
   woods.renderOrder = -8;
   const castleMat = new MeshBasicMaterial({ fog: false, transparent: true, depthWrite: false, color: 0xe0eeee });
   void texture(art("wake", "woods-castle.webp")).then((t) => {
@@ -1646,7 +1646,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
     castleMat.needsUpdate = true;
   });
   const castle = new Mesh(new PlaneGeometry(BAND * (560 / 672), BAND), castleMat);
-  castle.position.set(0, GROUND + BAND / 2 - 0.3, -(R - 0.6));
+  castle.position.set(0, GROUND + BAND / 2 - 1.2, -(R - 0.6));
   castle.renderOrder = -7;
   // The graveyard's soil to the woods, lost in mist.
   const soilMap = dirtTexture(900);
@@ -1691,7 +1691,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
   });
   const moonSprite = new Sprite(moonMat);
   moonSprite.scale.setScalar(9);
-  moonSprite.renderOrder = -6;
+  moonSprite.renderOrder = -9;
   group.add(moonSprite);
   disposables.push(moonMat);
 
@@ -1824,7 +1824,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
     disposables.push(s.material);
   }
   const halo = softSprite(0x9ae8ff, 0.3, 26, 26, true);
-  halo.renderOrder = -6;
+  halo.renderOrder = -9;
   group.add(halo);
   disposables.push(halo.material);
 
@@ -1890,7 +1890,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
       halo.material.opacity = 0.26 + 0.05 * Math.sin(s * 0.5);
       // Round the sky behind the black side, a little up and down.
       const az = Math.PI + Math.sin(s * 0.0035) * 2.4;
-      const el = 0.3 + 0.05 * Math.sin(s * 0.011);
+      const el = 0.5 + 0.06 * Math.sin(s * 0.011);
       moonSprite.position.set(Math.sin(az) * Math.cos(el) * 62, GROUND + Math.sin(el) * 62, Math.cos(az) * Math.cos(el) * 62);
       halo.position.copy(moonSprite.position);
       moon.position.copy(moonSprite.position).multiplyScalar(0.3);
