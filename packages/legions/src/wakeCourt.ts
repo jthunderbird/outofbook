@@ -7,6 +7,7 @@ import {
   CanvasTexture,
   Color,
   Euler,
+  BufferGeometry,
   Float32BufferAttribute,
   IcosahedronGeometry,
   Fog,
@@ -16,6 +17,7 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
   Quaternion,
@@ -24,8 +26,9 @@ import {
   Vector3,
   type Scene,
 } from "three";
-import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Board } from "./board";
+import { weather } from "./wakeStones";
 import type { CourtSet } from "./courts";
 
 /** Where the dirt lies under the board; the slabs and the mud sit in it. */
@@ -468,8 +471,8 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   const marble = [0, 1, 2, 3, 4].map((i) => marbleMaps(300 + i * 53));
   const mud = [0, 1, 2].map((i) => mudMaps(700 + i * 29));
   for (const m of [...marble, ...mud]) dispose.push(m.map, m.normal);
-  const slabMats = marble.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, color: 0xd6d6d0, roughness: 1, metalness: 0 }));
-  const mudMats = mud.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.38, metalness: 0 }));
+  const slabMats = marble.map((m) => weather(new MeshStandardMaterial({ map: m.map, normalMap: m.normal, color: 0xd6d6d0, roughness: 1, metalness: 0 }), 0.12, 0.03, -0.8));
+  const mudMats = mud.map((m) => weather(new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.5, metalness: 0 }), 0.0, 0.03, -0.8));
   dispose.push(...slabMats, ...mudMats);
   const light: Mesh[] = [];
   for (const sq of board.squares.values()) {
@@ -510,26 +513,10 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   const tuft = mergeVertices(blob.deleteAttribute("uv").deleteAttribute("normal"), 0.001);
   tuft.computeVertexNormals();
   blob.dispose();
-  const fuzz = canvas(256);
-  const fr = stream(77);
-  fuzz.g.fillStyle = "#808080";
-  fuzz.g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 9000; i++) {
-    const v = fr() * 255;
-    fuzz.g.fillStyle = `rgba(${v},${v},${v},0.7)`;
-    fuzz.g.fillRect(fr() * 256, fr() * 256, 1 + fr() * 2, 1 + fr() * 3);
-  }
-  const fuzzTex = new CanvasTexture(fuzz.c);
-  fuzzTex.wrapS = fuzzTex.wrapT = RepeatWrapping;
-  const mossMat = new MeshStandardMaterial({ roughness: 1 });
-  mossMat.onBeforeCompile = (sh) => {
-    // Fuzz the cushions with a fine noise in their color.
-    sh.fragmentShader = sh.fragmentShader.replace(
-      "#include <color_fragment>",
-      "#include <color_fragment>\ndiffuseColor.rgb *= 0.75 + 0.5 * fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);",
-    );
-  };
+  // The same grime, dirt splash and pitted bump the stones get, over the moss too.
+  const mossMat = weather(new MeshStandardMaterial({ roughness: 1 }), 0, 0.05, -0.8);
   const places: { m: Matrix4; c: Color }[] = [];
+  const stains: BufferGeometry[] = [];
   const q = new Quaternion();
   const eu = new Euler();
   /** One strand: a path, a width that swells and thins along it. Green at the core, rotten at the edges and ends. */
@@ -537,6 +524,23 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     const r = stream(seed);
     let len = 0;
     for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    // A dark, soft stain on the stone under it, so the moss sits in the surface rather than on it.
+    const ribbon = new PlaneGeometry(1, 1, Math.max(1, Math.floor(len / 0.1)), 1);
+    const rp = ribbon.getAttribute("position");
+    const ru = ribbon.getAttribute("uv");
+    for (let i = 0; i < rp.count; i++) {
+      const t = ru.getX(i);
+      const f = t * (pts.length - 1);
+      const i0 = Math.min(pts.length - 2, Math.floor(f));
+      const u = f - i0;
+      const tx = pts[i0 + 1][0] - pts[i0][0];
+      const tz = pts[i0 + 1][1] - pts[i0][1];
+      const tl = Math.hypot(tx, tz) || 1;
+      const half = width * Math.pow(Math.sin(t * Math.PI), 0.6) * 1.7 * (0.5 + fbm(t * 5 + 3, 1, seed, 1 << 16, 3));
+      const side = ru.getY(i) * 2 - 1;
+      rp.setXYZ(i, mix(pts[i0][0], pts[i0 + 1][0], u) - (tz / tl) * half * side, -0.0265, mix(pts[i0][1], pts[i0 + 1][1], u) + (tx / tl) * half * side);
+    }
+    stains.push(ribbon);
     const step = 0.028;
     const n = Math.max(2, Math.floor(len / step));
     const ph = r() * 20;
@@ -552,7 +556,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
       const tl = Math.hypot(tx, tz) || 1;
       // Swells and pinches along its length, thin at both ends.
       const w = width * Math.pow(Math.sin(t * Math.PI), 0.6) * (0.35 + 1.3 * fbm(t * 6 + ph, ph, seed, 1 << 16, 3));
-      const count = 1 + Math.floor(w * 30);
+      const count = 1 + Math.floor(w * 20);
       for (let c = 0; c < count; c++) {
         const side = (r() + r() + r() - 1.5) * 2;
         const off = side * w;
@@ -576,7 +580,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
       let at = -4 + rng() * 1.5;
       while (at < 4) {
         const len = Math.min(0.4 + rng() * rng() * 3.2, 4 - at);
-        if (rng() < 0.55) {
+        if (rng() < 0.3) {
           const wob = (rng() - 0.5) * 0.08;
           const pts: [number, number][] = [];
           for (let k = 0; k <= 6; k++) {
@@ -584,14 +588,14 @@ export function theWake(scene: Scene, board: Board): CourtSet {
             const o = line + wob + (fbm(a * 3, line, sd, 1 << 16, 2) - 0.5) * 0.16;
             pts.push(horiz ? [a, o] : [o, a]);
           }
-          strand(pts, 0.05 + rng() * 0.12, sd++);
+          strand(pts, 0.03 + rng() * 0.09, sd++);
         }
         at += len + 0.3 + rng() * 1.6;
       }
     }
   }
   // Wandering across the slabs, bending and branching away from a joint.
-  for (let i = 0; i < 46; i++) {
+  for (let i = 0; i < 16; i++) {
     let x = Math.round((rng() - 0.5) * 8);
     let z = (rng() - 0.5) * 8;
     let a = rng() * 6.3;
@@ -604,8 +608,25 @@ export function theWake(scene: Scene, board: Board): CourtSet {
       if (Math.abs(x) > 4 || Math.abs(z) > 4) break;
       pts.push([x, z]);
     }
-    if (pts.length > 2) strand(pts, 0.04 + rng() * 0.08, sd++);
+    if (pts.length > 2) strand(pts, 0.03 + rng() * 0.06, sd++);
   }
+  const stainTex = (() => {
+    const { c, g } = canvas(64);
+    const grad = g.createLinearGradient(0, 0, 0, 64);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(0.35, "rgba(255,255,255,0.7)");
+    grad.addColorStop(0.65, "rgba(255,255,255,0.7)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    return new CanvasTexture(c);
+  })();
+  const stainMat = new MeshBasicMaterial({ color: 0x0b0e06, alphaMap: stainTex, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  const stain = new Mesh(mergeGeometries(stains)!, stainMat);
+  stains.forEach((g) => g.dispose());
+  stain.renderOrder = 1;
+  group.add(stain);
+  dispose.push(stain.geometry, stainMat, stainTex);
   const moss = new InstancedMesh(tuft, mossMat, places.length);
   places.forEach((p, i) => {
     moss.setMatrixAt(i, p.m);
@@ -614,7 +635,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   moss.receiveShadow = true;
   moss.frustumCulled = false;
   group.add(moss);
-  dispose.push(tuft, mossMat, fuzzTex, moss);
+  dispose.push(tuft, mossMat, moss);
 
   // ----- Light and haze -----
   const moonLight = new DirectionalLight(0xb4c8d8, 1.5);

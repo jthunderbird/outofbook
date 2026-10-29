@@ -53,7 +53,7 @@ const WEATHER = /* glsl */ `
   float mm = up * 0.5 + low * 0.4 + (n1 - 0.5) * 0.95 + (n2 - 0.5) * 0.3 - (1.0 - uMoss) * 0.6;
   float moss = smoothstep(0.34, 0.5, mm);
   float rot = smoothstep(0.2, 0.34, mm) * (1.0 - moss);
-  vec3 mossCol = mix(vec3(0.045, 0.09, 0.03), vec3(0.14, 0.24, 0.06), n2);
+  vec3 mossCol = mix(vec3(0.03, 0.06, 0.02), vec3(0.09, 0.15, 0.04), n2);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.045, 0.036, 0.022), rot * 0.85);
   diffuseColor.rgb = mix(diffuseColor.rgb, mossCol, moss);
   roughnessFactor = mix(max(roughnessFactor, 0.85), 1.0, max(moss, 0.4));
@@ -71,12 +71,12 @@ const WEATHER = /* glsl */ `
 }
 `;
 
-/** Weathers a standard material: moss (0..1, how much), and how hard the bump bites. */
-export function weather<T extends MeshStandardMaterial>(mat: T, moss = 0.6, bump = 0.02): T {
+/** Weathers a standard material: moss (0..1, how much), how hard the bump bites, and the height of the ground it stands on (dirt splashes up from there). */
+export function weather<T extends MeshStandardMaterial>(mat: T, moss = 0.6, bump = 0.02, base = -0.05): T {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uMoss = { value: moss };
     sh.uniforms.uBump = { value: bump };
-    sh.uniforms.uBase = { value: -0.05 };
+    sh.uniforms.uBase = { value: base };
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", `#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNor;`)
       .replace("#include <begin_vertex>", `#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWNor = normalize(mat3(modelMatrix) * objectNormal);`);
