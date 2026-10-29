@@ -23,6 +23,7 @@ export function HomeScene({ scene: given }: { scene?: Scene }) {
   const root = useRef<HTMLDivElement>(null);
   const embers = useRef<HTMLCanvasElement>(null);
   const flash = useRef<HTMLDivElement>(null);
+  const layers = useRef<Record<string, HTMLImageElement | null>>({});
   const [ready, setReady] = useState(false);
   const urls = (["bg", "left", "right", "fg"] as const).map((l) => layerUrl(scene, l));
 
@@ -51,6 +52,7 @@ export function HomeScene({ scene: given }: { scene?: Scene }) {
     let w = 1;
     let h = 1;
     let f = fit(1, 1);
+    let pull = 0;
     const size = () => {
       w = el.clientWidth || 1;
       h = el.clientHeight || 1;
@@ -61,7 +63,7 @@ export function HomeScene({ scene: given }: { scene?: Scene }) {
       // On a tall screen the two tribes are drawn toward each other.
       // (Not past the gap between the two leaders in the art, or they would overlap.)
       const hidden = Math.max(0, f.sw - w);
-      el.style.setProperty("--pull", `${f.tall ? Math.min(hidden * 0.36, f.sw * 0.17 * 0.45) : 0}px`);
+      pull = f.tall ? Math.min(hidden * 0.36, f.sw * 0.17 * 0.45) : 0;
       cv.width = Math.round(w / 2);
       cv.height = Math.round(h / 2);
     };
@@ -73,6 +75,8 @@ export function HomeScene({ scene: given }: { scene?: Scene }) {
     const aim = { x: 0, y: 0, hasInput: false };
     const at = { x: 0, y: 0 };
     const move = (e: PointerEvent) => {
+      // A finger on the screen is scrolling the menu, not looking around.
+      if (e.pointerType !== "mouse") return;
       aim.x = (e.clientX / w) * 2 - 1;
       aim.y = (e.clientY / h) * 2 - 1;
       aim.hasInput = true;
@@ -121,16 +125,17 @@ export function HomeScene({ scene: given }: { scene?: Scene }) {
       at.y += (aim.y - at.y) * k;
       // Depth: the further from the back, the more a layer moves.
       const m = Math.min(f.sw, 1400) / 1400;
-      for (const [name, d] of [
-        ["bg", 8],
-        ["left", 22],
-        ["right", 22],
-        ["fg", 52],
+      for (const [name, d, shift] of [
+        ["bg", 8, 0],
+        ["left", 22, pull],
+        ["right", 22, -pull],
+        ["fg", 52, 0],
       ] as const) {
-        const x = -at.x * d * m;
+        const x = -at.x * d * m + shift;
         const y = -at.y * d * 0.6 * m;
-        el.style.setProperty(`--${name}-x`, `${x.toFixed(2)}px`);
-        el.style.setProperty(`--${name}-y`, `${y.toFixed(2)}px`);
+        const sc = name === "bg" ? 1.03 : name === "fg" ? 1.05 : 1;
+        const l = layers.current[name];
+        if (l) l.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${sc})`;
       }
       g.clearRect(0, 0, cv.width, cv.height);
       if (!calm)
@@ -162,11 +167,43 @@ export function HomeScene({ scene: given }: { scene?: Scene }) {
   return (
     <div ref={root} className={`home-scene${ready ? " ready" : ""}`} aria-hidden="true">
       <div className="hs-stage">
-        <img className="hs-layer hs-bg" src={urls[0]} alt="" draggable={false} />
+        <img
+          ref={(e) => {
+            layers.current.bg = e;
+          }}
+          className="hs-layer hs-bg"
+          src={urls[0]}
+          alt=""
+          draggable={false}
+        />
         <div ref={flash} className={`hs-flash ${scene.flashSide}`} style={{ ["--flash" as string]: scene.flash }} />
-        <img className="hs-layer hs-left" src={urls[1]} alt="" draggable={false} />
-        <img className="hs-layer hs-right" src={urls[2]} alt="" draggable={false} />
-        <img className="hs-layer hs-fg" src={urls[3]} alt="" draggable={false} />
+        <img
+          ref={(e) => {
+            layers.current.left = e;
+          }}
+          className="hs-layer hs-left"
+          src={urls[1]}
+          alt=""
+          draggable={false}
+        />
+        <img
+          ref={(e) => {
+            layers.current.right = e;
+          }}
+          className="hs-layer hs-right"
+          src={urls[2]}
+          alt=""
+          draggable={false}
+        />
+        <img
+          ref={(e) => {
+            layers.current.fg = e;
+          }}
+          className="hs-layer hs-fg"
+          src={urls[3]}
+          alt=""
+          draggable={false}
+        />
       </div>
       <canvas ref={embers} className="hs-embers" />
       <div className="hs-shade" />

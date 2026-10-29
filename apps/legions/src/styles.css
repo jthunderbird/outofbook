@@ -1367,7 +1367,7 @@ input[type="range"] {
 .home-scene {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   overflow: hidden;
   background: #07050d;
   opacity: 0;
@@ -1393,37 +1393,24 @@ input[type="range"] {
   user-select: none;
   -webkit-user-drag: none;
 }
-.hs-bg {
-  transform: translate(var(--bg-x, 0), var(--bg-y, 0)) scale(1.03);
-}
-.hs-left {
-  transform: translate(calc(var(--left-x, 0px) + var(--pull, 0px)), var(--left-y, 0));
-  filter: drop-shadow(0 0 18px #0009);
-}
-.hs-right {
-  transform: translate(calc(var(--right-x, 0px) - var(--pull, 0px)), var(--right-y, 0));
-  filter: drop-shadow(0 0 18px #0009);
+.hs-layer {
+  will-change: transform;
 }
 .hs-fg {
-  mix-blend-mode: screen;
-  transform: translate(var(--fg-x, 0), var(--fg-y, 0)) scale(1.05);
   animation: hs-drift 9s ease-in-out infinite alternate;
 }
 @keyframes hs-drift {
   from {
     opacity: 0.8;
-    translate: -8px 6px;
   }
   to {
     opacity: 1;
-    translate: 8px -6px;
   }
 }
 .hs-flash {
   position: absolute;
   inset: 0;
   opacity: 0;
-  mix-blend-mode: screen;
   transition: opacity 0.05s;
 }
 .hs-flash.left {
@@ -1437,7 +1424,6 @@ input[type="range"] {
   inset: 0;
   width: 100%;
   height: 100%;
-  mix-blend-mode: screen;
 }
 /* Dark at the edges and where the menu sits, so the text reads. */
 .hs-shade {
@@ -1447,11 +1433,8 @@ input[type="range"] {
 }
 @media (max-aspect-ratio: 1/1) {
   /* A tall screen: the art above, melting into the dark, the menu at the bottom. */
-  .hs-stage {
-    mask-image: linear-gradient(180deg, transparent, #000 14%, #000 72%, transparent);
-  }
   .hs-shade {
-    background: linear-gradient(180deg, rgb(5 3 12 / 0.35), transparent 22%, rgb(5 3 12 / 0.5) 62%, #07050d 82%);
+    background: linear-gradient(180deg, #07050d 11%, rgb(5 3 12 / 0.5) 17%, transparent 27%, rgb(5 3 12 / 0.5) 62%, #07050d 82%);
   }
   .screen[data-testid="home"] .menu {
     margin-top: auto;

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { court } from "@outofbook/legions/courts";
 import { useProfile } from "./profile";
+import { HomeScene } from "./components/HomeScene";
 import { Home } from "./screens/Home";
 import { Campaign } from "./screens/Campaign";
 import { QuickPlay } from "./screens/QuickPlay";
@@ -31,6 +32,7 @@ export function App() {
   return (
     <>
       <div className="scene" style={{ ["--bg-top" as string]: bg.top, ["--bg-bottom" as string]: bg.bottom }} />
+      {screen.name === "home" && <HomeScene />}
       {screen.name === "home" && <Home go={go} />}
       {screen.name === "campaign" && <Campaign go={go} />}
       {screen.name === "quick" && <QuickPlay go={go} />}
