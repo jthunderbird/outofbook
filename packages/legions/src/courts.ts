@@ -55,6 +55,7 @@ import { woodPanel, woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
 import { Backdrop, cliff, FlatMap, hiTile } from "./pixel/world";
 import { theWake } from "./wakeCourt";
+import { loadWakeBake } from "./wakeBake";
 
 export interface Court {
   id: string;
@@ -68,6 +69,8 @@ export interface Court {
   bottom: string;
   /** A picture of it for menus. */
   preview?: string;
+  /** Loads what the court needs before it can be dressed (baked pieces); the scene waits for it. */
+  preload?: () => Promise<void>;
   /** Dresses the board and adds the scenery; null for the plain marble board. */
   dress?: (scene: Scene, board: Board) => CourtSet;
 }
@@ -1475,14 +1478,14 @@ export const COURTS: Court[] = [
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
   { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
+  { id: "wake", name: "The Wake", tribe: "restless", top: "#14262c", bottom: "#030708", preview: art("wake", "preview.webp"), preload: loadWakeBake, dress: theWake },
   { id: "sketch", name: "Sketchbook Desk", skin: "sketch", top: "#6a4a30", bottom: "#1a120a", dress: sketchDesk },
   { id: "noir", name: "Back Alley", skin: "noir", top: "#2a2e38", bottom: "#05060a", preview: art("noir", "alley.webp"), dress: backAlley },
 ];
 
 /** Courts being built: playable where asked for by id (the mock pages), not yet in the Collection or the lists. */
-const DRAFT_COURTS: Court[] = [{ id: "wake", name: "The Wake", tribe: "restless", top: "#14262c", bottom: "#030708", preview: art("wake", "sky.webp"), dress: theWake }];
 
-export const court = (id: string) => COURTS.find((c) => c.id === id) ?? DRAFT_COURTS.find((c) => c.id === id) ?? COURTS[0];
+export const court = (id: string) => COURTS.find((c) => c.id === id) ?? COURTS[0];
 
 /** The plain courts' sky: their gradient. */
 export const courtBackground = (id: string) => backgroundTexture(court(id).dress ? "night" : id);

@@ -261,7 +261,7 @@ function chapel(): Group {
   const geos: BufferGeometry[] = [];
   let seed = 500;
   const block = (x: number, y: number, z: number, w: number, h: number, d: number, yaw: number, chips = 0) => {
-    const b = slab(w, h, d, { round: 0.03, erode: 1.5, chips, res: 22, seed: seed++ });
+    const b = slab(w, h, d, { round: 0.03, erode: 1.5, chips, res: 10, seed: seed++ });
     b.clearGroups();
     b.deleteAttribute("uv");
     b.rotateY(yaw);
@@ -308,7 +308,7 @@ function chapel(): Group {
   block(0, 0.95, -L + 1.0, 1.7, 0.12, 0.85, 0.05, 1);
   // Flagstones on the floor and rubble where the walls have fallen.
   for (let i = 0; i < 12; i++) {
-    const b = slab(0.9, 0.08, 0.8, { round: 0.02, erode: 1.2, res: 22, seed: seed++ });
+    const b = slab(0.9, 0.08, 0.8, { round: 0.02, erode: 1.2, res: 10, seed: seed++ });
     b.clearGroups();
     b.deleteAttribute("uv");
     b.rotateX((r() - 0.5) * 0.08);

@@ -47,6 +47,7 @@ export const WORLDS = [
   { tribe: "stormcourt", court: "stormcourt", name: "Storm" },
   { tribe: "thornwood", court: "thornwood", name: "Forest" },
   { tribe: "epoch-drifters", court: "epoch-drifters", name: "Pixel" },
+  { tribe: "restless", court: "wake", name: "Graveyard" },
 ] as const;
 export const worldOf = (stage: number) => WORLDS[(stage - 1) % WORLDS.length];
 

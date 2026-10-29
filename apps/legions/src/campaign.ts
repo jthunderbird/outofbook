@@ -72,6 +72,21 @@ export const CHAPTERS: Chapter[] = [
     reward: ["tribe:epoch-drifters", "court:epoch-drifters"],
     hero: { role: "n" },
   },
+  {
+    tribe: "restless",
+    name: "The Restless",
+    court: "wake",
+    story:
+      "A graveyard that never quite lets go. Skeletons and zombies walk its rows, gravestones eat what they catch, the witches ride the fog, and a vampire lord and his bride wait among the crypts.",
+    tier: 4,
+    battles: [
+      { id: "restless-1", name: "Through the gate", elo: 950, side: "w" },
+      { id: "restless-2", name: "The gravestones hunger", elo: 1025, side: "b" },
+      { id: "restless-3", name: "The Lord of the Wake", elo: 1100, side: "w", boss: true },
+    ],
+    reward: ["tribe:restless", "court:wake"],
+    hero: { role: "k" },
+  },
 ];
 
 /** A chapter opens when the one before it is beaten. */

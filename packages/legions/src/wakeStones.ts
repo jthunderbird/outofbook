@@ -85,6 +85,8 @@ export function weather<T extends MeshStandardMaterial>(mat: T, moss = 0.6, bump
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${WEATHER}`);
   };
   mat.customProgramCacheKey = () => "wake-weather";
+  // What the bake step needs to make this material again.
+  mat.userData.weather = { moss, bump, base };
   return mat;
 }
 
@@ -246,7 +248,8 @@ interface SlabOptions {
 /** A hand-carved block: a subdivided box rounded at the edges, its top shaped, eroded and gouged. */
 export function slab(w: number, h: number, d: number, o: SlabOptions): BufferGeometry {
   const r = stream(o.seed);
-  const res = o.res ?? 64;
+  // About 60% of the density the shapes were first tuned at: the bump in the shader carries the fine detail, and a phone carries fewer vertices.
+  const res = (o.res ?? 64) * 0.6;
   const min = Math.max(2, Math.round((8 * res) / 64));
   const seg = [Math.max(min, Math.round(w * res)), Math.max(min, Math.round(h * res)), Math.max(Math.ceil(min / 2), Math.round(d * res * 0.75))];
   const geo = new BoxGeometry(w, h, d, seg[0], seg[1], seg[2]);

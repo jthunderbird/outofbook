@@ -7,6 +7,7 @@ import { BufferGeometry, CatmullRomCurve3, ConeGeometry, CylinderGeometry, Float
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { fbm, stream } from "./wakeKit";
 import { smoothSeams, type StoneKind } from "./wakeStones";
+import { geometryOrMake, groupOrMake } from "./wakeBake";
 
 // ----- Bark shader -----
 
@@ -135,6 +136,7 @@ export function barkMaterial(look: Look) {
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${BARK}`);
   };
   mat.customProgramCacheKey = () => "wake-bark";
+  mat.userData.bark = look;
   return mat;
 }
 
@@ -718,19 +720,18 @@ export function makeTree(kind: TreeKind, seed: number, scale = 1, detail = 1): G
       break;
   }
   spec.detail = detail;
-  if (detail < 1) {
+  // Below half detail the finest twigs, the extra roots and the fungus go too.
+  if (detail < 0.5) {
     spec.levels = spec.levels.slice(0, detail < 0.3 ? 2 : 3);
     spec.roots = detail < 0.3 ? 0 : Math.min(spec.roots, 3);
     spec.brackets = 0;
   }
-  const g = build(spec, look);
+  const g = groupOrMake(`tree:${kind}:${seed}:${detail}`, () => build(spec, look));
   g.scale.setScalar(scale);
   return g;
 }
 
 /** The far forest's trees: coarse versions of the two styles, drawn many times over (see the court). */
 export function forestGeometry(kind: TreeKind, seed: number, detail: number): BufferGeometry {
-  const g = makeTree(kind, seed, 1, detail);
-  const mesh = g.children[0] as Mesh;
-  return mesh.geometry;
+  return geometryOrMake(`forest:${kind}:${seed}:${detail}`, () => (makeTree(kind, seed, 1, detail).children[0] as Mesh).geometry);
 }

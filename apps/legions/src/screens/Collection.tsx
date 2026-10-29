@@ -19,6 +19,7 @@ const ABOUT: Record<string, string> = {
   "tribe:stormcourt": "A king who rules by magic, thunder bishops, stone rooks and a queen who opens a pit of fire.",
   "tribe:thornwood": "An ancient forest: root-walking priests, treant rooks, a flytrap queen and the Elder Oak.",
   "tribe:epoch-drifters": "Heroes out of a 16-bit RPG: a sword-swinging hero, a fire-breathing dragon, a cleric, a stone guardian, a princess and their king.",
+  "tribe:restless": "A graveyard that never rests: skeletons and zombies, gravestone rooks that pull their prey under, witches on brooms, werewolves, a vampire lord and his bride.",
   "mode:retro": "Your tribes drawn as a 16-bit game would, 3D ones included. Comes with the Epoch Plains (2D) court. Also in Settings.",
   "mode:noir": "Your tribes as a black-and-white film: hard light and grain. Comes with the Back Alley court. Also in Settings.",
   "mode:sketch": "Your tribes drawn in pencil on paper, lines and hatching. Comes with the Sketchbook Desk court. Also in Settings.",
@@ -42,6 +43,7 @@ function howToGet(id: ItemId) {
   if (id === "tribe:stormcourt" || id === "court:stormcourt") return "Beat the Storm King in the campaign";
   if (id === "tribe:thornwood" || id === "court:thornwood") return "Beat the Elder Oak in the campaign";
   if (id === "tribe:epoch-drifters" || id === "court:epoch-drifters") return "Beat the Princess in the campaign";
+  if (id === "tribe:restless" || id === "court:wake") return "Beat the Lord of the Wake in the campaign";
   const skin = COURTS.find((c) => `court:${c.id}` === id)?.skin;
   if (skin) return `Comes with the ${skin === "retro" ? "Retro" : skin[0].toUpperCase() + skin.slice(1)} skin`;
   if (/^(finish|color):|^mode:(noir|sketch)$/.test(id)) return "Buy in the Store";

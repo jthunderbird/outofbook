@@ -34,6 +34,7 @@ import type { Board } from "./board";
 import { slab, weather } from "./wakeStones";
 import { GRAVES } from "./wakeGraves";
 import { fence, grass, YARD } from "./wakeYard";
+import { geometryOrMake, groupOrMake, mapsOrMake } from "./wakeBake";
 import { barkMaterial, forestGeometry, makeTree, OAK_LOOK, type TreeKind } from "./wakeTrees";
 import { body, canvas, clamp01, fbm, mix, normalFrom, smooth, stream, wrapped } from "./wakeKit";
 import type { CourtSet } from "./courts";
@@ -318,13 +319,21 @@ function marbleMaps(seed: number) {
 // ----- The court -----
 
 export function theWake(scene: Scene, board: Board): CourtSet {
+  // How long each part took to build (console.debug), to see what is worth baking.
+  const laps: [string, number][] = [];
+  let lapAt = performance.now();
+  const lap = (name: string) => {
+    const t = performance.now();
+    laps.push([name, Math.round(t - lapAt)]);
+    lapAt = t;
+  };
   const group = new Group();
   scene.add(group);
   const dispose: { dispose(): void }[] = [];
   const rng = stream(2024);
 
   // ----- The ground: dirt, humped and bumpy, level with the board where the board lies -----
-  const dirt = dirtMaps(900);
+  const dirt = mapsOrMake("dirt:900", () => dirtMaps(900));
   dirt.map.repeat.set(40, 40);
   dirt.normal.repeat.set(40, 40);
   const size = 360;
@@ -360,11 +369,12 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(ground);
   dispose.push(soil, dirt.map, dirt.normal, geo);
 
+  lap("ground");
   // ----- The board, set into the ground -----
   const squares = new Set(board.squares.values());
   for (const o of board.group.children) if (!squares.has(o as Mesh)) o.visible = false;
-  const marble = [0, 1, 2, 3, 4].map((i) => marbleMaps(300 + i * 53));
-  const mud = [0, 1, 2].map((i) => mudMaps(700 + i * 29));
+  const marble = [0, 1, 2, 3, 4].map((i) => mapsOrMake(`marble:${300 + i * 53}`, () => marbleMaps(300 + i * 53)));
+  const mud = [0, 1, 2].map((i) => mapsOrMake(`mud:${700 + i * 29}`, () => mudMaps(700 + i * 29)));
   for (const m of [...marble, ...mud]) dispose.push(m.map, m.normal);
   const slabMats = marble.map((m) => weather(new MeshStandardMaterial({ map: m.map, normalMap: m.normal, color: 0xd6d6d0, roughness: 1, metalness: 0 }), 0.12, 0.03, -0.8));
   const mudMats = mud.map((m) => weather(new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.5, metalness: 0 }), 0.0, 0.03, -0.8));
@@ -379,18 +389,21 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     was.dispose();
     // A worn block of its own: rounded, chipped and eroded like the stones, its picture turned a quarter-turn or so.
     const sd = 800 + Math.round((sq.position.x + 4) * 8 + (sq.position.z + 4) * 64);
-    const g = isLight ? slab(1, 0.14, 1, { round: 0.045, chips: 3, erode: 1.7, res: 34, seed: sd }) : slab(1, 0.14, 1, { round: 0.07, erode: 2.8, res: 30, seed: sd });
-    const par = (g as BoxGeometry).parameters;
-    const uv = g.getAttribute("uv");
-    const top0 = 2 * (par.depthSegments + 1) * (par.heightSegments + 1);
     const turn = Math.floor(rng() * 4);
     const flip = rng() < 0.5 ? -1 : 1;
-    for (let i = top0; i < top0 + (par.widthSegments + 1) * (par.depthSegments + 1); i++) {
-      let u = uv.getX(i) - 0.5;
-      let v = uv.getY(i) - 0.5;
-      for (let k = 0; k < turn; k++) [u, v] = [-v, u];
-      uv.setXY(i, 0.5 + u * flip, 0.5 + v);
-    }
+    const g = geometryOrMake(`tile:${sd}:${isLight}:${turn}:${flip}`, () => {
+      const t = isLight ? slab(1, 0.14, 1, { round: 0.045, chips: 3, erode: 1.7, res: 34, seed: sd }) : slab(1, 0.14, 1, { round: 0.07, erode: 2.8, res: 30, seed: sd });
+      const par = (t as BoxGeometry).parameters;
+      const uv = t.getAttribute("uv");
+      const top0 = 2 * (par.depthSegments + 1) * (par.heightSegments + 1);
+      for (let i = top0; i < top0 + (par.widthSegments + 1) * (par.depthSegments + 1); i++) {
+        let u = uv.getX(i) - 0.5;
+        let v = uv.getY(i) - 0.5;
+        for (let k = 0; k < turn; k++) [u, v] = [-v, u];
+        uv.setXY(i, 0.5 + u * flip, 0.5 + v);
+      }
+      return t;
+    });
     sq.geometry = g;
     dispose.push(g);
     if (isLight) {
@@ -407,6 +420,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     }
   }
 
+  lap("board textures and slabs");
   // ----- Moss: strands of it, long and short, thick and thin, run along the joints and wander across the slabs; green in the middle, rotten dark at the fringes -----
   const blob = new IcosahedronGeometry(0.5, 0);
   const tuft = mergeVertices(blob.deleteAttribute("uv").deleteAttribute("normal"), 0.001);
@@ -536,6 +550,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(moss);
   dispose.push(tuft, mossMat, moss);
 
+  lap("moss");
   // ----- The graves: in loose rows and columns, some leaning and sinking, mossy at the foot -----
   const taken: { x: number; z: number; r: number }[] = [{ x: 0, z: 0, r: 6.0 }];
   const holders: Group[] = [];
@@ -584,7 +599,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     const holder = new Group();
     holder.position.set(x, heightAt(x, z) - 0.05, z);
     holder.rotation.y = tr() * 6.3;
-    holder.add(makeTree(kind, seed, scale));
+    holder.add(makeTree(kind, seed, scale, 0.65));
     group.add(holder);
     holders.push(holder);
   };
@@ -608,6 +623,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
       break;
     }
   });
+  lap("yard trees");
   // The one great tree, just outside the gate to the back right.
   {
     const x = 8;
@@ -615,7 +631,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     const holder = new Group();
     holder.position.set(x, heightAt(x, z) - 0.1, z);
     holder.rotation.y = 2.1;
-    holder.add(makeTree("giant", 999, 1));
+    holder.add(makeTree("giant", 999, 1, 0.8));
     group.add(holder);
     holders.push(holder);
   }
@@ -664,6 +680,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   }
   dispose.push(forestMat);
 
+  lap("giant tree and forest");
   const items = GRAVES.flatMap((k) => Array.from({ length: Math.min(3, k.copies ?? 1) }, (_, c) => ({ k, c })));
   // Larger pieces first, so they find room; the rest in any order.
   items.sort((a, b) => (b.k.radius ?? 0.8) - (a.k.radius ?? 0.8) + (pr() - 0.5) * 0.8);
@@ -730,7 +747,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     taken.push({ x, z, r: radius });
     same.set(k.id, [...(same.get(k.id) ?? []), { x, z }]);
     let proto = built.get(k.id);
-    if (!proto) built.set(k.id, (proto = k.build()));
+    if (!proto) built.set(k.id, (proto = groupOrMake(`kind:${k.id}`, () => k.build())));
     const piece = c === 0 ? proto : proto.clone();
     const box = new Box3().setFromObject(piece);
     const holder = new Group();
@@ -758,6 +775,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(footMoss);
   dispose.push(footMoss);
 
+  lap("graves");
   // ----- Grass over the dirt, and the fence round the yard -----
   // Short, dead grass: some round the foot of a third of the graves, and a score of clumps about the yard.
   const clumps: { x: number; z: number; r: number; n: number }[] = [];
@@ -782,6 +800,13 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(iron.group);
   dispose.push({ dispose: blades.dispose }, { dispose: iron.dispose });
 
+  lap("grass and fence");
+  console.debug(
+    "the Wake built",
+    JSON.stringify(Object.fromEntries(laps)),
+    "total",
+    laps.reduce((a, l) => a + l[1], 0),
+  );
   // ----- Light and haze: the moon low behind the graves, so their edges are lit and their shadows fall toward you -----
   const moonLight = new DirectionalLight(0xb8ccdf, 2.4);
   moonLight.position.set(-12, 14, -18);

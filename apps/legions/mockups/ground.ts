@@ -12,6 +12,8 @@ await wake.ready?.();
 
 let game = new Chess();
 const panel = document.getElementById("panel")!;
+// ?clean hides the buttons (for a still).
+if (new URLSearchParams(location.search).has("clean")) panel.style.display = "none";
 const status = document.createElement("div");
 status.id = "log";
 const button = (label: string, click: () => void) => {

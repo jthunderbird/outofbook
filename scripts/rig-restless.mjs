@@ -109,7 +109,10 @@ if (what === "wolf") {
     const keep = Array.from({ length: NV }, (_, i) => i).filter((i) => pos[i * 3 + 1] > -0.25);
     let mx = 0,
       mz = 0;
-    for (const i of keep) ((mx += pos[i * 3] / keep.length), (mz += pos[i * 3 + 2] / keep.length));
+    for (const i of keep) {
+      mx += pos[i * 3] / keep.length;
+      mz += pos[i * 3 + 2] / keep.length;
+    }
     let sxx = 0,
       szz = 0,
       sxz = 0;
@@ -123,7 +126,10 @@ if (what === "wolf") {
     const t0 = 0.5 * Math.atan2(2 * sxz, sxx - szz);
     let ax = Math.sin(t0),
       az = Math.cos(t0);
-    if (az < 0) ((ax = -ax), (az = -az));
+    if (az < 0) {
+      ax = -ax;
+      az = -az;
+    }
     const phi = -Math.atan2(ax, az);
     const cp = Math.cos(phi),
       sp = Math.sin(phi);

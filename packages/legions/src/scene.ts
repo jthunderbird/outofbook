@@ -63,6 +63,9 @@ export interface SceneInput {
 /** For a board drawn by its court's picture: writes depth, no color. */
 const DEPTH_ONLY = new MeshBasicMaterial({ colorWrite: false });
 
+/** Courts whose preload has finished. */
+const PRELOADED = new Set<string>();
+
 export class LegionsScene {
   private renderer: WebGLRenderer;
   private scene = new Scene();
@@ -402,6 +405,18 @@ export class LegionsScene {
   setCourt(id: string) {
     if (id === this.courtId && !this.courtAfter) return;
     this.courtId = id;
+    // A court with baked pieces waits for them; the old court stays until they are in.
+    const pre = court(id).preload;
+    if (pre && !PRELOADED.has(id)) {
+      void pre().then(() => {
+        PRELOADED.add(id);
+        if (this.courtId === id) {
+          this.courtAfter = true;
+          this.setCourt(id);
+        }
+      });
+      return;
+    }
     if (this.busy) {
       this.courtAfter = true;
       return;
