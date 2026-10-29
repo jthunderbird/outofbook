@@ -125,7 +125,7 @@ export function barkMaterial(look: Look) {
       .replace("#include <common>", "#include <common>\nattribute vec3 aBark;\nattribute vec3 aMask;\nvarying vec3 vBark;\nvarying vec3 vMask;\nvarying vec3 vWPos;\nvarying vec3 vWNor;")
       .replace(
         "#include <begin_vertex>",
-        "#include <begin_vertex>\nvBark = aBark;\nvMask = aMask;\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWNor = normalize(mat3(modelMatrix) * objectNormal);",
+        "#include <begin_vertex>\nvBark = aBark;\nvMask = aMask;\nvec4 wq = vec4(transformed, 1.0);\nvec3 wnq = objectNormal;\n#ifdef USE_INSTANCING\nwq = instanceMatrix * wq;\nwnq = mat3(instanceMatrix) * wnq;\n#endif\nvWPos = (modelMatrix * wq).xyz;\nvWNor = normalize(mat3(modelMatrix) * wnq);",
       );
     sh.fragmentShader = sh.fragmentShader
       .replace(
@@ -174,6 +174,8 @@ interface Spec {
   /** The trunk splits in two at this fraction of its height, splinters standing between. */
   split?: number;
   brackets?: number;
+  /** 1 for a full tree; less for a cheaper one for the far forest (coarser rings, fewer sides). */
+  detail?: number;
 }
 
 const up = new Vector3(0, 1, 0);
@@ -253,9 +255,10 @@ class Grower {
     const curve = new CatmullRomCurve3(pts, false, "catmullrom", 0.2);
     const total = curve.getLength();
     const r0 = rad[0];
-    const spacing = Math.max(0.045, Math.min(0.35, r0 * 0.3));
+    const det = spec.detail ?? 1;
+    const spacing = Math.max(0.045, Math.min(0.35, r0 * 0.3)) / det;
     const M = Math.min(420, Math.max(4, Math.ceil(total / spacing)));
-    const K = Math.max(7, Math.min(46, Math.round(6 + r0 * 80)));
+    const K = Math.max(det < 1 ? 5 : 7, Math.min(46, Math.round((6 + r0 * 80) * det)));
     const pos: number[] = [];
     const bark: number[] = [];
     const mask: number[] = [];
@@ -590,3 +593,144 @@ export const TREES: StoneKind[] = [
       ),
   },
 ];
+
+// ----- Unique trees in the two styles that were liked -----
+
+export type TreeKind = "oak" | "twisted" | "snag" | "hollow-oak" | "leaning" | "struck" | "burnt" | "tall-burnt" | "giant";
+
+export const OAK_LOOK: Look = { c1: [0.11, 0.095, 0.08], c2: [0.04, 0.035, 0.03], wood: [0.22, 0.19, 0.15], crack: 1, char: 0, pale: 0, moss: 0.55, lichen: 0.6, wash: 0.8, stripped: 0, wet: 0.1 };
+export const STRUCK_LOOK: Look = {
+  c1: [0.03, 0.028, 0.026],
+  c2: [0.11, 0.105, 0.1],
+  wood: [0.34, 0.29, 0.21],
+  crack: 1,
+  char: 1,
+  pale: 0,
+  moss: 0,
+  lichen: 0,
+  wash: 0.3,
+  stripped: 0,
+  wet: 0.6,
+  scar: [0.12, 6.5],
+};
+
+/** One tree of a kind, never the same twice: the seed moves its size, lean, limb count and every kink. */
+export function makeTree(kind: TreeKind, seed: number, scale = 1, detail = 1): Group {
+  const r = stream(seed * 31 + 7);
+  const R = (a: number, b: number) => a + (b - a) * r();
+  const I = (a: number, b: number) => Math.round(R(a, b));
+  const oak = (count: number, jag: number, kink: number, droop: number, seg = 0.5): Level[] => [
+    lv({ seg: seg * 1.1, jag: 0.2, kink: 0.1, up: 0.35, stubs: I(2, 5) }),
+    lv({ count, start: R(0.3, 0.45), angle: [0.7, 1.3], len: [0.36, 0.62], rad: [0.42, 0.6], jag, kink, up: 0.12 - droop, seg: seg * 0.9, broken: R(0.15, 0.4), stubs: I(1, 3) }),
+    lv({ count: I(3, 5), start: 0.3, angle: [0.5, 1.2], len: [0.35, 0.6], rad: [0.4, 0.6], jag: jag * 1.5, kink: kink * 1.8, up: -0.05 - droop, seg: seg * 0.6, broken: R(0.3, 0.5), stubs: 1 }),
+    lv({ count: I(2, 4), start: 0.25, angle: [0.5, 1.3], len: [0.3, 0.55], rad: [0.4, 0.6], jag: jag * 2, kink: kink * 2.2, up: -0.12 - droop, seg: seg * 0.4, broken: 0.5 }),
+  ];
+  const struckLevels = (broken: number): Level[] => [
+    lv({ seg: 0.55, jag: 0.14, kink: 0.06, up: 0.4, stubs: I(2, 4) }),
+    lv({ count: I(3, 5), start: 0.25, angle: [0.6, 1.1], len: [0.3, 0.5], rad: [0.35, 0.5], jag: 0.3, kink: 0.18, up: 0.2, seg: 0.45, broken, stubs: 2 }),
+    lv({ count: 2, start: 0.3, angle: [0.5, 1.0], len: [0.3, 0.5], rad: [0.4, 0.6], jag: 0.45, kink: 0.3, up: 0, seg: 0.32, broken: 0.7 }),
+  ];
+  let spec: Spec;
+  let look = OAK_LOOK;
+  switch (kind) {
+    case "oak":
+      spec = { seed, height: R(7, 10.5), r0: R(0.5, 0.75), lean: R(0, 0.1), relief: 0.07, flare: R(0.6, 1), roots: I(5, 8), brackets: I(0, 6), levels: oak(I(5, 8), 0.3, 0.15, 0) };
+      break;
+    case "twisted":
+      spec = { seed, height: R(6, 8.5), r0: R(0.55, 0.8), lean: R(0.1, 0.22), relief: 0.09, flare: R(0.8, 1.1), roots: I(6, 8), brackets: I(2, 6), levels: oak(I(4, 6), 0.45, 0.28, 0.08, 0.4) };
+      break;
+    case "snag":
+      spec = {
+        seed,
+        height: R(8, 12),
+        r0: R(0.4, 0.6),
+        lean: R(0, 0.08),
+        relief: 0.07,
+        flare: 0.6,
+        roots: I(3, 6),
+        topBroken: true,
+        levels: [
+          lv({ seg: 0.55, jag: 0.12, kink: 0.05, up: 0.4, stubs: I(5, 9) }),
+          lv({ count: I(2, 3), start: 0.5, angle: [0.8, 1.3], len: [0.2, 0.4], rad: [0.3, 0.45], jag: 0.3, kink: 0.2, up: 0.1, seg: 0.4, broken: 0.8, stubs: 2 }),
+        ],
+      };
+      break;
+    case "hollow-oak":
+      spec = {
+        seed,
+        height: R(5.5, 7.5),
+        r0: R(0.9, 1.15),
+        lean: R(0, 0.06),
+        relief: 0.1,
+        flare: 1,
+        roots: 8,
+        brackets: I(6, 12),
+        topBroken: true,
+        hollow: { a: R(0, 6), w: R(0.6, 0.9), s0: 0.9, s1: R(3, 3.8), depth: 0.78 },
+        levels: [
+          lv({ seg: 0.6, jag: 0.12, kink: 0.04, up: 0.3, stubs: I(4, 7) }),
+          lv({ count: 3, start: 0.55, angle: [0.8, 1.3], len: [0.3, 0.5], rad: [0.3, 0.45], jag: 0.3, kink: 0.2, up: 0.1, seg: 0.45, broken: 0.8, stubs: 2 }),
+          lv({ count: 2, start: 0.4, angle: [0.5, 1.2], len: [0.3, 0.6], rad: [0.4, 0.6], jag: 0.45, kink: 0.3, up: -0.1, seg: 0.3, broken: 0.7 }),
+        ],
+      };
+      break;
+    case "leaning":
+      spec = { seed, height: R(7, 9.5), r0: R(0.45, 0.65), lean: R(0.22, 0.34), relief: 0.08, flare: 0.7, roots: I(5, 7), brackets: I(0, 4), levels: oak(I(5, 7), 0.35, 0.2, 0.05) };
+      break;
+    case "struck":
+      spec = { seed, height: R(8, 11), r0: R(0.45, 0.65), lean: R(0, 0.06), relief: 0.06, flare: 0.6, roots: 5, split: R(0.45, 0.62), levels: struckLevels(0.6) };
+      look = { ...STRUCK_LOOK, scar: [R(0, 1), R(4.5, 7)] };
+      break;
+    case "burnt":
+      spec = { seed, height: R(6, 9), r0: R(0.5, 0.75), lean: R(0, 0.1), relief: 0.07, flare: 0.7, roots: 5, topBroken: true, levels: struckLevels(0.8) };
+      look = { ...STRUCK_LOOK, scar: [R(0, 1), R(3, 6)] };
+      break;
+    case "tall-burnt":
+      spec = {
+        seed,
+        height: R(11, 15),
+        r0: R(0.32, 0.45),
+        lean: R(0.02, 0.12),
+        relief: 0.05,
+        flare: 0.5,
+        roots: 4,
+        levels: struckLevels(0.5).map((l) => ({ ...l, len: [l.len[0] * 0.8, l.len[1] * 0.8] as [number, number] })),
+      };
+      look = { ...STRUCK_LOOK, scar: [R(0, 1), R(5, 9)] };
+      break;
+    case "giant":
+      spec = {
+        seed,
+        height: 22,
+        r0: 1.9,
+        lean: 0.05,
+        relief: 0.08,
+        flare: 1.1,
+        roots: 9,
+        brackets: 10,
+        levels: [
+          lv({ seg: 1.0, jag: 0.14, kink: 0.06, up: 0.35, stubs: 9 }),
+          lv({ count: 11, start: 0.4, angle: [0.7, 1.3], len: [0.36, 0.6], rad: [0.4, 0.58], jag: 0.28, kink: 0.14, up: 0.1, seg: 0.8, broken: 0.25, stubs: 3 }),
+          lv({ count: 5, start: 0.3, angle: [0.5, 1.2], len: [0.35, 0.6], rad: [0.4, 0.6], jag: 0.4, kink: 0.25, up: -0.05, seg: 0.55, broken: 0.35, stubs: 2 }),
+          lv({ count: 4, start: 0.25, angle: [0.5, 1.3], len: [0.3, 0.55], rad: [0.4, 0.6], jag: 0.55, kink: 0.35, up: -0.12, seg: 0.35, broken: 0.5 }),
+        ],
+      };
+      break;
+  }
+  spec.detail = detail;
+  if (detail < 1) {
+    spec.levels = spec.levels.slice(0, detail < 0.3 ? 2 : 3);
+    spec.roots = detail < 0.3 ? 0 : Math.min(spec.roots, 3);
+    spec.brackets = 0;
+  }
+  const g = build(spec, look);
+  g.scale.setScalar(scale);
+  return g;
+}
+
+/** The far forest's trees: coarse versions of the two styles, drawn many times over (see the court). */
+export function forestGeometry(kind: TreeKind, seed: number, detail: number): BufferGeometry {
+  const g = makeTree(kind, seed, 1, detail);
+  const mesh = g.children[0] as Mesh;
+  return mesh.geometry;
+}

@@ -34,7 +34,7 @@ import type { Board } from "./board";
 import { slab, weather } from "./wakeStones";
 import { GRAVES } from "./wakeGraves";
 import { fence, grass, YARD } from "./wakeYard";
-import { TREES } from "./wakeTrees";
+import { barkMaterial, forestGeometry, makeTree, OAK_LOOK, type TreeKind } from "./wakeTrees";
 import { body, canvas, clamp01, fbm, mix, normalFrom, smooth, stream, wrapped } from "./wakeKit";
 import type { CourtSet } from "./courts";
 
@@ -325,10 +325,10 @@ export function theWake(scene: Scene, board: Board): CourtSet {
 
   // ----- The ground: dirt, humped and bumpy, level with the board where the board lies -----
   const dirt = dirtMaps(900);
-  dirt.map.repeat.set(22, 22);
-  dirt.normal.repeat.set(22, 22);
-  const size = 200;
-  const segs = 320;
+  dirt.map.repeat.set(40, 40);
+  dirt.normal.repeat.set(40, 40);
+  const size = 360;
+  const segs = 440;
   const geo = new PlaneGeometry(size, size, segs, segs).rotateX(-Math.PI / 2);
   const pos = geo.getAttribute("position");
   const colors = new Float32Array(pos.count * 3);
@@ -345,7 +345,11 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     pos.setY(i, heightAt(x, z));
     // Patches of the dirt darker, damper or paler, to break up its tiling.
     const k = mix(0.7, 1.12, fbm(x * 0.25, z * 0.25, 12, 1 << 16, 4));
-    colors.set([k, k * 0.98, k * 0.95], i * 3);
+    // Beyond the fence the forest floor goes darker with distance, and mossy in patches.
+    const far = smooth(YARD + 2, YARD + 60, Math.max(Math.abs(x), Math.abs(z)));
+    const dark = 1 - 0.68 * far;
+    const mo = smooth(0.45, 0.62, fbm(x * 0.09 + 3, z * 0.09, 21, 1 << 16, 3)) * far * 0.9;
+    colors.set([k * dark * (1 - 0.5 * mo), k * dark * 0.98 * (1 - 0.1 * mo), k * dark * 0.95 * (1 - 0.6 * mo)], i * 3);
   }
   geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
   geo.computeVertexNormals();
@@ -538,33 +542,6 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   const FIXED: Record<string, [number, number]> = { chapel: [-15, -16], mausoleum: [14, -15], vault: [-17, 1] };
   for (const [id, [x, z]] of Object.entries(FIXED)) taken.push({ x, z, r: GRAVES.find((k) => k.id === id)?.radius ?? 2 });
   const pr = stream(77);
-  // The dead trees: five specimens in an arc behind the board (left to right: oak, lightning-struck, birch, hollow elder, bleached snag), then the rest of their copies out near the fence.
-  const SPECIMEN: Record<string, [number, number]> = { "tree-oak": [-14, -9.5], "tree-struck": [-7, -14], "tree-birch": [1.5, -11.5], "tree-hollow": [9.5, -13], "tree-bleached": [16.5, -8.5] };
-  const OUTER: [number, number][] = [
-    [-19, 8],
-    [20, 12],
-    [-5, -20],
-    [13, -19.5],
-    [-20, -3],
-    [19, 3],
-  ];
-  let outer = 0;
-  for (const kind of TREES) {
-    const proto = kind.build();
-    const [sx, sz] = SPECIMEN[kind.id];
-    for (let c = 0; c < (kind.copies ?? 1); c++) {
-      const [x, z] = c === 0 ? [sx, sz] : OUTER[outer++ % OUTER.length];
-      taken.push({ x, z, r: kind.radius ?? 3 });
-      const holder = new Group();
-      holder.position.set(x, heightAt(x, z), z);
-      holder.rotation.y = pr() * 6.3;
-      const piece = c === 0 ? proto : proto.clone();
-      if (c > 0) piece.scale.multiplyScalar(0.88 + pr() * 0.2);
-      holder.add(piece);
-      group.add(holder);
-      holders.push(holder);
-    }
-  }
   // The slots: a grid a little out of true, each row drifting its own way.
   const slots: { x: number; z: number }[] = [];
   for (let ri = -7; ri <= 7; ri++) {
@@ -578,6 +555,105 @@ export function theWake(scene: Scene, board: Board): CourtSet {
       slots.push({ x, z });
     }
   }
+  // Dead trees sprinkled through the yard: every one grown from its own seed, in sizes from sapling-thin to old and broad.
+  const tr = stream(1717);
+  const KINDS: TreeKind[] = [
+    "oak",
+    "oak",
+    "twisted",
+    "snag",
+    "hollow-oak",
+    "leaning",
+    "struck",
+    "struck",
+    "burnt",
+    "tall-burnt",
+    "oak",
+    "twisted",
+    "struck",
+    "burnt",
+    "leaning",
+    "snag",
+    "oak",
+    "struck",
+    "tall-burnt",
+    "twisted",
+  ];
+  KINDS.forEach((kind, i) => {
+    const scale = kind === "hollow-oak" ? 0.8 + tr() * 0.3 : 0.5 + tr() * 0.8;
+    const rad = (kind === "hollow-oak" ? 1.8 : 1.1) * scale;
+    for (let t = 0; t < 100; t++) {
+      const x = (tr() - 0.5) * 2 * (YARD - 2);
+      const z = (tr() - 0.5) * 2 * (YARD - 2);
+      if (Math.abs(x) < 6.6 && Math.abs(z) < 6.6) continue;
+      if (z > 3 && Math.abs(x) < 8 && z < 16) continue;
+      if (!taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + rad + 0.8)) continue;
+      taken.push({ x, z, r: rad });
+      const holder = new Group();
+      holder.position.set(x, heightAt(x, z) - 0.05, z);
+      holder.rotation.y = tr() * 6.3;
+      holder.add(makeTree(kind, 100 + i, scale));
+      group.add(holder);
+      holders.push(holder);
+      break;
+    }
+  });
+  // The one great tree, just outside the gate to the back right.
+  {
+    const x = 8;
+    const z = -YARD - 7.5;
+    const holder = new Group();
+    holder.position.set(x, heightAt(x, z) - 0.1, z);
+    holder.rotation.y = 2.1;
+    holder.add(makeTree("giant", 999, 1));
+    group.add(holder);
+    holders.push(holder);
+  }
+
+  // The forest beyond the fence: the same two styles in coarse copies, thicker and taller the farther out, until it is a dark wall.
+  const forest: { geo: BufferGeometry; near: boolean }[] = [];
+  const kindsNear: TreeKind[] = ["oak", "snag", "struck", "twisted"];
+  const kindsFar: TreeKind[] = ["oak", "struck", "snag", "burnt", "twisted"];
+  kindsNear.forEach((k, i) => forest.push({ geo: forestGeometry(k, 300 + i, 0.5), near: true }));
+  kindsFar.forEach((k, i) => forest.push({ geo: forestGeometry(k, 400 + i, 0.22), near: false }));
+  const forestMat = barkMaterial({ ...OAK_LOOK, c1: [0.045, 0.04, 0.034], c2: [0.018, 0.016, 0.014], moss: 0.35, wash: 1, lichen: 0.2 });
+  const fr = stream(2929);
+  const spots: { x: number; z: number; e: number; yaw: number; s: number }[] = [];
+  const dens = (e: number) => 1 + Math.pow(Math.max(0, e - YARD - 3) / 22, 1.6);
+  for (let t = 0; spots.length < 900 && t < 60000; t++) {
+    const e = YARD + 3 + fr() * 80;
+    if (fr() > (e * dens(e)) / (110 * dens(110))) continue;
+    // A point on the square ring at that distance.
+    const u = fr() * 8 - 4;
+    const side = Math.floor(fr() * 4);
+    const x = side < 2 ? u * (e / 4) : side === 2 ? -e : e;
+    const z = side < 2 ? (side === 0 ? -e : e) : u * (e / 4);
+    if (z < -YARD && Math.abs(x) < 4.5) continue;
+    spots.push({ x, z, e, yaw: fr() * 6.3, s: e < 50 ? 0.8 + fr() * 0.8 : 1.3 + fr() * 1.4 });
+  }
+  const m4 = new Matrix4();
+  const qf = new Quaternion();
+  const ef = new Euler();
+  for (const near of [true, false]) {
+    const protos = forest.filter((f) => f.near === near);
+    const mine = spots.filter((p) => p.e < 50 === near);
+    protos.forEach((pr2, pi) => {
+      const list = mine.filter((_, i) => i % protos.length === pi);
+      const mesh = new InstancedMesh(pr2.geo, forestMat, list.length);
+      list.forEach((p, i) => {
+        ef.set(0, p.yaw, 0);
+        qf.setFromEuler(ef);
+        m4.compose(new Vector3(p.x, heightAt(p.x, p.z) - 0.2, p.z), qf, new Vector3(p.s, p.s * (0.9 + fr() * 0.3), p.s));
+        mesh.setMatrixAt(i, m4);
+      });
+      mesh.castShadow = near;
+      mesh.frustumCulled = false;
+      group.add(mesh);
+      dispose.push(mesh, pr2.geo);
+    });
+  }
+  dispose.push(forestMat);
+
   const items = GRAVES.flatMap((k) => Array.from({ length: Math.min(3, k.copies ?? 1) }, (_, c) => ({ k, c })));
   // Larger pieces first, so they find room; the rest in any order.
   items.sort((a, b) => (b.k.radius ?? 0.8) - (a.k.radius ?? 0.8) + (pr() - 0.5) * 0.8);
@@ -674,6 +750,15 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     const d = 7 + pr() * 21;
     clumps.push({ x: Math.sin(a) * d, z: Math.cos(a) * d, r: 1.2 + pr() * 2.4, n: 30 + Math.floor(pr() * 50) });
   }
+  // Beyond the fence the grass thickens with distance.
+  for (let i = 0, t = 0; i < 170 && t < 4000; t++) {
+    const e = YARD + 3 + pr() * 70;
+    if (pr() > dens(e) / dens(95)) continue;
+    const side = Math.floor(pr() * 4);
+    const u = (pr() - 0.5) * 2 * e;
+    clumps.push({ x: side < 2 ? u : side === 2 ? -e : e, z: side < 2 ? (side === 0 ? -e : e) : u, r: 1.5 + pr() * 2, n: 30 + Math.floor(pr() * 30) });
+    i++;
+  }
   const blades = grass(heightAt, clumps, 4.15);
   group.add(blades.mesh);
   const iron = fence(heightAt);
@@ -706,7 +791,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   const prevBg = scene.background;
   const prevFog = scene.fog;
   scene.background = new Color(HAZE);
-  scene.fog = new Fog(HAZE, 14, 80);
+  scene.fog = new Fog(HAZE, 20, 150);
 
   return {
     markY: 0.02,
