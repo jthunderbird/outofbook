@@ -15,10 +15,14 @@ import {
   Color,
   CylinderGeometry,
   DirectionalLight,
+  DodecahedronGeometry,
   DoubleSide,
   Float32BufferAttribute,
+  Euler,
   Group,
   HemisphereLight,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
@@ -27,6 +31,7 @@ import {
   Fog,
   Path,
   PointLight,
+  Quaternion,
   LinearFilter,
   PlaneGeometry,
   LinearMipmapLinearFilter,
@@ -54,7 +59,7 @@ import { glowMap } from "./figures";
 import { woodPanel, woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
 import { Backdrop, cliff, FlatMap, hiTile } from "./pixel/world";
-import { headstone } from "./wake";
+import { headstone, type HeadKind } from "./wake";
 
 export interface Court {
   id: string;
@@ -1512,52 +1517,105 @@ function softSprite(color: number, opacity: number, w: number, h: number, additi
   return s;
 }
 
-/** The creatures that watch from the dark: [file, height, angle behind the board (deg), distance, lift, pace]. */
-const WATCHERS: [string, number, number, number, number, number][] = [
-  ["zombie", 2.2, -62, 10.5, 0, 0.6],
-  ["ghost", 3.1, -38, 12.5, 0.5, 0.4],
-  ["brute", 3.4, 8, 14.5, 0, 0.3],
-  ["wraith", 3.2, 36, 11.5, 0.6, 0.5],
-  ["hound", 1.25, 62, 9.5, 0, 0.9],
-  ["crawler", 1.5, -18, 9.2, 0, 0.5],
-  ["zombie", 2.0, 80, 12, 0, 0.5],
-  ["wraith", 2.9, -84, 12.5, 0.5, 0.4],
-  ["crow", 0.55, 24, 8.4, 1.15, 0],
-  ["crow", 0.5, -50, 8.2, 1.0, 0],
-  ["owl", 1.0, 0, 11, 3.4, 0.7],
+/**
+ * The creatures that watch from the dark: file, height, angle behind the board (deg),
+ * distance, lift, and how it behaves: "peek" hides behind a stone and looks out now and
+ * then, "perch" sits on top of one, "float" drifts.
+ */
+const WATCHERS: [string, number, number, number, number, "peek" | "perch" | "float"][] = [
+  ["zombie", 2.2, -62, 10.5, 0, "peek"],
+  ["ghost", 3.1, -38, 12.5, 0.5, "float"],
+  ["brute", 3.4, 8, 14.5, 0, "peek"],
+  ["wraith", 3.2, 36, 11.5, 0.6, "float"],
+  ["hound", 1.25, 62, 9.5, 0, "peek"],
+  ["crawler", 1.5, -18, 9.2, 0, "peek"],
+  ["zombie", 2.0, 80, 12, 0, "peek"],
+  ["wraith", 2.9, -84, 12.5, 0.5, "float"],
+  ["crow", 0.55, 24, 8.4, 0, "perch"],
+  ["crow", 0.5, -50, 8.2, 0, "perch"],
+  ["owl", 1.0, 0, 11, 3.4, "float"],
 ];
+
+/** Dark soil with pebbles and cracks, for the ground and the black squares. */
+function dirtTexture(seed: number) {
+  const t = slateTexture([42, 34, 29], seed);
+  t.wrapS = t.wrapT = RepeatWrapping;
+  return t;
+}
 
 function theWake(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
-  const GROUND = -1.4;
+  const GROUND = -0.02;
   const R = 19;
   const ARC = (150 * Math.PI) / 180;
   const H = (R * ARC) / (1584 / 672);
   const disposables: { dispose(): void }[] = [];
+  const rng = (i: number) => {
+    const x = Math.sin(i * 91.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
 
-  // Squares of weathered slate, walls of dark stone.
-  const slates = [0, 1, 2].map((i) => slateTexture([146 + i * 3, 158, 164], i * 40));
-  const darks = [0, 1, 2].map((i) => slateTexture([34 + i * 3, 40, 48], 500 + i * 40));
-  disposables.push(...slates, ...darks);
+  // No pedestal: the board is part of the ground. Black squares are dirt, white ones a floor of broken headstones.
+  const squares = new Set(board.squares.values());
+  for (const o of board.group.children) if (!squares.has(o as Mesh)) o.visible = false;
+  const gravel = [0, 1, 2].map((i) => slateTexture([112 + i * 4, 120, 118], 200 + i * 40));
+  const dirt = [0, 1, 2, 3].map((i) => dirtTexture(500 + i * 40));
+  disposables.push(...gravel, ...dirt);
+  const rubbleAt: Vector3[] = [];
   for (const sq of board.squares.values()) {
     const was = sq.material as MeshStandardMaterial;
-    const pool = sq.userData.light ? slates : darks;
+    const pool = sq.userData.light ? gravel : dirt;
     const map = pool[Math.floor(Math.random() * pool.length)].clone();
     map.needsUpdate = true;
     map.repeat.set(0.4, 0.4);
     map.offset.set(Math.random() * 0.6, Math.random() * 0.6);
     map.wrapS = map.wrapT = RepeatWrapping;
     disposables.push(map);
-    sq.material = new MeshStandardMaterial({ map, roughness: sq.userData.light ? 0.7 : 0.55, metalness: 0.05 });
+    sq.material = new MeshStandardMaterial({ map, roughness: 1, metalness: 0 });
     was.dispose();
+    if (sq.userData.light) rubbleAt.push(sq.position.clone());
   }
-  const wallMat = new MeshStandardMaterial({ color: 0x232a30, roughness: 0.9 });
-  disposables.push(wallMat);
-  for (const w of board.walls) {
-    (w.material as MeshStandardMaterial).dispose();
-    w.material = wallMat;
+  // The broken stone standing up from the white squares (and some pebbles on the dirt).
+  const chunkGeo = new DodecahedronGeometry(0.5, 0);
+  const chunkMat = new MeshStandardMaterial({ color: 0x727a76, roughness: 1, flatShading: true });
+  const dirtAt = [...board.squares.values()].filter((q) => !q.userData.light).map((q) => q.position.clone());
+  const total = rubbleAt.length * 9 + dirtAt.length * 3 + 140;
+  const chunks = new InstancedMesh(chunkGeo, chunkMat, total);
+  const m4 = new Matrix4();
+  const q4 = new Quaternion();
+  const eu = new Euler();
+  let n = 0;
+  const chunk = (x: number, z: number, w: number, h: number, d: number, tint: number) => {
+    eu.set((Math.random() - 0.5) * 0.7, Math.random() * 6.3, (Math.random() - 0.5) * 0.7);
+    q4.setFromEuler(eu);
+    m4.compose(new Vector3(x, h * 0.18, z), q4, new Vector3(w, h, d));
+    chunks.setMatrixAt(n, m4);
+    chunks.setColorAt(n, new Color().setScalar(tint));
+    n++;
+  };
+  for (const p of rubbleAt)
+    for (let i = 0; i < 9; i++)
+      chunk(p.x + (Math.random() - 0.5) * 0.8, p.z + (Math.random() - 0.5) * 0.8, 0.18 + Math.random() * 0.26, 0.07 + Math.random() * 0.14, 0.18 + Math.random() * 0.24, 0.55 + Math.random() * 0.5);
+  for (const p of dirtAt)
+    for (let i = 0; i < 3; i++)
+      chunk(p.x + (Math.random() - 0.5) * 0.8, p.z + (Math.random() - 0.5) * 0.8, 0.08 + Math.random() * 0.1, 0.05 + Math.random() * 0.05, 0.08 + Math.random() * 0.1, 0.35 + Math.random() * 0.3);
+  // A rim of fallen stone round the plot.
+  for (let i = 0; i < 140 && n < total; i++) {
+    const side = Math.floor(rng(i) * 4);
+    const along = (rng(i + 50) - 0.5) * 9.4;
+    const out = 4.15 + rng(i + 99) * 0.7;
+    const x = side < 2 ? along : (side === 2 ? -1 : 1) * out;
+    const z = side < 2 ? (side === 0 ? -1 : 1) * out : along;
+    chunk(x, z, 0.25 + rng(i + 7) * 0.5, 0.15 + rng(i + 9) * 0.3, 0.25 + rng(i + 11) * 0.4, 0.4 + rng(i + 13) * 0.4);
   }
+  chunks.count = n;
+  chunks.instanceMatrix.needsUpdate = true;
+  if (chunks.instanceColor) chunks.instanceColor.needsUpdate = true;
+  chunks.castShadow = false;
+  chunks.receiveShadow = true;
+  group.add(chunks);
+  disposables.push(chunkGeo, chunkMat, chunks);
 
   // The painted woods and ruins, a wide arc behind the black side.
   const back = new MeshBasicMaterial({ side: BackSide, fog: false, color: 0xb8c4c8 });
@@ -1568,71 +1626,107 @@ function theWake(scene: Scene, board: Board): CourtSet {
   const wall = new Mesh(new CylinderGeometry(R, R, H, 48, 1, true, Math.PI - ARC / 2, ARC), back);
   const top = GROUND + 0.78 * H + 0.4;
   wall.position.y = top - H / 2;
-  // Ground to the painted woods, lost in mist.
-  const soilMap = slateTexture([30, 38, 34], 900);
-  soilMap.wrapS = soilMap.wrapT = RepeatWrapping;
-  soilMap.repeat.set(10, 10);
-  const soil = new MeshStandardMaterial({ map: soilMap, color: 0x56645f, roughness: 1 });
+  // The graveyard's soil to the painted woods, lost in mist.
+  const soilMap = dirtTexture(900);
+  soilMap.repeat.set(12, 12);
+  const soil = new MeshStandardMaterial({ map: soilMap, color: 0x8a8a84, roughness: 1 });
   const ground = new Mesh(new CircleGeometry(R + 4, 48).rotateX(-Math.PI / 2), soil);
   ground.position.y = GROUND;
   ground.receiveShadow = true;
   group.add(wall, ground);
   disposables.push(back, soil, soilMap, wall.geometry, ground.geometry);
 
-  // Headstones and crosses round the board, leaning, facing it.
-  const rng = (i: number) => {
-    const x = Math.sin(i * 91.7) * 43758.5453;
-    return x - Math.floor(x);
+  // Headstones of every kind and size, leaning, sunk, toppled; the ones near the camera kept low.
+  const WEIGHT: HeadKind[] = ["arch", "arch", "arch", "slab", "slab", "round", "round", "cross", "cross", "stump", "stump", "obelisk", "tomb", "pillar"];
+  const SIZE: Record<HeadKind, [number, number]> = {
+    arch: [0.7, 1.7],
+    slab: [0.6, 1.6],
+    round: [0.6, 1.5],
+    obelisk: [0.8, 1.7],
+    cross: [0.7, 1.9],
+    stump: [0.8, 1.8],
+    tomb: [0.8, 1.6],
+    pillar: [0.9, 2.1],
   };
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 72; i++) {
     const a = rng(i) * Math.PI * 2;
-    const r = 5.4 + rng(i + 40) * 6.5;
-    const { group: stone, mats } = headstone("b", [(rng(i + 120) - 0.5) * 0.3, (rng(i + 160) - 0.5) * 0.3]);
-    const sc = 0.7 + rng(i + 200) * 0.6;
-    for (const m of mats) (m as MeshStandardMaterial).color.multiplyScalar(0.6);
-    stone.scale.setScalar(sc);
-    stone.position.set(Math.cos(a) * r, GROUND, Math.sin(a) * r);
-    stone.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a)) + (rng(i + 240) - 0.5) * 0.7;
+    const r = 5.5 + Math.pow(rng(i + 40), 0.8) * 10.5;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    const kind = WEIGHT[Math.floor(rng(i + 70) * WEIGHT.length)];
+    let sc = SIZE[kind][0] + rng(i + 200) * (SIZE[kind][1] - SIZE[kind][0]);
+    // Nothing tall between the camera and the board, whichever side it stands on.
+    if (Math.abs(z) > 4.4 && Math.abs(x) < 8) sc = Math.min(sc, 0.75);
+    const wob = rng(i + 90) < 0.2 ? 0.45 : 0.18;
+    const { group: stone, mats } = headstone(rng(i + 80) < 0.12 ? "w" : "b", [(rng(i + 120) - 0.5) * wob, (rng(i + 160) - 0.5) * wob * 1.4], kind, Math.floor(rng(i + 20) * 4));
+    for (const m of mats) (m as MeshStandardMaterial).color.multiplyScalar(0.45 + rng(i + 31) * 0.4);
+    stone.scale.set(sc * (0.85 + rng(i + 33) * 0.35), sc * (0.8 + rng(i + 35) * 0.5), sc);
+    // Sunk into the soil, a few fallen flat.
+    const fallen = rng(i + 301) < 0.07 && kind !== "tomb";
+    stone.position.set(x, GROUND - rng(i + 303) * 0.18 * sc, z);
+    stone.rotation.set(fallen ? -1.35 : 0, Math.atan2(-x, -z) + (rng(i + 240) - 0.5) * 0.9, fallen ? 0.2 : 0);
     group.add(stone);
   }
-  const crossMat = new MeshStandardMaterial({ color: 0x4a5058, roughness: 1 });
-  disposables.push(crossMat);
-  for (let i = 0; i < 6; i++) {
-    const a = rng(i + 300) * Math.PI * 2;
-    const r = 6 + rng(i + 340) * 5;
-    const cross = new Group();
-    const post = new Mesh(new BoxGeometry(0.14, 1.5, 0.14), crossMat);
-    post.position.y = 0.75;
-    const bar = new Mesh(new BoxGeometry(0.7, 0.14, 0.14), crossMat);
-    bar.position.y = 1.15;
-    cross.add(post, bar);
-    cross.position.set(Math.cos(a) * r, GROUND, Math.sin(a) * r);
-    cross.rotation.set((rng(i + 380) - 0.5) * 0.3, rng(i + 420) * 6, (rng(i + 460) - 0.5) * 0.35);
-    cross.traverse((o) => (o.castShadow = true));
-    group.add(cross);
-  }
 
-  // The watchers: creatures standing and drifting among the graves, staring.
-  const watchers: { s: Sprite; home: Vector3; pace: number; phase: number; lift: number }[] = [];
-  for (const [file, h, deg, dist, lift, pace] of WATCHERS) {
+  // The watchers: each behind a stone of its own, looking out now and then, or perched on top of it.
+  interface Watcher {
+    s: Sprite;
+    mat: SpriteMaterial;
+    hidden: Vector3;
+    tan: Vector3;
+    h: number;
+    w: number;
+    kind: "peek" | "perch" | "float";
+    period: number;
+    phase: number;
+    side: number;
+    lift: number;
+  }
+  const watchers: Watcher[] = [];
+  WATCHERS.forEach(([file, h, deg, dist, lift, kind], i) => {
     const url = art("wake", `watch-${file}.webp`);
-    if (!url) continue;
+    if (!url) return;
+    const a = Math.PI + (deg * Math.PI) / 180;
+    const dir = new Vector3(Math.sin(a), 0, Math.cos(a));
+    const tan = new Vector3(dir.z, 0, -dir.x);
     const mat = new SpriteMaterial({ color: 0xa8bcc4, transparent: true });
+    const s = new Sprite(mat);
+    s.center.set(0.5, 0);
+    const w: Watcher = {
+      s,
+      mat,
+      hidden: dir
+        .clone()
+        .multiplyScalar(dist + 0.9)
+        .setY(GROUND + lift),
+      tan,
+      h,
+      w: h,
+      kind,
+      period: 14 + rng(i + 5) * 16,
+      phase: rng(i + 9),
+      side: rng(i + 11) < 0.5 ? -1 : 1,
+      lift,
+    };
     void texture(url).then((t) => {
       mat.map = t;
       mat.needsUpdate = true;
       const img = t.image as { width: number; height: number };
-      s.scale.set((h * img.width) / img.height, h, 1);
+      w.w = (h * img.width) / img.height;
     });
-    const s = new Sprite(mat);
-    s.center.set(0.5, 0);
-    const a = Math.PI + (deg * Math.PI) / 180;
-    const home = new Vector3(Math.sin(a) * dist, GROUND + lift, Math.cos(a) * dist);
-    s.position.copy(home);
+    // The stone it stands behind (or on): wide enough to hide it.
+    const { group: cover } = headstone("b", [0, 0.02], kind === "perch" ? "slab" : i % 2 ? "slab" : "pillar", i % 4);
+    const wide = kind === "perch" ? 1.0 : h > 2.5 ? 2.2 : 3.2;
+    cover.scale.set(kind === "perch" ? 1.2 : wide / 0.7, kind === "perch" ? 1.0 : Math.max(1.2, h * 0.85 + 0.3), kind === "perch" ? 1.2 : 1.6);
+    cover.position.copy(dir.clone().multiplyScalar(dist)).setY(GROUND - 0.05);
+    cover.rotation.y = Math.atan2(-dir.x, -dir.z);
+    group.add(cover);
+    if (kind === "perch") w.hidden.copy(dir.clone().multiplyScalar(dist)).setY(GROUND + 0.97 * 1.0 + 0.08);
     group.add(s);
+    s.position.copy(w.hidden);
     disposables.push(mat);
-    watchers.push({ s, home, pace, phase: Math.random() * 20, lift });
-  }
+    watchers.push(w);
+  });
 
   // A witch crosses the sky now and then, bats now and then.
   const witch = new Sprite(new SpriteMaterial({ fog: false, transparent: true, color: 0x020608 }));
@@ -1652,7 +1746,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
   group.add(witch, flock);
   disposables.push(witch.material, flock.material);
 
-  // Mist along the ground, a halo round the painted moon.
+  // Mist along the ground, a band of it at the foot of the painted woods, a halo round the painted moon.
   const mists: { s: Sprite; home: Vector3; phase: number }[] = [];
   for (let i = 0; i < 9; i++) {
     const s = softSprite(0x7a9a9e, 0.14, 11, 2.6);
@@ -1663,7 +1757,6 @@ function theWake(scene: Scene, board: Board): CourtSet {
     mists.push({ s, home, phase: i * 1.7 });
     disposables.push(s.material);
   }
-  // A band of mist along the foot of the painted woods, so ground and painting meet in it.
   for (let i = 0; i < 7; i++) {
     const a = Math.PI + (((i / 6) * 2 - 1) * ARC) / 2.4;
     const s = softSprite(0x5a7e84, 0.4, 16, 4.5);
@@ -1676,7 +1769,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
   group.add(halo);
   disposables.push(halo.material);
 
-  // Moonlight from behind, cold and low; the ground a little lifted by the sky.
+  // Moonlight from behind, cold and low.
   const moon = new DirectionalLight(0x9ad0e0, 0.9);
   moon.position.set(-5, 14, -16);
   moon.castShadow = true;
@@ -1690,12 +1783,15 @@ function theWake(scene: Scene, board: Board): CourtSet {
   scene.background = new Color(0x050909);
   scene.fog = new Fog(0x1c3236, 10, 42);
 
+  const ease3 = (x: number) => x * x * (3 - 2 * x);
   let t = 0;
   let nextWitch = 5000;
   let witchAt = -1;
   let nextFlock = 14000;
   let flockAt = -1;
   return {
+    // The rubble stands up to about 0.1 from the white squares.
+    markY: 0.12,
     turn: 0.65,
     view: { fixed: false, pitch: 0.25, dist: 16, fov: 48, ty: 1.6 },
     orient(side) {
@@ -1705,8 +1801,28 @@ function theWake(scene: Scene, board: Board): CourtSet {
       t += ms;
       const s = t / 1000;
       for (const w of watchers) {
-        const k = s * 0.25 * w.pace + w.phase;
-        w.s.position.set(w.home.x + Math.cos(k) * 1.2 * w.pace, w.home.y + (w.lift > 0 ? Math.sin(s * 0.7 + w.phase) * 0.15 : Math.abs(Math.sin(k * 3)) * 0.04), w.home.z + Math.sin(k) * 0.8 * w.pace);
+        const u = (s / w.period + w.phase) % 1;
+        // 0 hidden .. 1 out and staring: out slowly, a long look, back quickly.
+        const out = w.kind === "peek" ? (u < 0.4 ? 0 : u < 0.5 ? ease3((u - 0.4) / 0.1) : u < 0.78 ? 1 : u < 0.86 ? 1 - ease3((u - 0.78) / 0.08) : 0) : 0;
+        const sway = Math.sin(s * 1.3 + w.phase * 20);
+        const p = w.hidden.clone().addScaledVector(w.tan, w.side * (out * 1.7 + out * Math.sin(s * 0.6 + w.phase * 9) * 0.35));
+        let breathe = 1 + 0.025 * Math.sin(s * 2.2 + w.phase * 11);
+        if (w.kind === "float") {
+          p.y += Math.sin(s * 0.7 + w.phase * 6) * 0.25 + 0.15;
+          p.addScaledVector(w.tan, Math.sin(s * 0.25 + w.phase * 5) * 1.5);
+          w.mat.opacity = 0.75 + 0.25 * Math.sin(s * 0.9 + w.phase * 8);
+        } else if (w.kind === "perch") {
+          // Hops and ruffles on its stone, now and then a long look about.
+          p.y += Math.max(0, Math.sin(s * 1.9 + w.phase * 13)) > 0.96 ? 0.07 : 0;
+          breathe = 1 + 0.06 * Math.max(0, Math.sin(s * 0.8 + w.phase * 5));
+        } else {
+          // A lurch and a bob while it stares, a flinch now and then.
+          p.y += out * Math.abs(Math.sin(s * 3 + w.phase * 7)) * 0.05;
+        }
+        w.s.position.copy(p);
+        w.mat.rotation = sway * 0.035 * (0.4 + out);
+        // Faces the way it came out.
+        w.s.scale.set(w.w * breathe * (w.side * (w.kind === "peek" ? 1 : sway > 0 ? 1 : 1) < 0 ? -1 : 1), w.h * (2 - breathe), 1);
       }
       for (const m of mists) {
         const k = s * 0.03 + m.phase;
