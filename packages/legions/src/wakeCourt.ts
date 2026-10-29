@@ -8,6 +8,7 @@ import {
   Color,
   Euler,
   Float32BufferAttribute,
+  IcosahedronGeometry,
   Fog,
   Group,
   HemisphereLight,
@@ -20,23 +21,21 @@ import {
   Quaternion,
   RepeatWrapping,
   SRGBColorSpace,
-  CatmullRomCurve3,
-  TubeGeometry,
   Vector3,
   type BufferGeometry,
   type Scene,
 } from "three";
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Board } from "./board";
 import type { CourtSet } from "./courts";
 
 /** Where the dirt lies under the board; the slabs and the mud sit in it. */
-const GROUND = -0.05;
+export const GROUND = -0.05;
 /** The haze the far ground and the sky's foot meet in. */
-const HAZE = 0x424c54;
+export const HAZE = 0x424c54;
 
 /** A steady pseudo-random stream from a seed. */
-function stream(seed: number) {
+export function stream(seed: number) {
   let s = seed >>> 0 || 1;
   return () => {
     s = (s * 1664525 + 1013904223) >>> 0;
@@ -69,7 +68,7 @@ function vnoise(x: number, y: number, s: number, per: number) {
 }
 
 /** Layered noise in 0..1; repeats every `per` cells of the first layer. */
-function fbm(x: number, y: number, s: number, per: number, octaves: number) {
+export function fbm(x: number, y: number, s: number, per: number, octaves: number) {
   let sum = 0;
   let amp = 0.5;
   let tot = 0;
@@ -83,14 +82,14 @@ function fbm(x: number, y: number, s: number, per: number, octaves: number) {
   return sum / tot;
 }
 
-const mix = (a: number, b: number, t: number) => a + (b - a) * t;
-const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-const smooth = (a: number, b: number, x: number) => {
+export const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+export const smooth = (a: number, b: number, x: number) => {
   const t = clamp01((x - a) / (b - a));
   return t * t * (3 - 2 * t);
 };
 
-function canvas(size: number) {
+export function canvas(size: number) {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   return { c, g: c.getContext("2d", { willReadFrequently: true })! };
@@ -118,7 +117,7 @@ function body(size: number, low: number, color: (u: number, v: number) => [numbe
 }
 
 /** A normal map worked out from a canvas's light and dark: what is dark sinks, what is light stands. */
-function normalFrom(src: HTMLCanvasElement, strength: number, wrap: boolean) {
+export function normalFrom(src: HTMLCanvasElement, strength: number, wrap: boolean) {
   const size = Math.min(1024, src.width);
   const { c, g } = canvas(size);
   g.drawImage(src, 0, 0, size, size);
@@ -157,7 +156,7 @@ function wrapped(size: number, x: number, y: number, r: number, draw: (x: number
 // ----- The dirt -----
 
 /** Bumpy dirt that tiles: clods, pebbles, grit and dead twigs on a mottled brown. */
-function dirtMaps(seed: number) {
+export function dirtMaps(seed: number) {
   const size = 1024;
   const r = stream(seed);
   const { c, g } = body(size, 512, (u, v) => {
@@ -301,93 +300,8 @@ function mudMaps(seed: number) {
 
 // ----- The marble -----
 
-/** One ivy leaf in local space (length 1, pointing along +x): three lobes, a notch at the stalk. */
-function leafPath(g: CanvasRenderingContext2D) {
-  g.beginPath();
-  g.moveTo(-0.25, 0);
-  g.bezierCurveTo(-0.2, 0.5, 0.2, 0.9, 0.45, 0.6);
-  g.bezierCurveTo(0.6, 0.5, 0.8, 0.3, 1, 0);
-  g.bezierCurveTo(0.8, -0.3, 0.6, -0.5, 0.45, -0.6);
-  g.bezierCurveTo(0.2, -0.9, -0.2, -0.5, -0.25, 0);
-  g.closePath();
-}
-
-/** One leaf drawn on a canvas: a dark shadow, a green body lit from one side, veins. */
-function drawLeaf(g: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, shade: number) {
-  g.save();
-  g.translate(x, y);
-  g.rotate(ang);
-  g.scale(len, len);
-  leafPath(g);
-  g.save();
-  g.translate(0.06, 0.08);
-  g.fillStyle = "rgba(0,0,0,0.4)";
-  leafPath(g);
-  g.fill();
-  g.restore();
-  const grad = g.createLinearGradient(0, -0.7, 0, 0.7);
-  grad.addColorStop(0, `rgb(${70 * shade},${112 * shade},${54 * shade})`);
-  grad.addColorStop(1, `rgb(${22 * shade},${46 * shade},${26 * shade})`);
-  g.fillStyle = grad;
-  leafPath(g);
-  g.fill();
-  g.strokeStyle = "rgba(8,20,10,0.8)";
-  g.lineWidth = 0.035;
-  g.stroke();
-  g.strokeStyle = `rgba(${150 * shade},${190 * shade},${120 * shade},0.5)`;
-  g.lineWidth = 0.025;
-  g.beginPath();
-  g.moveTo(-0.2, 0);
-  g.lineTo(0.95, 0);
-  g.moveTo(0.1, 0);
-  g.lineTo(0.42, 0.5);
-  g.moveTo(0.1, 0);
-  g.lineTo(0.42, -0.5);
-  g.stroke();
-  g.restore();
-}
-
-/** A vine across a tile: a woody stem wandering in from the edge, leaves along it, a few tendrils. */
-function drawVine(g: CanvasRenderingContext2D, size: number, r: () => number, reach: number) {
-  const edge = Math.floor(r() * 4);
-  const along = r() * size;
-  let x = edge === 0 ? 0 : edge === 1 ? size : along;
-  let y = edge === 2 ? 0 : edge === 3 ? size : along;
-  let a = Math.atan2(size / 2 - y, size / 2 - x) + (r() - 0.5) * 1.2;
-  const pts: [number, number][] = [[x, y]];
-  const steps = Math.floor(reach / 14);
-  for (let i = 0; i < steps; i++) {
-    a += (r() - 0.5) * 0.55;
-    x += Math.cos(a) * 14;
-    y += Math.sin(a) * 14;
-    pts.push([x, y]);
-  }
-  g.lineCap = g.lineJoin = "round";
-  g.strokeStyle = "rgba(0,0,0,0.4)";
-  g.lineWidth = 6;
-  g.beginPath();
-  pts.forEach(([px, py], i) => (i ? g.lineTo(px + 3, py + 4) : g.moveTo(px + 3, py + 4)));
-  g.stroke();
-  g.strokeStyle = "rgb(38,34,22)";
-  g.lineWidth = 4;
-  g.beginPath();
-  pts.forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py)));
-  g.stroke();
-  g.strokeStyle = "rgb(88,78,50)";
-  g.lineWidth = 1.2;
-  g.beginPath();
-  pts.forEach(([px, py], i) => (i ? g.lineTo(px - 0.8, py - 0.8) : g.moveTo(px - 0.8, py - 0.8)));
-  g.stroke();
-  pts.forEach(([px, py], i) => {
-    if (i % 2) return;
-    const len = 16 + r() * 18;
-    drawLeaf(g, px, py, r() * 6.3, len, 0.7 + r() * 0.5);
-    if (r() < 0.5) drawLeaf(g, px, py, r() * 6.3, len * 0.7, 0.7 + r() * 0.5);
-  });
-}
-
-/** An old paving slab: stained pale marble, veined, cracked, grimed along its edges and in its dips, ivy over it. */
-function marbleMaps(seed: number, ivy: number) {
+/** An old paving slab: stained pale marble, veined, cracked, grimed along its edges and in its dips. Moss is added in 3D. */
+function marbleMaps(seed: number) {
   const size = 1024;
   const r = stream(seed);
   const { c, g } = body(size, 512, (u, v) => {
@@ -483,8 +397,6 @@ function marbleMaps(seed: number, ivy: number) {
     g.fillStyle = grad;
     g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
   }
-  // The ivy.
-  for (let k = 0; k < ivy; k++) drawVine(g, size, r, 160 + r() * 380);
   // The worn dark rim.
   g.strokeStyle = "rgba(16,12,8,0.75)";
   g.lineWidth = 12;
@@ -493,15 +405,6 @@ function marbleMaps(seed: number, ivy: number) {
   map.colorSpace = SRGBColorSpace;
   map.anisotropy = 8;
   return { map, normal: normalFrom(c, 2.8, false) };
-}
-
-/** A leaf cut-out for the 3D ivy: the same leaf as in the textures, on a clear ground. */
-function leafTexture() {
-  const { c, g } = canvas(128);
-  drawLeaf(g, 36, 64, 0, 84, 1);
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  return t;
 }
 
 // ----- The court -----
@@ -545,10 +448,10 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   // ----- The board, set into the ground -----
   const squares = new Set(board.squares.values());
   for (const o of board.group.children) if (!squares.has(o as Mesh)) o.visible = false;
-  const marble = [0, 1, 2, 3, 4].map((i) => marbleMaps(300 + i * 53, i % 3 === 0 ? 3 : 5));
+  const marble = [0, 1, 2, 3, 4].map((i) => marbleMaps(300 + i * 53));
   const mud = [0, 1, 2].map((i) => mudMaps(700 + i * 29));
   for (const m of [...marble, ...mud]) dispose.push(m.map, m.normal);
-  const slabMats = marble.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.82, metalness: 0 }));
+  const slabMats = marble.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, color: 0xe6e0d4, roughness: 1, metalness: 0 }));
   const mudMats = mud.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.38, metalness: 0 }));
   dispose.push(...slabMats, ...mudMats);
   const light: Mesh[] = [];
@@ -585,58 +488,78 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     }
   }
 
-  // ----- Ivy creeping over the slabs, in 3D, past their edges onto the dirt -----
-  const stem: BufferGeometry[] = [];
-  const leafAt: Matrix4[] = [];
-  const leafColor: Color[] = [];
+  // ----- Moss: cushions of it along the slabs' edges and corners and in patches on them; green, with dark rotten bits at the rims -----
+  const blobs: BufferGeometry[] = [];
+  for (let i = 0; i < 6; i++) {
+    const b = new IcosahedronGeometry(0.5 + rng() * 0.4, 1);
+    b.scale(1, 0.55 + rng() * 0.2, 1);
+    b.translate((rng() - 0.5) * 0.9, 0, (rng() - 0.5) * 0.9);
+    const p = b.getAttribute("position");
+    for (let k = 0; k < p.count; k++) p.setXYZ(k, p.getX(k) * (0.85 + rng() * 0.3), p.getY(k) * (0.7 + rng() * 0.6), p.getZ(k) * (0.85 + rng() * 0.3));
+    blobs.push(b);
+  }
+  const tuft = mergeVertices(mergeGeometries(blobs.map((b) => b.toNonIndexed()))!, 0.01);
+  blobs.forEach((b) => b.dispose());
+  tuft.computeVertexNormals();
+  const fuzz = canvas(256);
+  const fr = stream(77);
+  fuzz.g.fillStyle = "#808080";
+  fuzz.g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 9000; i++) {
+    const v = fr() * 255;
+    fuzz.g.fillStyle = `rgba(${v},${v},${v},0.7)`;
+    fuzz.g.fillRect(fr() * 256, fr() * 256, 1 + fr() * 2, 1 + fr() * 3);
+  }
+  const fuzzTex = new CanvasTexture(fuzz.c);
+  fuzzTex.wrapS = fuzzTex.wrapT = RepeatWrapping;
+  const mossMat = new MeshStandardMaterial({ bumpMap: fuzzTex, bumpScale: 2.4, roughness: 1 });
+  const places: { m: Matrix4; c: Color }[] = [];
   const q = new Quaternion();
   const eu = new Euler();
-  const vines = 40;
-  for (let v = 0; v < vines; v++) {
-    const sq = light[Math.floor(rng() * light.length)];
-    // Start at one of the slab's edges (sometimes outside the board) and wander across.
-    const edge = Math.floor(rng() * 4);
-    const t = (rng() - 0.5) * 0.9;
-    let x = sq.position.x + (edge < 2 ? (edge === 0 ? -0.55 : 0.55) : t);
-    let z = sq.position.z + (edge >= 2 ? (edge === 2 ? -0.55 : 0.55) : t);
-    let a = Math.atan2(sq.position.x - x, sq.position.z - z) + (rng() - 0.5) * 1.4;
-    const pts: Vector3[] = [];
-    const n = 8 + Math.floor(rng() * 8);
-    for (let i = 0; i < n; i++) {
-      pts.push(new Vector3(x, 0, z));
-      a += (rng() - 0.5) * 0.9;
-      x += Math.sin(a) * 0.16;
-      z += Math.cos(a) * 0.16;
+  const clump = (x: number, z: number, near: number) => {
+    // near: 0 well inside the slab, 1 right at its rim; the rim is where the rot is.
+    const rot = rng() < 0.12 + near * 0.5;
+    const s = (rot ? 0.035 : 0.05) + rng() * 0.06;
+    eu.set(0, rng() * 6.3, 0);
+    q.setFromEuler(eu);
+    const sy = s * (0.6 + rng() * 0.8);
+    places.push({
+      m: new Matrix4().compose(new Vector3(x, -0.026 + sy * 0.15, z), q, new Vector3(s, sy, s)),
+      c: rot ? new Color().setHSL(0.06 + rng() * 0.05, 0.3 + rng() * 0.2, 0.04 + rng() * 0.06) : new Color().setHSL(0.24 + rng() * 0.07, 0.4 + rng() * 0.2, 0.03 + rng() * 0.06),
+    });
+  };
+  for (const sq of light) {
+    const cx = sq.position.x;
+    const cz = sq.position.z;
+    for (let i = 0; i < 26; i++) {
+      // Along an edge, packed in near it and thinning inward (a little spilling out over it).
+      const side = Math.floor(rng() * 4);
+      const along = (rng() - 0.5) * 0.92;
+      const depth = Math.abs((rng() + rng() - 1) * 0.22) + (rng() < 0.15 ? -0.05 : 0.02);
+      const e = 0.47 - depth;
+      const x = side < 2 ? (side === 0 ? -e : e) : along;
+      const z = side >= 2 ? (side === 2 ? -e : e) : along;
+      clump(cx + x, cz + z, clamp01(1 - depth / 0.25));
     }
-    const surface = (px: number, pz: number) => (Math.abs(px) < 4 && Math.abs(pz) < 4 ? -0.04 : GROUND + 0.02);
-    for (const p of pts) p.y = surface(p.x, p.z) + 0.012;
-    const tube = new TubeGeometry(new CatmullRomCurve3(pts), pts.length * 4, 0.011, 5);
-    stem.push(tube);
-    for (const p of pts) {
-      const count = 2 + Math.floor(rng() * 2);
-      for (let k = 0; k < count; k++) {
-        const s = 0.45 + rng() * 0.6;
-        eu.set((rng() - 0.5) * 0.5, rng() * 6.3, (rng() - 0.5) * 0.5);
-        q.setFromEuler(eu);
-        leafAt.push(new Matrix4().compose(new Vector3(p.x + (rng() - 0.5) * 0.12, p.y + 0.008 + rng() * 0.03, p.z + (rng() - 0.5) * 0.12), q, new Vector3(s, s, s)));
-        leafColor.push(new Color().setScalar(0.45 + rng() * 0.4));
-      }
+    // Corners gather more.
+    for (let k = 0; k < 4; k++) for (let i = 0; i < 3; i++) clump(cx + (k % 2 ? 1 : -1) * (0.47 - rng() * 0.16), cz + (k < 2 ? 1 : -1) * (0.47 - rng() * 0.16), 0.8);
+    // A patch or two out on the face.
+    for (let k = 0; k < 2; k++) {
+      const px = (rng() - 0.5) * 0.6;
+      const pz = (rng() - 0.5) * 0.6;
+      if (rng() < 0.5) continue;
+      for (let i = 0; i < 8; i++) clump(cx + px + (rng() - 0.5) * 0.26, cz + pz + (rng() - 0.5) * 0.26, 0.1);
     }
   }
-  const stems = new Mesh(mergeGeometries(stem)!, new MeshStandardMaterial({ color: 0x2b2a1c, roughness: 1 }));
-  stem.forEach((s) => s.dispose());
-  group.add(stems);
-  const leafTex = leafTexture();
-  const leafGeo = new PlaneGeometry(0.2, 0.2).rotateX(-Math.PI / 2).translate(0.044, 0, 0);
-  const leafMat = new MeshStandardMaterial({ map: leafTex, alphaTest: 0.5, side: 2, roughness: 0.6 });
-  const leaves = new InstancedMesh(leafGeo, leafMat, leafAt.length);
-  leafAt.forEach((m, i) => {
-    leaves.setMatrixAt(i, m);
-    leaves.setColorAt(i, leafColor[i]);
+  const moss = new InstancedMesh(tuft, mossMat, places.length);
+  places.forEach((p, i) => {
+    moss.setMatrixAt(i, p.m);
+    moss.setColorAt(i, p.c);
   });
-  leaves.frustumCulled = false;
-  group.add(leaves);
-  dispose.push(stems.geometry, stems.material as MeshStandardMaterial, leafTex, leafGeo, leafMat, leaves);
+  moss.receiveShadow = true;
+  moss.frustumCulled = false;
+  group.add(moss);
+  dispose.push(tuft, mossMat, fuzzTex, moss);
 
   // ----- Light and haze -----
   const moonLight = new DirectionalLight(0xb4c8d8, 1.5);

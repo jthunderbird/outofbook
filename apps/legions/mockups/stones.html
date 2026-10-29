@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Wake: gravestones</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font:
+          13px system-ui,
+          sans-serif;
+        color: #f4efe2;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+      }
+      #panel {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        max-width: calc(100vw - 16px);
+        padding: 8px;
+        border-radius: 12px;
+        background: rgb(10 14 18 / 0.78);
+        z-index: 3;
+      }
+      #panel button {
+        padding: 7px 10px;
+        border-radius: 8px;
+        border: 1px solid #fff3;
+        background: #26323a;
+        color: inherit;
+        font: inherit;
+      }
+      #panel button.on {
+        background: #3d6a3a;
+      }
+      #tags {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .tag {
+        position: absolute;
+        transform: translate(-50%, 0);
+        padding: 3px 7px;
+        border-radius: 8px;
+        background: rgb(8 12 16 / 0.72);
+        font-size: 11px;
+        line-height: 1.25;
+        text-align: center;
+        white-space: nowrap;
+        pointer-events: auto;
+        cursor: pointer;
+      }
+      .tag small {
+        display: block;
+        color: #9db0b8;
+      }
+      #hint {
+        position: fixed;
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+        font-size: 12px;
+        color: #9db0b8;
+        text-shadow: 0 0 4px #000;
+        z-index: 3;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="tags"></div>
+    <div id="panel"></div>
+    <div id="hint">Drag to turn, wheel to zoom, right-drag to pan. Tap a label to fly to that stone.</div>
+    <script type="module" src="./stones.ts"></script>
+  </body>
+</html>
