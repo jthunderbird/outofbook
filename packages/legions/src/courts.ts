@@ -1547,9 +1547,9 @@ function theWake(scene: Scene, board: Board): CourtSet {
   const group = new Group();
   scene.add(group);
   const GROUND = -0.02;
-  const R = 19;
-  const ARC = (150 * Math.PI) / 180;
-  const H = (R * ARC) / (1584 / 672);
+  // The painted world round the board: a sky dome, a ring of far woods with the ruins in one place, great dead trees at several depths.
+  const R = 34;
+  const BAND = 9.5;
   const disposables: { dispose(): void }[] = [];
   const rng = (i: number) => {
     const x = Math.sin(i * 91.7) * 43758.5453;
@@ -1617,24 +1617,83 @@ function theWake(scene: Scene, board: Board): CourtSet {
   group.add(chunks);
   disposables.push(chunkGeo, chunkMat, chunks);
 
-  // The painted woods and ruins, a wide arc behind the black side.
-  const back = new MeshBasicMaterial({ side: BackSide, fog: false, color: 0xb8c4c8 });
-  void texture(art("wake", "backdrop.webp")).then((t) => {
-    back.map = t;
-    back.needsUpdate = true;
+  // Sky all round, the moon not in it (it is a sprite that crosses it).
+  const skyMat = new MeshBasicMaterial({ side: BackSide, fog: false });
+  void texture(art("wake", "sky.webp")).then((t) => {
+    t.wrapS = MirroredRepeatWrapping;
+    t.repeat.set(2, 2);
+    t.offset.set(0, -1);
+    skyMat.map = t;
+    skyMat.needsUpdate = true;
   });
-  const wall = new Mesh(new CylinderGeometry(R, R, H, 48, 1, true, Math.PI - ARC / 2, ARC), back);
-  const top = GROUND + 0.78 * H + 0.4;
-  wall.position.y = top - H / 2;
-  // The graveyard's soil to the painted woods, lost in mist.
+  const sky = new Mesh(new SphereGeometry(70, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), skyMat);
+  sky.position.y = GROUND;
+  sky.renderOrder = -10;
+  // The far woods, all the way round (the tile mirrored), with the ruins once, behind the black side.
+  const woodsMat = new MeshBasicMaterial({ side: BackSide, fog: false, transparent: true, depthWrite: false, color: 0xe0eeee });
+  void texture(art("wake", "woods-tile.webp")).then((t) => {
+    t.wrapS = MirroredRepeatWrapping;
+    t.repeat.set(Math.round((2 * Math.PI * R) / (BAND * (880 / 672))), 1);
+    woodsMat.map = t;
+    woodsMat.needsUpdate = true;
+  });
+  const woods = new Mesh(new CylinderGeometry(R, R, BAND, 96, 1, true), woodsMat);
+  woods.position.y = GROUND + BAND / 2 - 0.3;
+  woods.renderOrder = -8;
+  const castleMat = new MeshBasicMaterial({ fog: false, transparent: true, depthWrite: false, color: 0xe0eeee });
+  void texture(art("wake", "woods-castle.webp")).then((t) => {
+    castleMat.map = t;
+    castleMat.needsUpdate = true;
+  });
+  const castle = new Mesh(new PlaneGeometry(BAND * (560 / 672), BAND), castleMat);
+  castle.position.set(0, GROUND + BAND / 2 - 0.3, -(R - 0.6));
+  castle.renderOrder = -7;
+  // The graveyard's soil to the woods, lost in mist.
   const soilMap = dirtTexture(900);
-  soilMap.repeat.set(12, 12);
+  soilMap.repeat.set(16, 16);
   const soil = new MeshStandardMaterial({ map: soilMap, color: 0x8a8a84, roughness: 1 });
-  const ground = new Mesh(new CircleGeometry(R + 4, 48).rotateX(-Math.PI / 2), soil);
+  const ground = new Mesh(new CircleGeometry(R + 1, 64).rotateX(-Math.PI / 2), soil);
   ground.position.y = GROUND;
   ground.receiveShadow = true;
-  group.add(wall, ground);
-  disposables.push(back, soil, soilMap, wall.geometry, ground.geometry);
+  group.add(sky, woods, castle, ground);
+  disposables.push(skyMat, woodsMat, castleMat, soil, soilMap, sky.geometry, woods.geometry, castle.geometry, ground.geometry);
+
+  // Great dead trees at several depths all round, so looking any way there are woods to look through.
+  const trunkMats = ["trunk-l.webp", "trunk-r.webp"].map((f) => {
+    const m = new MeshBasicMaterial({ transparent: true, alphaTest: 0.4, side: DoubleSide, color: 0x8aa0a0, fog: false });
+    void texture(art("wake", f)).then((t) => {
+      m.map = t;
+      m.needsUpdate = true;
+    });
+    disposables.push(m);
+    return m;
+  });
+  for (let i = 0; i < 13; i++) {
+    const az = (i / 13) * Math.PI * 2 + (rng(i + 500) - 0.5) * 0.3;
+    // The ruins and the moon's road behind the black side stay open.
+    if (Math.abs(Math.atan2(Math.sin(az - Math.PI), Math.cos(az - Math.PI))) < 0.5) continue;
+    const d = 21 + rng(i + 520) * 9;
+    const h = 20 + rng(i + 540) * 8;
+    const wide = i % 2 ? 464 : 480;
+    const pic = new Mesh(new PlaneGeometry(h * (wide / 672), h), trunkMats[i % 2]);
+    pic.position.set(Math.sin(az) * d, GROUND + h / 2 - 0.5, Math.cos(az) * d);
+    pic.rotation.y = Math.atan2(-pic.position.x, -pic.position.z);
+    if (rng(i + 580) < 0.5) pic.scale.x = -1;
+    group.add(pic);
+    disposables.push(pic.geometry);
+  }
+
+  // The moon crosses the sky, slowly.
+  const moonMat = new SpriteMaterial({ fog: false, transparent: true, depthWrite: false });
+  void texture(art("wake", "moon.webp")).then((t) => {
+    moonMat.map = t;
+    moonMat.needsUpdate = true;
+  });
+  const moonSprite = new Sprite(moonMat);
+  moonSprite.scale.setScalar(9);
+  moonSprite.renderOrder = -6;
+  group.add(moonSprite);
+  disposables.push(moonMat);
 
   // Headstones of every kind and size, leaning, sunk, toppled; the ones near the camera kept low.
   const WEIGHT: HeadKind[] = ["arch", "arch", "arch", "slab", "slab", "round", "round", "cross", "cross", "stump", "stump", "obelisk", "tomb", "pillar"];
@@ -1757,15 +1816,15 @@ function theWake(scene: Scene, board: Board): CourtSet {
     mists.push({ s, home, phase: i * 1.7 });
     disposables.push(s.material);
   }
-  for (let i = 0; i < 7; i++) {
-    const a = Math.PI + (((i / 6) * 2 - 1) * ARC) / 2.4;
-    const s = softSprite(0x5a7e84, 0.4, 16, 4.5);
-    s.position.set(Math.sin(a) * (R - 1.5), GROUND + 1.0, Math.cos(a) * (R - 1.5));
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const s = softSprite(0x5a7e84, 0.4, 22, 5);
+    s.position.set(Math.sin(a) * (R - 3), GROUND + 1.2, Math.cos(a) * (R - 3));
     group.add(s);
     disposables.push(s.material);
   }
-  const halo = softSprite(0x9ae8ff, 0.3, 11, 11, true);
-  halo.position.set(0, top - 0.21 * H, -R + 0.6);
+  const halo = softSprite(0x9ae8ff, 0.3, 26, 26, true);
+  halo.renderOrder = -6;
   group.add(halo);
   disposables.push(halo.material);
 
@@ -1792,8 +1851,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
   return {
     // The rubble stands up to about 0.1 from the white squares.
     markY: 0.12,
-    turn: 0.65,
-    view: { fixed: false, pitch: 0.25, dist: 16, fov: 48, ty: 1.6 },
+    view: { fixed: false, pitch: 0.2, dist: 16, fov: 52, ty: 2.4 },
     orient(side) {
       group.rotation.y = side > 0 ? 0 : Math.PI;
     },
@@ -1830,6 +1888,12 @@ function theWake(scene: Scene, board: Board): CourtSet {
         m.s.material.opacity = 0.1 + 0.05 * Math.sin(s * 0.3 + m.phase);
       }
       halo.material.opacity = 0.26 + 0.05 * Math.sin(s * 0.5);
+      // Round the sky behind the black side, a little up and down.
+      const az = Math.PI + Math.sin(s * 0.0035) * 2.4;
+      const el = 0.3 + 0.05 * Math.sin(s * 0.011);
+      moonSprite.position.set(Math.sin(az) * Math.cos(el) * 62, GROUND + Math.sin(el) * 62, Math.cos(az) * Math.cos(el) * 62);
+      halo.position.copy(moonSprite.position);
+      moon.position.copy(moonSprite.position).multiplyScalar(0.3);
       if (witchAt < 0 && t > nextWitch) witchAt = t;
       if (witchAt >= 0) {
         const k = (t - witchAt) / 16000;
@@ -1839,7 +1903,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
           nextWitch = t + 40000 + Math.random() * 40000;
         } else {
           witch.visible = true;
-          witch.position.set(-22 + 44 * k, top - 0.3 * H + Math.sin(k * 9) * 0.6, -R + 1);
+          witch.position.set(-22 + 44 * k, GROUND + 0.78 * BAND + 4 + Math.sin(k * 9) * 0.6, -R + 1);
         }
       }
       if (flockAt < 0 && t > nextFlock) flockAt = t;
@@ -1851,7 +1915,7 @@ function theWake(scene: Scene, board: Board): CourtSet {
           nextFlock = t + 25000 + Math.random() * 35000;
         } else {
           flock.visible = true;
-          flock.position.set(20 - 40 * k, top - 0.35 * H + Math.sin(k * 14) * 0.5, -R + 1.2);
+          flock.position.set(20 - 40 * k, GROUND + 0.8 * BAND + 3.5 + Math.sin(k * 14) * 0.5, -R + 1.2);
         }
       }
     },
@@ -1876,7 +1940,7 @@ export const COURTS: Court[] = [
 ];
 
 /** Courts being built: playable where asked for by id (the mock pages), not yet in the Collection or the lists. */
-const DRAFT_COURTS: Court[] = [{ id: "wake", name: "The Wake", tribe: "restless", top: "#14262c", bottom: "#030708", preview: art("wake", "backdrop.webp"), dress: theWake }];
+const DRAFT_COURTS: Court[] = [{ id: "wake", name: "The Wake", tribe: "restless", top: "#14262c", bottom: "#030708", preview: art("wake", "sky.webp"), dress: theWake }];
 
 export const court = (id: string) => COURTS.find((c) => c.id === id) ?? DRAFT_COURTS.find((c) => c.id === id) ?? COURTS[0];
 
