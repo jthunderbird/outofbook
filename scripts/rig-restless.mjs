@@ -80,9 +80,17 @@ function clip(nodes, bones, name, tracks, moves = {}) {
   const buf = root.listBuffers()[0];
   const anim = doc.createAnimation(name);
   const add1 = (node, path, keys, f) => {
-    const input = doc.createAccessor().setType("SCALAR").setArray(new Float32Array(keys.map((k) => k[0]))).setBuffer(buf);
+    const input = doc
+      .createAccessor()
+      .setType("SCALAR")
+      .setArray(new Float32Array(keys.map((k) => k[0])))
+      .setBuffer(buf);
     const out = keys.map((k) => f(k[1])).flat();
-    const output = doc.createAccessor().setType(path === "rotation" ? "VEC4" : "VEC3").setArray(new Float32Array(out)).setBuffer(buf);
+    const output = doc
+      .createAccessor()
+      .setType(path === "rotation" ? "VEC4" : "VEC3")
+      .setArray(new Float32Array(out))
+      .setBuffer(buf);
     const sampler = doc.createAnimationSampler().setInput(input).setOutput(output).setInterpolation("LINEAR");
     anim.addSampler(sampler).addChannel(doc.createAnimationChannel().setTargetNode(node).setTargetPath(path).setSampler(sampler));
   };
@@ -99,21 +107,30 @@ if (what === "wolf") {
   // so every clip's pitch and roll are about the body's own axes.
   {
     const keep = Array.from({ length: NV }, (_, i) => i).filter((i) => pos[i * 3 + 1] > -0.25);
-    let mx = 0, mz = 0;
-    for (const i of keep) (mx += pos[i * 3] / keep.length), (mz += pos[i * 3 + 2] / keep.length);
-    let sxx = 0, szz = 0, sxz = 0;
+    let mx = 0,
+      mz = 0;
+    for (const i of keep) ((mx += pos[i * 3] / keep.length), (mz += pos[i * 3 + 2] / keep.length));
+    let sxx = 0,
+      szz = 0,
+      sxz = 0;
     for (const i of keep) {
-      const dx = pos[i * 3] - mx, dz = pos[i * 3 + 2] - mz;
-      sxx += dx * dx; szz += dz * dz; sxz += dx * dz;
+      const dx = pos[i * 3] - mx,
+        dz = pos[i * 3 + 2] - mz;
+      sxx += dx * dx;
+      szz += dz * dz;
+      sxz += dx * dz;
     }
     const t0 = 0.5 * Math.atan2(2 * sxz, sxx - szz);
-    let ax = Math.sin(t0), az = Math.cos(t0);
-    if (az < 0) (ax = -ax), (az = -az);
+    let ax = Math.sin(t0),
+      az = Math.cos(t0);
+    if (az < 0) ((ax = -ax), (az = -az));
     const phi = -Math.atan2(ax, az);
-    const cp = Math.cos(phi), sp = Math.sin(phi);
+    const cp = Math.cos(phi),
+      sp = Math.sin(phi);
     const rot = (arr) => {
       for (let i = 0; i < arr.length; i += 3) {
-        const x = arr[i], z = arr[i + 2];
+        const x = arr[i],
+          z = arr[i + 2];
         arr[i] = x * cp + z * sp;
         arr[i + 2] = -x * sp + z * cp;
       }
@@ -132,20 +149,33 @@ if (what === "wolf") {
   const a = [0, 0, 1];
   const lat = [1, 0, 0];
   const along = Array.from({ length: NV }, (_, i) => dot(sub(P(i), c), a));
-  const tmin = Math.min(...along), tmax = Math.max(...along);
+  const tmin = Math.min(...along),
+    tmax = Math.max(...along);
   const U = (i) => (along[i] - tmin) / (tmax - tmin);
   const slab = (u, w = 0.04) => Array.from({ length: NV }, (_, i) => i).filter((i) => Math.abs(U(i) - u) < w);
   const onAxis = (u) => {
     const s = slab(u);
     const m = s.reduce((acc, i) => add(acc, mul(P(i), 1 / s.length)), [0, 0, 0]);
-    return [m[0], quantile(s.map((i) => pos[i * 3 + 1]), 0.6), m[2]];
+    return [
+      m[0],
+      quantile(
+        s.map((i) => pos[i * 3 + 1]),
+        0.6,
+      ),
+      m[2],
+    ];
   };
-  const hips = onAxis(0.3), s1 = onAxis(0.45), s2 = onAxis(0.6), neck = onAxis(0.74), head = onAxis(0.86);
+  const hips = onAxis(0.3),
+    s1 = onAxis(0.45),
+    s2 = onAxis(0.6),
+    neck = onAxis(0.74),
+    head = onAxis(0.86);
   const nose = P(Array.from({ length: NV }, (_, i) => i).reduce((b, i) => (along[i] > along[b] ? i : b)));
   // The tail: the far end, behind the hips.
   const tail = Array.from({ length: NV }, (_, i) => i).filter((i) => U(i) < 0.16 && pos[i * 3 + 1] > ymin + 0.2);
   const tailTip = P(tail.reduce((b, i) => (along[i] < along[b] ? i : b), tail[0]));
-  const t1 = lerp(hips, tailTip, 0.35), t2 = lerp(hips, tailTip, 0.7);
+  const t1 = lerp(hips, tailTip, 0.35),
+    t2 = lerp(hips, tailTip, 0.7);
   // Paws: four clusters of the lowest vertices, by (front/back, left/right).
   const low = Array.from({ length: NV }, (_, i) => i).filter((i) => ys[i] < ymin + 0.14);
   const side = (i) => dot(sub(P(i), c), lat);
@@ -177,7 +207,7 @@ if (what === "wolf") {
     bone(k + "paw", l.paw, kn, add(l.paw, [0, -0.04, 0.08]), 0.08);
   }
   const nodes = skinWith(B);
-  const R = (k) => ({ "hips": 0 })[k];
+  const R = (k) => ({ hips: 0 })[k];
   void R;
   // Clips. Positive x rotation pitches the nose down; on a leg it swings the foot backward.
   const T = (n, keys) => Object.fromEntries(keys);
@@ -196,39 +226,145 @@ if (what === "wolf") {
   // A gallop: front legs reach and pull together, back legs the opposite, spine flexing.
   const gal = (amp, ph) => [0, 0.15, 0.3, 0.45, 0.6].map((t, i) => [t, [amp * Math.sin(((i + ph) / 4) * Math.PI * 2), 0, 0]]);
   clip(nodes, B, "Run", {
-    FLhip: gal(0.9, 0), FRhip: gal(0.9, 0.3), BLhip: gal(-0.9, 2), BRhip: gal(-0.9, 2.3),
-    FLknee: gal(0.5, 1), FRknee: gal(0.5, 1.3), BLknee: gal(-0.5, 3), BRknee: gal(-0.5, 3.3),
-    spine1: gal(0.12, 2), spine2: gal(0.12, 0), head: gal(0.1, 1), tail1: sway(0.15, 0.6, 0, 0), tail2: sway(0.2, 0.6, 0.5, 0),
+    FLhip: gal(0.9, 0),
+    FRhip: gal(0.9, 0.3),
+    BLhip: gal(-0.9, 2),
+    BRhip: gal(-0.9, 2.3),
+    FLknee: gal(0.5, 1),
+    FRknee: gal(0.5, 1.3),
+    BLknee: gal(-0.5, 3),
+    BRknee: gal(-0.5, 3.3),
+    spine1: gal(0.12, 2),
+    spine2: gal(0.12, 0),
+    head: gal(0.1, 1),
+    tail1: sway(0.15, 0.6, 0, 0),
+    tail2: sway(0.2, 0.6, 0.5, 0),
   });
   // Crouch to spring: haunches down, chest low, head up, legs folded under.
-  const hold = (d, pose) => Object.fromEntries(Object.entries(pose).map(([j, r]) => [j, [[0, [0, 0, 0]], [d, r]]]));
-  clip(nodes, B, "Crouch", hold(0.4, {
-    hips: [-0.15, 0, 0], spine1: [0.12, 0, 0], spine2: [0.18, 0, 0], neck: [-0.15, 0, 0], head: [-0.12, 0, 0], tail1: [-0.3, 0, 0], tail2: [-0.2, 0, 0],
-    FLhip: [-0.5, 0, 0], FRhip: [-0.5, 0, 0], FLknee: [0.8, 0, 0], FRknee: [0.8, 0, 0],
-    BLhip: [0.6, 0, 0], BRhip: [0.6, 0, 0], BLknee: [-0.9, 0, 0], BRknee: [-0.9, 0, 0],
-  }));
+  const hold = (d, pose) =>
+    Object.fromEntries(
+      Object.entries(pose).map(([j, r]) => [
+        j,
+        [
+          [0, [0, 0, 0]],
+          [d, r],
+        ],
+      ]),
+    );
+  clip(
+    nodes,
+    B,
+    "Crouch",
+    hold(0.4, {
+      hips: [-0.15, 0, 0],
+      spine1: [0.12, 0, 0],
+      spine2: [0.18, 0, 0],
+      neck: [-0.15, 0, 0],
+      head: [-0.12, 0, 0],
+      tail1: [-0.3, 0, 0],
+      tail2: [-0.2, 0, 0],
+      FLhip: [-0.5, 0, 0],
+      FRhip: [-0.5, 0, 0],
+      FLknee: [0.8, 0, 0],
+      FRknee: [0.8, 0, 0],
+      BLhip: [0.6, 0, 0],
+      BRhip: [0.6, 0, 0],
+      BLknee: [-0.9, 0, 0],
+      BRknee: [-0.9, 0, 0],
+    }),
+  );
   // The leap: stretched out, front legs reaching, back legs trailing, spine arched.
-  clip(nodes, B, "Leap", hold(0.35, {
-    hips: [0.1, 0, 0], spine1: [-0.1, 0, 0], spine2: [-0.14, 0, 0], neck: [-0.2, 0, 0], head: [-0.15, 0, 0], tail1: [0.3, 0, 0], tail2: [0.3, 0, 0],
-    FLhip: [-1.1, 0, 0.1], FRhip: [-1.1, 0, -0.1], FLknee: [0.2, 0, 0], FRknee: [0.2, 0, 0],
-    BLhip: [1.0, 0, 0.1], BRhip: [1.0, 0, -0.1], BLknee: [-0.2, 0, 0], BRknee: [-0.2, 0, 0],
-  }));
+  clip(
+    nodes,
+    B,
+    "Leap",
+    hold(0.35, {
+      hips: [0.1, 0, 0],
+      spine1: [-0.1, 0, 0],
+      spine2: [-0.14, 0, 0],
+      neck: [-0.2, 0, 0],
+      head: [-0.15, 0, 0],
+      tail1: [0.3, 0, 0],
+      tail2: [0.3, 0, 0],
+      FLhip: [-1.1, 0, 0.1],
+      FRhip: [-1.1, 0, -0.1],
+      FLknee: [0.2, 0, 0],
+      FRknee: [0.2, 0, 0],
+      BLhip: [1.0, 0, 0.1],
+      BRhip: [1.0, 0, -0.1],
+      BLknee: [-0.2, 0, 0],
+      BRknee: [-0.2, 0, 0],
+    }),
+  );
   // The landing: front legs take the weight, the body drops and recovers.
   const keyed = (pose0, pose1, d) => {
     const out = {};
-    for (const j of new Set([...Object.keys(pose0), ...Object.keys(pose1)])) out[j] = [[0, pose0[j] ?? [0, 0, 0]], [d * 0.4, pose1[j] ?? [0, 0, 0]], [d, [0, 0, 0]]];
+    for (const j of new Set([...Object.keys(pose0), ...Object.keys(pose1)]))
+      out[j] = [
+        [0, pose0[j] ?? [0, 0, 0]],
+        [d * 0.4, pose1[j] ?? [0, 0, 0]],
+        [d, [0, 0, 0]],
+      ];
     return out;
   };
-  clip(nodes, B, "Land", keyed({ FLhip: [-1.1, 0, 0], FRhip: [-1.1, 0, 0], BLhip: [1, 0, 0], BRhip: [1, 0, 0] }, {
-    FLhip: [-0.3, 0, 0], FRhip: [-0.3, 0, 0], FLknee: [0.9, 0, 0], FRknee: [0.9, 0, 0], BLknee: [-0.7, 0, 0], BRknee: [-0.7, 0, 0], spine1: [0.2, 0, 0], spine2: [0.22, 0, 0], head: [0.15, 0, 0], tail1: [-0.3, 0, 0],
-  }, 0.5));
+  clip(
+    nodes,
+    B,
+    "Land",
+    keyed(
+      { FLhip: [-1.1, 0, 0], FRhip: [-1.1, 0, 0], BLhip: [1, 0, 0], BRhip: [1, 0, 0] },
+      {
+        FLhip: [-0.3, 0, 0],
+        FRhip: [-0.3, 0, 0],
+        FLknee: [0.9, 0, 0],
+        FRknee: [0.9, 0, 0],
+        BLknee: [-0.7, 0, 0],
+        BRknee: [-0.7, 0, 0],
+        spine1: [0.2, 0, 0],
+        spine2: [0.22, 0, 0],
+        head: [0.15, 0, 0],
+        tail1: [-0.3, 0, 0],
+      },
+      0.5,
+    ),
+  );
   // A bite: head and neck snap down and back up, the head shaking.
   clip(nodes, B, "Bite", {
-    spine2: [[0, [0, 0, 0]], [0.12, [0.25, 0, 0]], [0.35, [0.1, 0, 0]], [0.5, [0, 0, 0]]],
-    neck: [[0, [0, 0, 0]], [0.12, [0.5, 0, 0]], [0.35, [0.2, 0.1, 0]], [0.5, [0, 0, 0]]],
-    head: [[0, [0, 0, 0]], [0.12, [0.55, 0, 0]], [0.2, [0.3, 0.35, 0]], [0.28, [0.5, -0.35, 0]], [0.38, [0.3, 0.25, 0]], [0.5, [0, 0, 0]]],
-    FLhip: [[0, [0, 0, 0]], [0.12, [-0.3, 0, 0]], [0.5, [0, 0, 0]]], FRhip: [[0, [0, 0, 0]], [0.12, [-0.3, 0, 0]], [0.5, [0, 0, 0]]],
-    tail1: [[0, [0, 0, 0]], [0.25, [0.2, 0.3, 0]], [0.5, [0, 0, 0]]],
+    spine2: [
+      [0, [0, 0, 0]],
+      [0.12, [0.25, 0, 0]],
+      [0.35, [0.1, 0, 0]],
+      [0.5, [0, 0, 0]],
+    ],
+    neck: [
+      [0, [0, 0, 0]],
+      [0.12, [0.5, 0, 0]],
+      [0.35, [0.2, 0.1, 0]],
+      [0.5, [0, 0, 0]],
+    ],
+    head: [
+      [0, [0, 0, 0]],
+      [0.12, [0.55, 0, 0]],
+      [0.2, [0.3, 0.35, 0]],
+      [0.28, [0.5, -0.35, 0]],
+      [0.38, [0.3, 0.25, 0]],
+      [0.5, [0, 0, 0]],
+    ],
+    FLhip: [
+      [0, [0, 0, 0]],
+      [0.12, [-0.3, 0, 0]],
+      [0.5, [0, 0, 0]],
+    ],
+    FRhip: [
+      [0, [0, 0, 0]],
+      [0.12, [-0.3, 0, 0]],
+      [0.5, [0, 0, 0]],
+    ],
+    tail1: [
+      [0, [0, 0, 0]],
+      [0.25, [0.2, 0.3, 0]],
+      [0.5, [0, 0, 0]],
+    ],
   });
 } else if (what === "hand") {
   // Cut the soil mound the hand grows from (everything low and wide).
@@ -238,7 +374,7 @@ if (what === "wolf") {
     const lowY = [0, 1, 2].every((k) => pos[idx[t + k] * 3 + 1] < -0.5);
     if (!lowY) keep.push(idx[t], idx[t + 1], idx[t + 2]);
   }
-  prim.getIndices().setArray(new (idx.constructor)(keep));
+  prim.getIndices().setArray(new idx.constructor(keep));
   // Fingers: the five clusters of the vertices above the palm, by x.
   const top = Array.from({ length: NV }, (_, i) => i).filter((i) => pos[i * 3 + 1] > 0.38);
   const xs = top.map((i) => pos[i * 3]).sort((a, b) => a - b);
@@ -249,7 +385,8 @@ if (what === "wolf") {
       const x = pos[i * 3];
       let b = 0;
       for (let k = 1; k < 5; k++) if (Math.abs(x - centers[k]) < Math.abs(x - centers[b])) b = k;
-      sums[b][0] += x; sums[b][1]++;
+      sums[b][0] += x;
+      sums[b][1]++;
     }
     centers = sums.map((s, k) => (s[1] ? s[0] / s[1] : centers[k]));
   }
@@ -272,7 +409,8 @@ if (what === "wolf") {
     const names = ["index", "middle", "ring", "pinky", "thumb"];
     // Fingers: the leftmost cluster is the thumb in this model's view (palm toward +z).
     const nm = ["thumb", "index", "middle", "ring", "pinky"][k];
-    const p1 = lerp(f.base, f.tip, 0.4), p2 = lerp(f.base, f.tip, 0.72);
+    const p1 = lerp(f.base, f.tip, 0.4),
+      p2 = lerp(f.base, f.tip, 0.72);
     const a = bone(nm + "1", f.base, palm, p1, 0.06);
     const b = bone(nm + "2", p1, a, p2, 0.05);
     bone(nm + "3", p2, b, f.tip, 0.05);
@@ -282,4 +420,11 @@ if (what === "wolf") {
 } else throw new Error("wolf or hand");
 await doc.transform(prune());
 await io.write(outFile, doc);
-console.log("wrote", outFile, root.listAnimations().map((x) => x.getName()).join(","));
+console.log(
+  "wrote",
+  outFile,
+  root
+    .listAnimations()
+    .map((x) => x.getName())
+    .join(","),
+);
