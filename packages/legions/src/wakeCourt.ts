@@ -34,7 +34,9 @@ import type { Board } from "./board";
 import { slab, weather } from "./wakeStones";
 import { GRAVES } from "./wakeGraves";
 import { fence, grass, YARD } from "./wakeYard";
-import { geometryOrMake, groupOrMake, mapsOrMake } from "./wakeBake";
+import { loadModels } from "./models";
+import { lurkers } from "./wakeLurkers";
+import { geometryOrMake, groupOrMake, loadWakeBake, mapsOrMake } from "./wakeBake";
 import { barkMaterial, forestGeometry, makeTree, OAK_LOOK, type TreeKind } from "./wakeTrees";
 import { body, canvas, clamp01, fbm, mix, normalFrom, smooth, stream, wrapped } from "./wakeKit";
 import type { CourtSet } from "./courts";
@@ -318,6 +320,9 @@ function marbleMaps(seed: number) {
 
 // ----- The court -----
 
+/** Loads what the court draws from files: the baked pack and the tribe's models (for the creatures that watch). */
+export const preloadWake = () => Promise.all([loadWakeBake(), loadModels("restless-")]).then(() => undefined);
+
 export function theWake(scene: Scene, board: Board): CourtSet {
   // How long each part took to build (console.debug), to see what is worth baking.
   const laps: [string, number][] = [];
@@ -594,8 +599,10 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     "tall-burnt",
     "twisted",
   ];
+  const treeSpots: { x: number; z: number; r: number }[] = [];
   const plant = (kind: TreeKind, seed: number, x: number, z: number, scale: number, rad: number) => {
     taken.push({ x, z, r: rad });
+    treeSpots.push({ x, z, r: rad * 0.75 });
     const holder = new Group();
     holder.position.set(x, heightAt(x, z) - 0.05, z);
     holder.rotation.y = tr() * 6.3;
@@ -795,6 +802,8 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     i++;
   }
   const blades = grass(heightAt, clumps, 4.15);
+  const watchers = lurkers({ group, heightAt, trees: treeSpots, forest: YARD });
+  dispose.push({ dispose: watchers.dispose });
   group.add(blades.mesh);
   const iron = fence(heightAt);
   group.add(iron.group);
@@ -840,6 +849,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     view: { fixed: false, pitch: 0.5, dist: 11, fov: 50, ty: 0.6 },
     update(ms) {
       blades.update(ms);
+      watchers.update(ms);
     },
     dispose() {
       group.removeFromParent();

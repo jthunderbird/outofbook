@@ -57,7 +57,7 @@ function wakeFigure(role: Role, side: Side): Fig {
   if (role === "r") return gravestone(side);
   // Skeletons (light) and zombies (dark) are pawns of their own; the rest wear a pale cast on the light side.
   const name = role === "p" ? (side === "w" ? "restless-pawn-w" : "restless-pawn-b") : MODEL[role];
-  const f = modelFig(name, role, side, HEIGHT[role], { tint: role === "p" ? { w: "none" } : { w: "pallid" } });
+  const f = modelFig(name, role, side, HEIGHT[role], { tint: role === "p" ? { w: "none" } : { w: "pallid" }, step: role === "p" && side === "w" ? 9 : undefined });
   if (!f) return staunton.figure(role, side);
   f.root.rotation.y = side === "w" ? Math.PI : 0;
   // The lord and his bride are slimmer, so a hand can reach round them to the pieces in front.

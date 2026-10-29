@@ -72,6 +72,8 @@ export class Fig {
   private posed: Object3D[] = [];
   /** Modelled, rigged figures (models.ts): their animation clips by name, the idle one looping. */
   anim?: { mixer: AnimationMixer; clips: Map<string, AnimationClip>; idle: string; current?: AnimationAction; hand?: Object3D };
+  /** Stop-motion: the animation advances in steps, the model shivering a little between them. */
+  stepped?: { fps: number; acc: number; model: Object3D; scale: number; turn: number };
   /** Robes and gowns sway; floating figures bob. */
   robed = false;
   floating = false;
@@ -144,7 +146,18 @@ export class Fig {
 
   update(ms: number) {
     this.t += ms / 1000;
-    this.anim?.mixer.update(ms / 1000);
+    if (this.stepped && this.anim) {
+      const st = this.stepped;
+      st.acc += ms;
+      const every = 1000 / st.fps;
+      if (st.acc >= every) {
+        this.anim.mixer.update(st.acc / 1000);
+        st.acc = 0;
+        // Clay is handled between frames: each shot the figure is a hair off where it was.
+        st.model.rotation.set((Math.random() - 0.5) * 0.03, st.turn + (Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.03);
+        st.model.scale.setScalar(st.scale * (1 + (Math.random() - 0.5) * 0.02));
+      }
+    } else this.anim?.mixer.update(ms / 1000);
     if (this.orb) {
       const m = this.orb.material as MeshStandardMaterial;
       m.emissiveIntensity = Math.max(1.6 + Math.sin(this.t * 3) * 0.5, m.emissiveIntensity * 0.96);

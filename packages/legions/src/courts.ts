@@ -54,8 +54,7 @@ import { glowMap } from "./figures";
 import { woodPanel, woodTexture } from "./wood";
 import { leafGeo, leafMaterials } from "./thornwood";
 import { Backdrop, cliff, FlatMap, hiTile } from "./pixel/world";
-import { theWake } from "./wakeCourt";
-import { loadWakeBake } from "./wakeBake";
+import { preloadWake, theWake } from "./wakeCourt";
 
 export interface Court {
   id: string;
@@ -1478,7 +1477,7 @@ export const COURTS: Court[] = [
   ...BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, top: b.top, bottom: b.bottom })),
   { id: "stormcourt", name: "Storm Keep", tribe: "stormcourt", top: "#3a3560", bottom: "#05060a", preview: art("stormcourt", "sky.webp"), dress: stormKeep },
   { id: "thornwood", name: "Heartwood Grove", tribe: "thornwood", top: "#1f3a28", bottom: "#020604", preview: art("thornwood", "forest.webp"), dress: heartwoodGrove },
-  { id: "wake", name: "The Wake", tribe: "restless", top: "#14262c", bottom: "#030708", preview: art("wake", "preview.webp"), preload: loadWakeBake, dress: theWake },
+  { id: "wake", name: "The Wake", tribe: "restless", top: "#14262c", bottom: "#030708", preview: art("wake", "preview.webp"), preload: preloadWake, dress: theWake },
   { id: "sketch", name: "Sketchbook Desk", skin: "sketch", top: "#6a4a30", bottom: "#1a120a", dress: sketchDesk },
   { id: "noir", name: "Back Alley", skin: "noir", top: "#2a2e38", bottom: "#05060a", preview: art("noir", "alley.webp"), dress: backAlley },
 ];

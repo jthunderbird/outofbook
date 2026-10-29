@@ -122,8 +122,16 @@ export interface ModelOptions {
   turn?: number;
   /** The idle clip, if not "Idle". */
   idle?: string;
+  /** Plays its animation in steps this many a second, with a little jitter between: stop-motion clay. */
+  step?: number;
   /** Each side's recolor: the light side ivory unless given, the dark side as modelled unless given. */
   tint?: { w?: Tint; b?: Tint };
+}
+
+/** A clone of a loaded model's scene with its animation clips, to animate on its own (a creature in the scenery); null until loaded. */
+export function modelWithClips(name: string): { scene: Object3D; clips: Map<string, AnimationClip>; height: number } | null {
+  const m = loaded.get(name);
+  return m ? { scene: clone(m.gltf.scene) as Object3D, clips: m.clips, height: m.height } : null;
 }
 
 /** A clone of a loaded model's scene (skinned meshes included), for a part that is not a whole figure; null until loaded. */
@@ -163,6 +171,7 @@ export function modelFig(name: string, role: Role, side: Side, height: number, o
   if (m.clips.size) {
     const idle = o.idle && m.clips.has(o.idle) ? o.idle : m.clips.has("Idle") ? "Idle" : [...m.clips.keys()][0];
     f.anim = { mixer: new AnimationMixer(model), clips: m.clips, idle, hand: model.getObjectByName("RightHand") ?? undefined };
+    if (o.step) f.stepped = { fps: o.step, acc: 0, model, scale: model.scale.x, turn: model.rotation.y };
     f.play(idle, { loop: true, fade: 0 });
     // Not all in step.
     f.anim.mixer.update(Math.random() * 2);
