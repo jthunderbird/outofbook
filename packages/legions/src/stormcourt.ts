@@ -117,7 +117,11 @@ class Acts extends Actor {
     const glide = (from: number, until: number) =>
       tween(this.clock, Math.max(250, (until - from) * dist * 280), (t) => {
         const s = from + (until - from) * t;
-        k.root.position.set(a.x + (b.x - a.x) * s, H, a.z + (b.z - a.z) * s);
+        // Not sliding: he leans into the drift and sways with it, a little rise and fall.
+        const sp = Math.sin(Math.PI * t);
+        k.root.position.set(a.x + (b.x - a.x) * s, H + Math.sin(s * dist * 5) * 0.025 * sp, a.z + (b.z - a.z) * s);
+        k.body.rotation.x = 0.12 * sp;
+        k.body.rotation.z = Math.sin(s * dist * 6) * 0.05 * sp;
       });
     if (victim) {
       const stop = Math.max(0, 1 - 0.8 / dist);

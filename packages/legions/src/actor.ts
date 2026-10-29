@@ -56,10 +56,34 @@ export class Actor {
     };
   }
 
-  /** Straight from where f stands to b over ms, lifted by lift(t). */
-  protected line(f: Fig, b: Vector3, ms: number, lift: (t: number) => number = () => 0, e = ease.linear) {
+  /**
+   * Straight from where f stands to b over ms, lifted by lift(t). A figure does not slide
+   * like a token: it eases into the stride and out of it, leans forward into the pace,
+   * sways a little with each step and, with no walking clip of its own, bobs.
+   */
+  protected async line(f: Fig, b: Vector3, ms: number, lift: (t: number) => number = () => 0, e: ((t: number) => number) | null = null, o: { lean?: number } = {}) {
     const a = f.root.position.clone();
-    return tween(this.clock, ms, (t) => f.root.position.set(a.x + (b.x - a.x) * t, lift(t), a.z + (b.z - a.z) * t), e);
+    const x0 = f.body.rotation.x;
+    const z0 = f.body.rotation.z;
+    const dist = a.distanceTo(b);
+    const lean = o.lean ?? 0.09;
+    const walker = !!f.anim?.clips.has("Walking");
+    // Without an easing given, a gentle ease at both ends.
+    const eased = e ?? ((t: number) => 0.55 * t + 0.45 * (t * t * (3 - 2 * t)));
+    await tween(
+      this.clock,
+      ms,
+      (t) => {
+        const sp = Math.sin(Math.PI * t);
+        const bob = walker || f.floating ? 0 : Math.abs(Math.sin(t * dist * 7)) * 0.05 * sp;
+        f.root.position.set(a.x + (b.x - a.x) * t, lift(t) + bob, a.z + (b.z - a.z) * t);
+        f.body.rotation.x = x0 + lean * sp;
+        f.body.rotation.z = z0 + Math.sin(t * dist * 8) * 0.035 * sp;
+      },
+      eased,
+    );
+    f.body.rotation.x = x0;
+    f.body.rotation.z = z0;
   }
 
   /** The point fraction s of the way from a to b. */

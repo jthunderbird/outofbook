@@ -597,22 +597,38 @@ class Graveyard extends Actor {
     await this.turn(f, this.restFacing(f));
   }
 
-  /** A floating figure gliding to b, trailing petals. */
+  /** A floating figure drifting to b, trailing petals: rigged ones keep their stride going slowly under them, all lean into it and sway. */
   private async glide(f: Fig, b: Vector3, ms = 480, lift = 0.12) {
     const a = f.root.position.clone();
     await this.turn(f, Math.atan2(b.x - a.x, b.z - a.z), 140);
-    await tween(this.clock, Math.max(ms, a.distanceTo(b) * 150), (t) => {
-      f.root.position.set(a.x + (b.x - a.x) * t, Math.sin(Math.PI * t) * lift, a.z + (b.z - a.z) * t);
-      if (Math.random() < 0.4)
-        this.fx.spawn(f.root.position.clone().setY(0.3), {
-          color: 0x7a1020,
-          size: 0.03,
-          vel: new Vector3((Math.random() - 0.5) * 0.4, 0.3, (Math.random() - 0.5) * 0.4),
-          life: 600,
-          gravity: 0,
-          glow: true,
-        });
-    });
+    if (f.anim?.clips.has("Walking")) void f.play("Walking", { loop: true, speed: 0.6, fade: 0.25 });
+    const x0 = f.body.rotation.x;
+    const z0 = f.body.rotation.z;
+    const dist = a.distanceTo(b);
+    await tween(
+      this.clock,
+      Math.max(ms, dist * 150),
+      (t) => {
+        const sp = Math.sin(Math.PI * t);
+        // Rises smoothly into the air, drifts, settles.
+        const hover = lift * Math.min(1, t * 5, (1 - t) * 5);
+        f.root.position.set(a.x + (b.x - a.x) * t, hover + Math.sin(t * 14) * 0.015 * sp, a.z + (b.z - a.z) * t);
+        f.body.rotation.x = x0 + 0.16 * sp;
+        f.body.rotation.z = z0 + Math.sin(t * 9) * 0.06 * sp;
+        if (Math.random() < 0.4)
+          this.fx.spawn(f.root.position.clone().setY(0.3), {
+            color: 0x7a1020,
+            size: 0.03,
+            vel: new Vector3((Math.random() - 0.5) * 0.4, 0.3, (Math.random() - 0.5) * 0.4),
+            life: 600,
+            gravity: 0,
+            glow: true,
+          });
+      },
+      ease.inOut,
+    );
+    f.body.rotation.x = x0;
+    f.body.rotation.z = z0;
     await this.settle(f);
   }
 
@@ -754,15 +770,13 @@ class Graveyard extends Actor {
       const size = 0.9 + victim.height * 0.55;
       const home = victim.root.position.clone();
       this.hurt(victim);
-      const struggle = this.loop(() => {
-        victim.body.rotation.z = Math.sin(this.clock.now * 0.03) * 0.16;
-        victim.root.position.x = home.x + Math.sin(this.clock.now * 0.05) * 0.04;
-      });
+      // A hand closes: the fingers curl in to grip, nothing more.
+      const grip = (g: { list: Group[] }) => tween(this.clock, 240, (t) => g.list.forEach((h) => curl(h, 0.7 + 0.3 * t)));
       // One hand comes up behind it, claws into it and drags it down to the waist.
       const behind = this.grab(home, { dist: 0.42, lift: victim.height * 0.6, s: size, n: 1, angle: facing + Math.PI });
       await behind.raise(300, 0.7);
       this.sound.play("slash", { gain: 0.5, rate: 0.7 });
-      await behind.claw(420);
+      await grip(behind);
       this.blood(victim.root.position.clone().setY(victim.height * 0.6), 10);
       this.sound.play("grind", { gain: 0.5, rate: 0.8 });
       await behind.drag(520, sink * 0.5, (t) => (victim.root.position.y = -sink * 0.5 * t));
@@ -770,7 +784,7 @@ class Graveyard extends Actor {
       const front = this.grab(home, { dist: 0.42, lift: victim.height * 0.3, s: size, n: 1, angle: facing });
       await front.raise(280, 0.7);
       this.sound.play("slash", { gain: 0.55, rate: 0.65 });
-      await front.claw(380);
+      await grip(front);
       this.blood(victim.root.position.clone().setY(victim.height * 0.3), 14);
       this.sound.play("grind", { gain: 0.55, rate: 0.65 });
       const rest = sink * 0.5 + 0.35;
@@ -779,7 +793,6 @@ class Graveyard extends Actor {
         victim.root.position.y = -sink * 0.5 - sink * 0.5 * t;
         behind.list[0].position.y = backY - rest * t;
       });
-      struggle();
       victim.root.removeFromParent();
       behind.clear();
       front.clear();
