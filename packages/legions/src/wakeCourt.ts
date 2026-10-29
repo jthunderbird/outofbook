@@ -7,6 +7,7 @@ import {
   CanvasTexture,
   Color,
   Euler,
+  Box3,
   BoxGeometry,
   BufferGeometry,
   Float32BufferAttribute,
@@ -32,6 +33,8 @@ import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferG
 import type { Board } from "./board";
 import { slab, weather } from "./wakeStones";
 import { GRAVES } from "./wakeGraves";
+import { fence, grass, YARD } from "./wakeYard";
+import { TREES } from "./wakeTrees";
 import { body, canvas, clamp01, fbm, mix, normalFrom, smooth, stream, wrapped } from "./wakeKit";
 import type { CourtSet } from "./courts";
 
@@ -529,46 +532,153 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(moss);
   dispose.push(tuft, mossMat, moss);
 
-  // ----- The graves, scattered round the board: no kind more than three times -----
-  const taken: { x: number; z: number; r: number }[] = [{ x: 0, z: 0, r: 6.2 }];
+  // ----- The graves: in loose rows and columns, some leaning and sinking, mossy at the foot -----
+  const taken: { x: number; z: number; r: number }[] = [{ x: 0, z: 0, r: 6.0 }];
   const holders: Group[] = [];
-  const FIXED: Record<string, [number, number]> = { chapel: [-17, -21], mausoleum: [14, -17], vault: [-15, -3] };
-  const facing = (x: number, z: number) => Math.atan2(-x, -z);
+  const FIXED: Record<string, [number, number]> = { chapel: [-15, -16], mausoleum: [14, -15], vault: [-17, 1] };
   for (const [id, [x, z]] of Object.entries(FIXED)) taken.push({ x, z, r: GRAVES.find((k) => k.id === id)?.radius ?? 2 });
   const pr = stream(77);
-  for (const kind of GRAVES) {
-    const built = kind.build();
-    const n = Math.min(3, kind.copies ?? 1);
-    for (let c = 0; c < n; c++) {
-      const radius = kind.radius ?? 0.8;
-      let x = 0;
-      let z = 0;
-      let ok = false;
-      if (FIXED[kind.id]) {
-        [x, z] = FIXED[kind.id];
-        ok = true;
-      } else
-        for (let t = 0; t < 300 && !ok; t++) {
-          const a = pr() * Math.PI * 2;
-          const d = 6.4 + 24 * Math.pow(pr(), 1.5);
-          x = Math.sin(a) * d;
-          z = Math.cos(a) * d;
-          // Keep the camera's side of the board clear, and each piece off its neighbors.
-          if (z > 3 && Math.abs(x) < 8 && z < 16) continue;
-          ok = taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + radius + 0.5);
-        }
-      if (!ok) continue;
-      taken.push({ x, z, r: radius });
+  // The dead trees: five specimens in an arc behind the board (left to right: oak, lightning-struck, birch, hollow elder, bleached snag), then the rest of their copies out near the fence.
+  const SPECIMEN: Record<string, [number, number]> = { "tree-oak": [-14, -9.5], "tree-struck": [-7, -14], "tree-birch": [1.5, -11.5], "tree-hollow": [9.5, -13], "tree-bleached": [16.5, -8.5] };
+  const OUTER: [number, number][] = [
+    [-19, 8],
+    [20, 12],
+    [-5, -20],
+    [13, -19.5],
+    [-20, -3],
+    [19, 3],
+  ];
+  let outer = 0;
+  for (const kind of TREES) {
+    const proto = kind.build();
+    const [sx, sz] = SPECIMEN[kind.id];
+    for (let c = 0; c < (kind.copies ?? 1); c++) {
+      const [x, z] = c === 0 ? [sx, sz] : OUTER[outer++ % OUTER.length];
+      taken.push({ x, z, r: kind.radius ?? 3 });
       const holder = new Group();
-      holder.position.set(x, heightAt(x, z) - 0.03, z);
-      holder.rotation.y = facing(x, z) + (pr() < 0.2 ? (pr() - 0.5) * 6 : (pr() - 0.5) * 1.1);
-      const piece = c === 0 ? built : built.clone();
-      if (c > 0 && !FIXED[kind.id]) piece.scale.multiplyScalar(0.9 + pr() * 0.2);
+      holder.position.set(x, heightAt(x, z), z);
+      holder.rotation.y = pr() * 6.3;
+      const piece = c === 0 ? proto : proto.clone();
+      if (c > 0) piece.scale.multiplyScalar(0.88 + pr() * 0.2);
       holder.add(piece);
       group.add(holder);
       holders.push(holder);
     }
   }
+  // The slots: a grid a little out of true, each row drifting its own way.
+  const slots: { x: number; z: number }[] = [];
+  for (let ri = -7; ri <= 7; ri++) {
+    const drift = Math.sin(ri * 1.7) * 0.45;
+    for (let ci = -7; ci <= 7; ci++) {
+      const x = ci * 3.1 + drift + (pr() - 0.5) * 0.7;
+      const z = ri * 3.2 + (pr() - 0.5) * 0.6;
+      if (Math.abs(x) > YARD - 3 || Math.abs(z) > YARD - 3) continue;
+      if (Math.abs(x) < 6.4 && Math.abs(z) < 6.4) continue;
+      if (z > 3 && Math.abs(x) < 8 && z < 16) continue;
+      slots.push({ x, z });
+    }
+  }
+  const items = GRAVES.flatMap((k) => Array.from({ length: Math.min(3, k.copies ?? 1) }, (_, c) => ({ k, c })));
+  // Larger pieces first, so they find room; the rest in any order.
+  items.sort((a, b) => (b.k.radius ?? 0.8) - (a.k.radius ?? 0.8) + (pr() - 0.5) * 0.8);
+  const built = new Map<string, Group>();
+  const mossAt: { m: Matrix4; c: Color }[] = [];
+  const q2 = new Quaternion();
+  const e2 = new Euler();
+  const base = (holder: Group, box: Box3, tall: number) => {
+    holder.updateMatrix();
+    const hx = (box.max.x - box.min.x) / 2 + 0.04;
+    const hz = (box.max.z - box.min.z) / 2 + 0.04;
+    const cx = (box.max.x + box.min.x) / 2;
+    const cz = (box.max.z + box.min.z) / 2;
+    const per = 4 * (hx + hz);
+    // Part of the way round the foot, thick; and on some, patches climbing the sides.
+    const start = pr() * per;
+    const cover = per * (0.3 + pr() * 0.7);
+    const count = Math.floor(cover * 9);
+    const put = (u: number, y: number, out: number, sc: number, rotP: number) => {
+      u = ((u % per) + per) % per;
+      let x: number;
+      let z: number;
+      if (u < 2 * hx) [x, z] = [-hx + u, -hz];
+      else if (u < 2 * hx + 2 * hz) [x, z] = [hx, -hz + (u - 2 * hx)];
+      else if (u < 4 * hx + 2 * hz) [x, z] = [hx - (u - 2 * hx - 2 * hz), hz];
+      else [x, z] = [-hx, hz - (u - 4 * hx - 2 * hz)];
+      const nx = Math.abs(x) >= hx - 1e-6 ? Math.sign(x) : 0;
+      const nz = Math.abs(z) >= hz - 1e-6 ? Math.sign(z) : 0;
+      const sy = sc * (0.4 + pr() * 0.35);
+      const p = new Vector3(cx + x + nx * out, y + sy * 0.25, cz + z + nz * out).applyMatrix4(holder.matrix);
+      e2.set(pr() * 6, pr() * 6, pr() * 6);
+      q2.setFromEuler(e2);
+      const rot = pr() < rotP;
+      mossAt.push({
+        m: new Matrix4().compose(p, q2, new Vector3(sc, sy, sc)),
+        c: rot ? new Color().setHSL(0.07 + pr() * 0.05, 0.3 + pr() * 0.2, 0.035 + pr() * 0.05) : new Color().setHSL(0.22 + pr() * 0.1, 0.35 + pr() * 0.2, 0.022 + pr() * 0.05),
+      });
+    };
+    for (let i = 0; i < count; i++) put(start + pr() * cover, pr() * 0.07, pr() * 0.1, 0.06 + pr() * 0.1, 0.28);
+    if (pr() < 0.4) {
+      const hs = pr() * per;
+      for (let i = 0; i < 18 + Math.floor(pr() * 24); i++) put(hs + (pr() - 0.5) * 0.7, 0.08 + pr() * Math.min(0.9, tall * 0.5), -0.01, 0.035 + pr() * 0.05, 0.35);
+    }
+  };
+  for (const { k, c } of items) {
+    const radius = k.radius ?? 0.8;
+    let x = 0;
+    let z = 0;
+    let ok = false;
+    if (FIXED[k.id]) {
+      [x, z] = FIXED[k.id];
+      ok = true;
+    } else
+      for (let t = 0; t < 120 && !ok; t++) {
+        const s = slots[Math.floor(Math.pow(pr(), 1.2) * slots.length)];
+        x = s.x;
+        z = s.z;
+        ok = taken.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + radius + 0.3);
+      }
+    if (!ok) continue;
+    taken.push({ x, z, r: radius });
+    let proto = built.get(k.id);
+    if (!proto) built.set(k.id, (proto = k.build()));
+    const piece = c === 0 ? proto : proto.clone();
+    const box = new Box3().setFromObject(piece);
+    const holder = new Group();
+    const big = radius > 1.5;
+    const lean = pr() < 0.2 ? 0.2 : 0.07;
+    const sink = big ? pr() * 0.05 : pr() < 0.65 ? 0.02 + pr() * 0.2 : 0;
+    holder.position.set(x, heightAt(x, z) - 0.03 - sink, z);
+    holder.rotation.set((pr() - 0.5) * lean * (big ? 0.3 : 1), pr() < 0.12 ? (pr() - 0.5) * 2.4 : (pr() - 0.5) * 0.5, (pr() - 0.5) * lean * (big ? 0.3 : 1), "YXZ");
+    if (c > 0 && !FIXED[k.id]) piece.scale.multiplyScalar(0.92 + pr() * 0.16);
+    holder.add(piece);
+    group.add(holder);
+    holders.push(holder);
+    base(holder, box, box.max.y - box.min.y);
+  }
+  const footMoss = new InstancedMesh(tuft, mossMat, mossAt.length);
+  mossAt.forEach((p, i) => {
+    footMoss.setMatrixAt(i, p.m);
+    footMoss.setColorAt(i, p.c);
+  });
+  footMoss.receiveShadow = true;
+  footMoss.frustumCulled = false;
+  group.add(footMoss);
+  dispose.push(footMoss);
+
+  // ----- Grass over the dirt, and the fence round the yard -----
+  // Short, dead grass: some round the foot of a third of the graves, and a score of clumps about the yard.
+  const clumps: { x: number; z: number; r: number; n: number }[] = [];
+  for (const o of taken.slice(1)) if (pr() < 0.35 && o.r < 2) clumps.push({ x: o.x, z: o.z, r: o.r + 0.5, n: 14 + Math.floor(pr() * 22) });
+  for (let i = 0; i < 24; i++) {
+    const a = pr() * Math.PI * 2;
+    const d = 7 + pr() * 21;
+    clumps.push({ x: Math.sin(a) * d, z: Math.cos(a) * d, r: 1.2 + pr() * 2.4, n: 30 + Math.floor(pr() * 50) });
+  }
+  const blades = grass(heightAt, clumps, 4.15);
+  group.add(blades.mesh);
+  const iron = fence(heightAt);
+  group.add(iron.group);
+  dispose.push({ dispose: blades.dispose }, { dispose: iron.dispose });
 
   // ----- Light and haze: the moon low behind the graves, so their edges are lit and their shadows fall toward you -----
   const moonLight = new DirectionalLight(0xb8ccdf, 2.4);
@@ -601,7 +711,9 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   return {
     markY: 0.02,
     view: { fixed: false, pitch: 0.5, dist: 11, fov: 50, ty: 0.6 },
-    update() {},
+    update(ms) {
+      blades.update(ms);
+    },
     dispose() {
       group.removeFromParent();
       scene.background = prevBg;
