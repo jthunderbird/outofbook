@@ -42,15 +42,15 @@ import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js
 import { Actor } from "./actor";
 import { squareAt } from "./board";
 import { Fig, type Role, type Side } from "./figures";
-import { ease, tween, wait } from "./fx";
-import { loadModels, modelFig } from "./models";
+import { ease, ownMaterials, tween, wait } from "./fx";
+import { loadModels, modelFig, modelScene } from "./models";
 import { staunton } from "./staunton";
 import type { Stage, Tribe, TribeMove } from "./tribe";
 
 // ---------- Figures ----------
 
 const MODEL: Record<Exclude<Role, "r" | "p">, string> = { k: "restless-king", q: "restless-queen", b: "restless-bishop", n: "restless-knight" };
-const HEIGHT: Record<Role, number> = { k: 1.85, q: 1.65, b: 1.4, n: 1.15, r: 1.2, p: 0.8 };
+const HEIGHT: Record<Role, number> = { k: 1.85, q: 1.65, b: 1.4, n: 0.62, r: 1.2, p: 0.8 };
 const BLOOD = 0x9a0f14;
 
 function wakeFigure(role: Role, side: Side): Fig {
@@ -451,6 +451,30 @@ interface Bat {
 
 /** A zombie hand and forearm, about 0.9 tall with the fingers up and open, y = 0 at the arm's middle; its fingers (userData.fingers) curl toward +z. */
 function hand(): Group {
+  const model = modelScene("restless-hand");
+  if (!model) return codeHand();
+  // The Meshy hand, rigged (scripts/rig-restless.mjs): a wrist, a palm and three bones to each finger.
+  const g = new Group();
+  model.scale.setScalar(0.62);
+  model.position.y = 0.062;
+  const joints: { o: Object3D; k: number }[] = [];
+  model.traverse((o) => {
+    const m = o as Mesh;
+    if (m.isMesh) {
+      m.castShadow = m.receiveShadow = true;
+      m.frustumCulled = false;
+    }
+    const seg = /^(thumb|index|middle|ring|pinky)([123])$/.exec(o.name);
+    if (seg) joints.push({ o, k: ([0.5, 0.85, 0.55][Number(seg[2]) - 1] ?? 0.5) * (seg[1] === "thumb" ? 0.7 : 1) });
+  });
+  g.add(model);
+  g.userData.joints = joints;
+  g.userData.mats = ownMaterials(g);
+  return g;
+}
+
+/** The first, code-built hand: boxes and cylinders; used until the model has loaded. */
+function codeHand(): Group {
   const g = new Group();
   const skin = new MeshStandardMaterial({ color: 0x93a47c, roughness: 0.85, flatShading: true, emissive: 0x1c2a12, emissiveIntensity: 0.7 });
   const bone = new MeshStandardMaterial({ color: 0xc8c4a8, roughness: 0.8, flatShading: true });
@@ -495,6 +519,11 @@ function hand(): Group {
 
 /** Curls a hand's fingers: 0 open, 1 gripping. */
 function curl(h: Group, c: number) {
+  const joints = h.userData.joints as { o: Object3D; k: number }[] | undefined;
+  if (joints) {
+    for (const j of joints) j.o.rotation.x = j.k * c;
+    return;
+  }
   for (const f of h.userData.fingers as { upper: Group; lower: Group }[]) {
     f.upper.rotation.x = 0.1 + 0.8 * c;
     f.lower.rotation.x = 0.2 + 1.1 * c;
@@ -520,7 +549,7 @@ class Graveyard extends Actor {
     }
     switch (mover.role) {
       case "p":
-        await this.zombie(mover, to, victim);
+        await (mover.side === "w" ? this.skeleton(mover, to, victim) : this.zombie(mover, to, victim));
         break;
       case "n":
         await this.pounce(mover, to, victim);
@@ -880,6 +909,56 @@ class Graveyard extends Actor {
     }
   }
 
+  // ----- Pawns: skeletons -----
+
+  /** A fallen piece: its own death clip, or toppling over and sinking if it has none. */
+  private async fall(v: Fig) {
+    this.sound.play(Math.random() < 0.5 ? "death1" : "death2", { gain: 0.5, rate: v.side === "b" ? 0.85 : 1 });
+    if (v.anim?.clips.has("Dead")) {
+      void v.play("Dead", { speed: 1.1, hold: true });
+      await wait(this.clock, 650);
+      return;
+    }
+    const side = Math.random() < 0.5 ? -1 : 1;
+    await tween(
+      this.clock,
+      520,
+      (t) => {
+        v.body.rotation.z = side * 1.45 * t;
+        v.body.position.y = -0.05 * t;
+      },
+      ease.in,
+    );
+  }
+
+  /** A skeleton walks; to take, it steps up, drives its blade through the piece, which crumples; it steps over the fallen onto the square. */
+  private async skeleton(f: Fig, to: string, victim?: Fig) {
+    const b = squareAt(to);
+    if (!victim) {
+      await this.walk(f, b, 380);
+      await this.settle(f);
+      return;
+    }
+    const at = victim.root.position.clone();
+    await this.walk(f, at, 360, { stopShort: 0.75 });
+    await this.turn(f, Math.atan2(at.x - f.root.position.x, at.z - f.root.position.z), 110);
+    this.sound.play("slash", { gain: 0.6, rate: 0.8 });
+    void f.play("Thrust_Slash", { speed: 1.2 });
+    await wait(this.clock, 330);
+    // The thrust lands.
+    this.blood(at.clone().setY(0.55), 18);
+    this.fx.dust(at, 6, 0x6a6a5a);
+    this.shake = 90;
+    this.hurt(victim);
+    await wait(this.clock, 180);
+    await this.fall(victim);
+    await wait(this.clock, 160);
+    // Bones rattle as it steps over, onto the square; the fallen is cleared away.
+    victim.root.removeFromParent();
+    await this.walk(f, b, 300);
+    await this.settle(f);
+  }
+
   // ----- Pawns: zombies -----
 
   /** A pawn walks; to take, it runs in with the four nearest of its side and they all tear the piece to pieces. */
@@ -963,22 +1042,29 @@ class Graveyard extends Actor {
     const face = Math.atan2(b.x - a.x, b.z - a.z);
     await this.turn(f, face, 140);
     this.sound.play("roar", { gain: 0.45, rate: 0.9 });
-    await tween(this.clock, 160, (t) => (f.body.rotation.x = 0.25 * t));
+    // Down into a crouch, haunches under him, then the spring.
+    void f.play("Crouch", { speed: 1.6, hold: true, fade: 0.12 });
+    await tween(this.clock, 260, (t) => (f.root.position.y = -0.04 * t));
     this.sound.play("gallop", { gain: 0.5 });
+    void f.play("Leap", { speed: 1.8, hold: true, fade: 0.08 });
     const dist = a.distanceTo(b);
     await tween(
       this.clock,
       Math.max(520, dist * 260),
       (t) => {
         f.root.position.set(a.x + (b.x - a.x) * t, Math.sin(Math.PI * t) * (0.9 + dist * 0.18), a.z + (b.z - a.z) * t);
-        f.body.rotation.x = -0.4 * Math.cos(Math.PI * t) + (victim ? 0.3 * t : 0);
+        // Nose up on the way up, down as he comes in.
+        f.body.rotation.x = 0.35 * Math.sin(Math.PI * (t + 0.5)) * -1 + (victim ? 0.15 * t : 0);
       },
       ease.linear,
     );
+    f.body.rotation.x = 0;
     this.sound.play("land", { gain: 0.6 });
     this.shake = 140;
+    void f.play("Land", { speed: 1.3 });
     if (!victim) {
       this.fx.dust(b, 8, 0x4a4a40);
+      await wait(this.clock, 300);
       await this.settle(f);
       return;
     }
@@ -986,19 +1072,16 @@ class Graveyard extends Actor {
     this.hurt(victim);
     const shred = this.shred(victim, 2);
     const take = [1, 1, 2];
+    await wait(this.clock, 160);
     for (let k = 0; k < 3; k++) {
       this.sound.play("slash", { gain: 0.6, rate: 0.6 + k * 0.1 });
-      await tween(this.clock, 130, (t) => {
-        f.body.rotation.x = 0.3 + 0.35 * t;
-        f.root.position.y = 0.32 - 0.1 * t;
-      });
+      void f.play("Bite", { speed: 2.2 });
+      await tween(this.clock, 140, (t) => (f.root.position.y = 0.32 - 0.12 * t));
       const alive = shred.pieces.filter((p) => p.alive);
       for (let i = 0; i < take[k] && alive[i]; i++) shred.eat(alive[i]);
       shred.redden(0.4 + k * 0.3);
-      await tween(this.clock, 190, (t) => {
-        f.body.rotation.x = 0.65 - 0.35 * t;
-        f.root.position.y = 0.22 + 0.1 * t;
-      });
+      this.blood(victim.root.position.clone().setY(0.5), 8);
+      await tween(this.clock, 200, (t) => (f.root.position.y = 0.2 + 0.12 * t));
     }
     shred.clear();
     victim.root.removeFromParent();

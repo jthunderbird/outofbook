@@ -126,6 +126,12 @@ export interface ModelOptions {
   tint?: { w?: Tint; b?: Tint };
 }
 
+/** A clone of a loaded model's scene (skinned meshes included), for a part that is not a whole figure; null until loaded. */
+export function modelScene(name: string): Object3D | null {
+  const m = loaded.get(name);
+  return m ? (clone(m.gltf.scene) as Object3D) : null;
+}
+
 /** A figure from a loaded model, height tall, centered and idling; null until the model has loaded. */
 export function modelFig(name: string, role: Role, side: Side, height: number, o: ModelOptions = {}): Fig | null {
   const m = loaded.get(name);
