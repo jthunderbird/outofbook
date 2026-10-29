@@ -22,10 +22,9 @@ import {
   RepeatWrapping,
   SRGBColorSpace,
   Vector3,
-  type BufferGeometry,
   type Scene,
 } from "three";
-import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Board } from "./board";
 import type { CourtSet } from "./courts";
 
@@ -311,9 +310,9 @@ function marbleMaps(seed: number) {
     let [cr, cg, cb] = [mix(96, 150, cloud), mix(93, 146, cloud), mix(84, 134, cloud)];
     // Warm yellow-grey age stains.
     const stain = smooth(0.52, 0.72, fbm(u * 2.5 + 3, v * 2.5, seed + 4, 1 << 16, 4));
-    cr = mix(cr, 156, stain * 0.55);
-    cg = mix(cg, 142, stain * 0.55);
-    cb = mix(cb, 112, stain * 0.55);
+    cr = mix(cr, 128, stain * 0.5);
+    cg = mix(cg, 122, stain * 0.5);
+    cb = mix(cb, 104, stain * 0.5);
     // Veins.
     const vein = 1 - Math.abs(2 * fbm(u * 2.2 + w2 * 1.5, v * 2.2 + w1 * 1.5, seed + 6, 1 << 16, 4) - 1);
     const vv = smooth(0.9, 0.97, vein) * 0.6;
@@ -332,6 +331,7 @@ function marbleMaps(seed: number) {
     g.fillRect(r() * size, r() * size, 1 + r() * 1.5, 1 + r() * 1.5);
   }
   // Cracks: a dark seam, a lit lip beside it and dirt packed in.
+  const seams: [number, number][][] = [];
   const crack = (x: number, y: number, ang: number, n: number, w: number) => {
     const pts: [number, number][] = [[x, y]];
     for (let i = 0; i < n; i++) {
@@ -341,6 +341,7 @@ function marbleMaps(seed: number) {
       pts.push([x, y]);
       if (r() < 0.16 && n > 4) crack(x, y, ang + (r() < 0.5 ? 1 : -1) * (0.5 + r()), Math.floor(n / 2), w * 0.7);
     }
+    seams.push(pts);
     const trace = (dx: number, dy: number) => {
       g.beginPath();
       pts.forEach(([px, py], i) => (i ? g.lineTo(px + dx, py + dy) : g.moveTo(px + dx, py + dy)));
@@ -357,6 +358,22 @@ function marbleMaps(seed: number) {
     trace(0, 0);
   };
   for (let k = 0; k < 3 + Math.floor(r() * 3); k++) crack(r() * size, r() < 0.5 ? 0 : size, r() * 6.3, 12 + Math.floor(r() * 8), 2.2);
+  // Moss in the cracks: a green fur along some seams, thick in places, rotten brown at its edge.
+  for (const pts of seams)
+    if (r() < 0.7)
+      for (let i = 0; i < pts.length - 1; i++)
+        for (let k = 0; k < 5; k++) {
+          const t = k / 5;
+          const x = mix(pts[i][0], pts[i + 1][0], t) + (r() - 0.5) * 8;
+          const y = mix(pts[i][1], pts[i + 1][1], t) + (r() - 0.5) * 8;
+          const rad = 4 + r() * 11 * (0.4 + fbm(x / 90, y / 90, seed, 1 << 16, 2));
+          const grad = g.createRadialGradient(x, y, 0, x, y, rad);
+          grad.addColorStop(0, `rgba(${46 + r() * 22},${82 + r() * 34},${34},0.75)`);
+          grad.addColorStop(0.7, "rgba(54,86,36,0.35)");
+          grad.addColorStop(1, "rgba(34,26,16,0.25)");
+          g.fillStyle = grad;
+          g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+        }
   // Chipped corners and edges, the dark soil showing through.
   g.fillStyle = "rgba(34,28,22,0.95)";
   for (let k = 0; k < 14; k++) {
@@ -451,7 +468,7 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   const marble = [0, 1, 2, 3, 4].map((i) => marbleMaps(300 + i * 53));
   const mud = [0, 1, 2].map((i) => mudMaps(700 + i * 29));
   for (const m of [...marble, ...mud]) dispose.push(m.map, m.normal);
-  const slabMats = marble.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, color: 0xe6e0d4, roughness: 1, metalness: 0 }));
+  const slabMats = marble.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, color: 0xd6d6d0, roughness: 1, metalness: 0 }));
   const mudMats = mud.map((m) => new MeshStandardMaterial({ map: m.map, normalMap: m.normal, roughness: 0.38, metalness: 0 }));
   dispose.push(...slabMats, ...mudMats);
   const light: Mesh[] = [];
@@ -488,19 +505,11 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     }
   }
 
-  // ----- Moss: cushions of it along the slabs' edges and corners and in patches on them; green, with dark rotten bits at the rims -----
-  const blobs: BufferGeometry[] = [];
-  for (let i = 0; i < 6; i++) {
-    const b = new IcosahedronGeometry(0.5 + rng() * 0.4, 1);
-    b.scale(1, 0.55 + rng() * 0.2, 1);
-    b.translate((rng() - 0.5) * 0.9, 0, (rng() - 0.5) * 0.9);
-    const p = b.getAttribute("position");
-    for (let k = 0; k < p.count; k++) p.setXYZ(k, p.getX(k) * (0.85 + rng() * 0.3), p.getY(k) * (0.7 + rng() * 0.6), p.getZ(k) * (0.85 + rng() * 0.3));
-    blobs.push(b);
-  }
-  const tuft = mergeVertices(mergeGeometries(blobs.map((b) => b.toNonIndexed()))!, 0.01);
-  blobs.forEach((b) => b.dispose());
+  // ----- Moss: strands of it, long and short, thick and thin, run along the joints and wander across the slabs; green in the middle, rotten dark at the fringes -----
+  const blob = new IcosahedronGeometry(0.5, 0);
+  const tuft = mergeVertices(blob.deleteAttribute("uv").deleteAttribute("normal"), 0.001);
   tuft.computeVertexNormals();
+  blob.dispose();
   const fuzz = canvas(256);
   const fr = stream(77);
   fuzz.g.fillStyle = "#808080";
@@ -512,44 +521,90 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   }
   const fuzzTex = new CanvasTexture(fuzz.c);
   fuzzTex.wrapS = fuzzTex.wrapT = RepeatWrapping;
-  const mossMat = new MeshStandardMaterial({ bumpMap: fuzzTex, bumpScale: 2.4, roughness: 1 });
+  const mossMat = new MeshStandardMaterial({ roughness: 1 });
+  mossMat.onBeforeCompile = (sh) => {
+    // Fuzz the cushions with a fine noise in their color.
+    sh.fragmentShader = sh.fragmentShader.replace(
+      "#include <color_fragment>",
+      "#include <color_fragment>\ndiffuseColor.rgb *= 0.75 + 0.5 * fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);",
+    );
+  };
   const places: { m: Matrix4; c: Color }[] = [];
   const q = new Quaternion();
   const eu = new Euler();
-  const clump = (x: number, z: number, near: number) => {
-    // near: 0 well inside the slab, 1 right at its rim; the rim is where the rot is.
-    const rot = rng() < 0.12 + near * 0.5;
-    const s = (rot ? 0.035 : 0.05) + rng() * 0.06;
-    eu.set(0, rng() * 6.3, 0);
-    q.setFromEuler(eu);
-    const sy = s * (0.6 + rng() * 0.8);
-    places.push({
-      m: new Matrix4().compose(new Vector3(x, -0.026 + sy * 0.15, z), q, new Vector3(s, sy, s)),
-      c: rot ? new Color().setHSL(0.06 + rng() * 0.05, 0.3 + rng() * 0.2, 0.04 + rng() * 0.06) : new Color().setHSL(0.24 + rng() * 0.07, 0.4 + rng() * 0.2, 0.03 + rng() * 0.06),
-    });
+  /** One strand: a path, a width that swells and thins along it. Green at the core, rotten at the edges and ends. */
+  const strand = (pts: [number, number][], width: number, seed: number) => {
+    const r = stream(seed);
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    const step = 0.028;
+    const n = Math.max(2, Math.floor(len / step));
+    const ph = r() * 20;
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      const f = t * (pts.length - 1);
+      const i0 = Math.min(pts.length - 2, Math.floor(f));
+      const u = f - i0;
+      const x = mix(pts[i0][0], pts[i0 + 1][0], u);
+      const z = mix(pts[i0][1], pts[i0 + 1][1], u);
+      const tx = pts[i0 + 1][0] - pts[i0][0];
+      const tz = pts[i0 + 1][1] - pts[i0][1];
+      const tl = Math.hypot(tx, tz) || 1;
+      // Swells and pinches along its length, thin at both ends.
+      const w = width * Math.pow(Math.sin(t * Math.PI), 0.6) * (0.35 + 1.3 * fbm(t * 6 + ph, ph, seed, 1 << 16, 3));
+      const count = 1 + Math.floor(w * 30);
+      for (let c = 0; c < count; c++) {
+        const side = (r() + r() + r() - 1.5) * 2;
+        const off = side * w;
+        const edge = Math.abs(side);
+        const rot = r() < 0.04 + edge * 0.5 + (t < 0.08 || t > 0.92 ? 0.3 : 0);
+        const sc = (rot ? 0.04 : 0.055) + r() * 0.07 * (1 - edge * 0.4);
+        eu.set(r() * 6, r() * 6, r() * 6);
+        q.setFromEuler(eu);
+        const sy = sc * (0.45 + r() * 0.3);
+        places.push({
+          m: new Matrix4().compose(new Vector3(x - (tz / tl) * off, -0.027 + sy * 0.2, z + (tx / tl) * off), q, new Vector3(sc, sy, sc)),
+          c: rot ? new Color().setHSL(0.07 + r() * 0.05, 0.3 + r() * 0.2, 0.035 + r() * 0.05) : new Color().setHSL(0.22 + r() * 0.1, 0.35 + r() * 0.2, 0.022 + r() * 0.045),
+        });
+      }
+    }
   };
-  for (const sq of light) {
-    const cx = sq.position.x;
-    const cz = sq.position.z;
-    for (let i = 0; i < 26; i++) {
-      // Along an edge, packed in near it and thinning inward (a little spilling out over it).
-      const side = Math.floor(rng() * 4);
-      const along = (rng() - 0.5) * 0.92;
-      const depth = Math.abs((rng() + rng() - 1) * 0.22) + (rng() < 0.15 ? -0.05 : 0.02);
-      const e = 0.47 - depth;
-      const x = side < 2 ? (side === 0 ? -e : e) : along;
-      const z = side >= 2 ? (side === 2 ? -e : e) : along;
-      clump(cx + x, cz + z, clamp01(1 - depth / 0.25));
+  let sd = 500;
+  // Along the joints between the slabs, in runs of every length.
+  for (let line = -4; line <= 4; line++) {
+    for (const horiz of [true, false]) {
+      let at = -4 + rng() * 1.5;
+      while (at < 4) {
+        const len = Math.min(0.4 + rng() * rng() * 3.2, 4 - at);
+        if (rng() < 0.55) {
+          const wob = (rng() - 0.5) * 0.08;
+          const pts: [number, number][] = [];
+          for (let k = 0; k <= 6; k++) {
+            const a = at + (len * k) / 6;
+            const o = line + wob + (fbm(a * 3, line, sd, 1 << 16, 2) - 0.5) * 0.16;
+            pts.push(horiz ? [a, o] : [o, a]);
+          }
+          strand(pts, 0.05 + rng() * 0.12, sd++);
+        }
+        at += len + 0.3 + rng() * 1.6;
+      }
     }
-    // Corners gather more.
-    for (let k = 0; k < 4; k++) for (let i = 0; i < 3; i++) clump(cx + (k % 2 ? 1 : -1) * (0.47 - rng() * 0.16), cz + (k < 2 ? 1 : -1) * (0.47 - rng() * 0.16), 0.8);
-    // A patch or two out on the face.
-    for (let k = 0; k < 2; k++) {
-      const px = (rng() - 0.5) * 0.6;
-      const pz = (rng() - 0.5) * 0.6;
-      if (rng() < 0.5) continue;
-      for (let i = 0; i < 8; i++) clump(cx + px + (rng() - 0.5) * 0.26, cz + pz + (rng() - 0.5) * 0.26, 0.1);
+  }
+  // Wandering across the slabs, bending and branching away from a joint.
+  for (let i = 0; i < 46; i++) {
+    let x = Math.round((rng() - 0.5) * 8);
+    let z = (rng() - 0.5) * 8;
+    let a = rng() * 6.3;
+    const pts: [number, number][] = [[x, z]];
+    const n = 5 + Math.floor(rng() * 8);
+    for (let k = 0; k < n; k++) {
+      a += (rng() - 0.5) * 1.1;
+      x += Math.cos(a) * 0.3;
+      z += Math.sin(a) * 0.3;
+      if (Math.abs(x) > 4 || Math.abs(z) > 4) break;
+      pts.push([x, z]);
     }
+    if (pts.length > 2) strand(pts, 0.04 + rng() * 0.08, sd++);
   }
   const moss = new InstancedMesh(tuft, mossMat, places.length);
   places.forEach((p, i) => {

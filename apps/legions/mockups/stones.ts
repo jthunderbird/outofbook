@@ -53,6 +53,13 @@ const IMPORTED: Imported[] = [
 const FILES = import.meta.glob<string>("../../../packages/legions/courts/wake/stones/*.glb", { eager: true, query: "?url", import: "default" });
 const url = (f: string) => Object.entries(FILES).find(([k]) => k.endsWith(`/${f}.glb`))?.[1] as string;
 
+// Any other .glb dropped into courts/wake/stones shows up too (named after its file).
+for (const k of Object.keys(FILES)) {
+  const f = k.slice(k.lastIndexOf("/") + 1, -4);
+  if (!IMPORTED.some((m) => m.file === f)) IMPORTED.push({ file: f, name: f.replace(/[-_]/g, " "), by: "added", license: "check", height: /crypt|mausoleum|tomb|temple/.test(f) ? 3.2 : 1.8 });
+}
+const big = (m: Imported) => (m.height > 2.5 ? 4.2 : 2.3);
+
 const stage = document.getElementById("stage")!;
 const renderer = new WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -132,7 +139,7 @@ await Promise.all(
     root.add(gltf.scene);
     const box = new Box3().setFromObject(gltf.scene);
     const size = box.getSize(new Vector3());
-    const s = Math.min(m.height / size.y, 2.3 / Math.max(size.x, size.z));
+    const s = Math.min(m.height / size.y, big(m) / Math.max(size.x, size.z));
     gltf.scene.scale.setScalar(s);
     const b2 = new Box3().setFromObject(gltf.scene);
     gltf.scene.position.set(-(b2.min.x + b2.max.x) / 2, -b2.min.y, -(b2.min.z + b2.max.z) / 2);
@@ -153,7 +160,7 @@ await Promise.all(
     const n = IMPORTED.filter((x) => (x.license === "CC0") === (m.license === "CC0"));
     root.position.set((n.indexOf(m) - (n.length - 1) / 2) * GAP, 0, ROW_Z.get(row)!);
     row.add(root);
-    tag(root, m.name, `${m.by} · ${m.license}`, Math.min(m.height, 2.3) + 0.3);
+    tag(root, m.name, `${m.by} · ${m.license}`, Math.min(m.height, big(m)) + 0.3);
   }),
 );
 
