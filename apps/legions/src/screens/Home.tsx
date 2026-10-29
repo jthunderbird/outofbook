@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Screen } from "../App";
 import { levelOf, useProfile, XP_PER_LEVEL } from "../profile";
+import { HomeScene } from "../components/HomeScene";
 import { Castle, ChessKnight, Globe, Puzzle, Settings as SettingsIcon, Swords } from "lucide-react";
 
 export function Home({ go }: { go: (s: Screen) => void }) {
@@ -10,6 +11,7 @@ export function Home({ go }: { go: (s: Screen) => void }) {
   const [online, setOnline] = useState(false);
   return (
     <div className="screen" data-testid="home">
+      <HomeScene />
       <div className="title">
         <h1>
           Chess
