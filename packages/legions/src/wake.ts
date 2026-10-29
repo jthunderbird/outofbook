@@ -80,7 +80,7 @@ const noise = (n: number) => {
 
 /** Weathered stone with a crack, moss at the foot and a worn cross, for one side's color. */
 const stoneCache = new Map<string, CanvasTexture>();
-function stoneTexture(side: Side, variant = 0) {
+export function stoneTexture(side: Side, variant = 0) {
   const hit = stoneCache.get(side + variant);
   if (hit) return hit;
   const c = document.createElement("canvas");
@@ -241,7 +241,8 @@ const OUTLINE: Record<HeadKind, { pts: [number, number][]; depth: number }> = {
 };
 const headGeo = new Map<HeadKind, ExtrudeGeometry>();
 
-export function headstone(side: Side, lean: [number, number] = [-0.03, 0.07], kind: HeadKind = "arch", variant = 0) {
+/** The shape of a kind of headstone, standing on y = 0 and about 1 across, shared by all of that kind. */
+export function headGeometry(kind: HeadKind) {
   let geo = headGeo.get(kind);
   if (!geo) {
     const o = OUTLINE[kind];
@@ -249,6 +250,11 @@ export function headstone(side: Side, lean: [number, number] = [-0.03, 0.07], ki
     geo.translate(0, 0, -o.depth / 2);
     headGeo.set(kind, geo);
   }
+  return geo;
+}
+
+export function headstone(side: Side, lean: [number, number] = [-0.03, 0.07], kind: HeadKind = "arch", variant = 0) {
+  const geo = headGeometry(kind);
   const tex = stoneTexture(side, variant);
   tex.repeat.set(1 / 0.9, 1 / 1.3);
   tex.offset.set(0.5, 0);
