@@ -1,8 +1,8 @@
-// The Restless: classic monsters in a graveyard (home court: The Wake). A mock for now: the
-// moves and kills are real, the figures borrow the Thornwood's models (a Thornling
-// stands in for a skeleton or zombie, a Thornpriest for a witch, the stag for a
-// werewolf, the Dryad Queen for the vampire bride, the Elder Oak for the vampire
-// lord); the gravestone rooks are made here. Not in the tribe list yet.
+// The Restless: classic monsters in a graveyard (home court: The Wake). King: a vampire
+// lord; queen: his bride; bishop: a witch on her broom; knight: a werewolf; pawns:
+// skeletons (light) and zombies (dark); rooks: gravestones made here. The models are
+// Meshy-made (packages/legions/models/restless-*.glb); the moves and kills are acted out
+// in code over them. Not in the tribe list yet.
 //
 // Rook: a gravestone that zombie hands pull under the board and push up on its
 // square; to take, hands claw the piece down first, and the stone rises with a
@@ -49,13 +49,15 @@ import type { Stage, Tribe, TribeMove } from "./tribe";
 
 // ---------- Figures ----------
 
-const MODEL: Record<Exclude<Role, "r">, string> = { k: "thornwood-king", q: "thornwood-queen", b: "thornwood-bishop", n: "thornwood-knight", p: "thornwood-pawn" };
+const MODEL: Record<Exclude<Role, "r" | "p">, string> = { k: "restless-king", q: "restless-queen", b: "restless-bishop", n: "restless-knight" };
 const HEIGHT: Record<Role, number> = { k: 1.85, q: 1.65, b: 1.4, n: 1.15, r: 1.2, p: 0.8 };
 const BLOOD = 0x9a0f14;
 
 function wakeFigure(role: Role, side: Side): Fig {
   if (role === "r") return gravestone(side);
-  const f = modelFig(MODEL[role], role, side, HEIGHT[role], { tint: { w: "spring", b: "bark" } });
+  // Skeletons (light) and zombies (dark) are pawns of their own; the rest wear a pale cast on the light side.
+  const name = role === "p" ? (side === "w" ? "restless-pawn-w" : "restless-pawn-b") : MODEL[role];
+  const f = modelFig(name, role, side, HEIGHT[role], { tint: role === "p" ? { w: "none" } : { w: "pallid" } });
   if (!f) return staunton.figure(role, side);
   f.root.rotation.y = side === "w" ? Math.PI : 0;
   // Witches and the bride hover.
@@ -67,7 +69,7 @@ export const wake: Tribe = {
   id: "restless",
   name: "The Restless",
   figure: wakeFigure,
-  ready: () => loadModels("thornwood-"),
+  ready: () => loadModels("restless-"),
   play: (stage, move) => new Graveyard(stage).play(move),
 };
 

@@ -16,10 +16,45 @@
         position: fixed;
         inset: 0;
       }
+      #panel {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        max-width: 340px;
+        padding: 8px;
+        border-radius: 12px;
+        background: rgb(10 14 18 / 0.78);
+        font:
+          13px system-ui,
+          sans-serif;
+        color: #f4efe2;
+        z-index: 3;
+      }
+      #panel button,
+      #panel select {
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid #fff3;
+        background: #26323a;
+        color: inherit;
+        font: inherit;
+      }
+      #panel select,
+      #log {
+        grid-column: 1 / -1;
+      }
+      #log {
+        font-size: 12px;
+        color: #9db0b8;
+      }
     </style>
   </head>
   <body>
     <div id="stage"></div>
+    <div id="panel"></div>
     <script type="module" src="./ground.ts"></script>
   </body>
 </html>

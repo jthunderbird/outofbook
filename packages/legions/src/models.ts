@@ -89,6 +89,11 @@ function recolor(m: Material, mode: Tint) {
     spring: `float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
         vec3 spring = vec3(0.62, 0.97, 0.36) * (0.3 + 1.5 * l);
         diffuseColor.rgb = mix(spring, c, keep);`,
+    // Bluish bone-white for the Restless's light side; saturated reds (blood, lips) are kept.
+    pallid: `float red = smoothstep(0.5, 0.8, sat) * step(c.g, c.r * 0.8) * step(c.b, c.r * 0.8);
+        vec3 pal = vec3(0.74, 0.8, 0.88) * (0.22 + 1.5 * l);
+        diffuseColor.rgb = mix(pal, c, red);`,
+    none: ``,
     bark: `float keep = smoothstep(0.6, 0.8, sat) * smoothstep(0.3, 0.45, l) * step(c.b, c.g) * step(c.g, c.r * 1.05);
         vec3 bark = vec3(0.5, 0.33, 0.2) * (0.05 + 0.75 * l);
         diffuseColor.rgb = mix(mix(c, bark, 0.7), c, keep);`,
@@ -110,7 +115,7 @@ function recolor(m: Material, mode: Tint) {
 }
 
 /** How a side's figures are recolored. */
-export type Tint = "ivory" | "spring" | "bark";
+export type Tint = "ivory" | "spring" | "bark" | "pallid" | "none";
 
 export interface ModelOptions {
   /** Turns a model that does not face +z. */
@@ -148,7 +153,7 @@ export function modelFig(name: string, role: Role, side: Side, height: number, o
   f.body.add(model);
   f.mats = ownMaterials(f.body);
   const tint = side === "w" ? (o.tint?.w ?? "ivory") : o.tint?.b;
-  if (tint) f.mats.forEach((m) => recolor(m, tint));
+  if (tint && tint !== "none") f.mats.forEach((m) => recolor(m, tint));
   if (m.clips.size) {
     const idle = o.idle && m.clips.has(o.idle) ? o.idle : m.clips.has("Idle") ? "Idle" : [...m.clips.keys()][0];
     f.anim = { mixer: new AnimationMixer(model), clips: m.clips, idle, hand: model.getObjectByName("RightHand") ?? undefined };
