@@ -67,6 +67,46 @@ function texture(url: string) {
   return t;
 }
 
+/** A picture dropped into courts/wake under this name, if there is one. */
+const optional = (file: string) => {
+  const url = art(file);
+  return url ? texture(url) : null;
+};
+
+/** A normal map worked out from a picture's light and dark, so a photograph of stone or bark has relief. */
+function normalFrom(t: Texture, strength = 2.5) {
+  const img = t.image as CanvasImageSource & { width: number; height: number };
+  const size = Math.min(1024, img.width);
+  const h = Math.round((size * img.height) / img.width);
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = h;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(img, 0, 0, size, h);
+  const src = g.getImageData(0, 0, size, h);
+  const lum = new Float32Array(size * h);
+  for (let i = 0; i < size * h; i++) lum[i] = (0.299 * src.data[i * 4] + 0.587 * src.data[i * 4 + 1] + 0.114 * src.data[i * 4 + 2]) / 255;
+  const at = (x: number, y: number) => lum[((y + h) % h) * size + ((x + size) % size)];
+  const out = g.createImageData(size, h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < size; x++) {
+      const dx = (at(x + 1, y) - at(x - 1, y)) * strength;
+      const dy = (at(x, y + 1) - at(x, y - 1)) * strength;
+      const len = Math.hypot(dx, dy, 1);
+      const i = (y * size + x) * 4;
+      out.data[i] = ((-dx / len) * 0.5 + 0.5) * 255;
+      out.data[i + 1] = ((dy / len) * 0.5 + 0.5) * 255;
+      out.data[i + 2] = ((1 / len) * 0.5 + 0.5) * 255;
+      out.data[i + 3] = 255;
+    }
+  g.putImageData(out, 0, 0);
+  const n = new CanvasTexture(c);
+  n.wrapS = t.wrapS;
+  n.wrapT = t.wrapT;
+  n.repeat.copy(t.repeat);
+  return n;
+}
+
 /** A steady pseudo-random stream from a seed. */
 function stream(seed: number) {
   let s = seed >>> 0 || 1;
@@ -302,6 +342,53 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(ground);
   dispose.push(soil, soilMap, ground.geometry);
 
+  // Photographs, when given, replace the drawn textures (with a normal map worked out from each).
+  const photo = (file: string, use: (t: Texture, n: Texture) => void, repeat?: number) => {
+    const p = optional(file);
+    if (!p) return;
+    void p.then((t) => {
+      const tex = t.clone();
+      tex.wrapS = tex.wrapT = RepeatWrapping;
+      if (repeat) tex.repeat.set(repeat, repeat);
+      tex.needsUpdate = true;
+      const nrm = normalFrom(tex);
+      dispose.push(tex, nrm);
+      use(tex, nrm);
+    });
+  };
+  photo(
+    "ground.webp",
+    (t, n) => {
+      soil.map = t;
+      soil.normalMap = n;
+      soil.color.set(0xb0aea8);
+      soil.needsUpdate = true;
+    },
+    26,
+  );
+
+  const swap = (file: string, light: boolean) =>
+    photo(file, (t, n) => {
+      for (const sq of board.squares.values()) {
+        if (!!sq.userData.light !== light) continue;
+        const m = sq.material as MeshStandardMaterial;
+        const map = t.clone();
+        map.repeat.set(0.45, 0.45);
+        map.offset.set(Math.random() * 0.55, Math.random() * 0.55);
+        map.needsUpdate = true;
+        const nm = n.clone();
+        nm.repeat.copy(map.repeat);
+        nm.offset.copy(map.offset);
+        nm.needsUpdate = true;
+        dispose.push(map, nm);
+        m.map = map;
+        m.normalMap = nm;
+        m.needsUpdate = true;
+      }
+    });
+  swap("board-stone.webp", true);
+  swap("board-dirt.webp", false);
+
   // ----- Sky, turning slowly, and the moon -----
   const skyMat = new MeshBasicMaterial({ side: BackSide, fog: false });
   const cloudMat = new MeshBasicMaterial({ side: BackSide, fog: false, transparent: true, opacity: 0.3, blending: AdditiveBlending, depthWrite: false });
@@ -343,17 +430,46 @@ export function theWake(scene: Scene, board: Board): CourtSet {
   group.add(moonSprite, halo);
   dispose.push(moonMat, halo.material);
 
-  // ----- The ruined castle, far off behind the black side, in the haze -----
-  const castleMat = new MeshBasicMaterial({ fog: false, transparent: true, depthWrite: false, color: 0xbcd0d4, opacity: 0.85 });
-  void texture(art("woods-castle.webp")).then((t) => {
-    castleMat.map = t;
-    castleMat.needsUpdate = true;
+  // ----- Far views: pictures of distant woods and ruins stand in the haze all round -----
+  // far-1 is the ruined castle (behind the black side); far-2.. are more views, put to either side of it in turn.
+  const farAngles = [0, 72, -72, 144, -144, 36, -36];
+  const panelWidth = 150;
+  for (let i = 1; i <= 7; i++) {
+    const t = optional(`far-${i}.webp`);
+    if (!t) continue;
+    const mat = new MeshBasicMaterial({ fog: false, transparent: true, depthWrite: false, color: 0xc4d6d8, side: DoubleSide });
+    const panel = new Mesh(new PlaneGeometry(panelWidth, panelWidth * (672 / 1584)), mat);
+    const a = Math.PI + (farAngles[i - 1] * Math.PI) / 180;
+    panel.position.set(Math.sin(a) * 88, GROUND + (panelWidth * (672 / 1584)) / 2 - 9, Math.cos(a) * 88);
+    panel.lookAt(0, panel.position.y, 0);
+    panel.renderOrder = -7 + i * 0.01;
+    group.add(panel);
+    dispose.push(mat, panel.geometry);
+    void t.then((tex) => {
+      mat.map = tex;
+      mat.needsUpdate = true;
+    });
+  }
+  // Far trees: photographs of dead trees cut out, standing in the fog (tree-1.. if given).
+  const treePics = [1, 2, 3, 4, 5, 6].map((i) => optional(`tree-${i}.webp`)).filter((x): x is Promise<Texture> => !!x);
+  treePics.forEach((p, k) => {
+    void p.then((tex) => {
+      const img = tex.image as { width: number; height: number };
+      for (let i = 0; i < 14; i++) {
+        const mat = new SpriteMaterial({ map: tex, color: 0x9cb0b2, alphaTest: 0.2, transparent: true });
+        const s = new Sprite(mat);
+        const a = rng() * Math.PI * 2;
+        const d = 34 + rng() * 40;
+        const h = 14 + rng() * 14;
+        s.center.set(0.5, 0.04);
+        s.scale.set(((h * img.width) / img.height) * (rng() < 0.5 ? -1 : 1), h, 1);
+        s.position.set(Math.sin(a) * d, GROUND, Math.cos(a) * d);
+        group.add(s);
+        dispose.push(mat);
+      }
+      void k;
+    });
   });
-  const castle = new Mesh(new PlaneGeometry(46, 56), castleMat);
-  castle.position.set(8, GROUND + 20, -78);
-  castle.renderOrder = -7;
-  group.add(castle);
-  dispose.push(castleMat, castle.geometry);
 
   // ----- Dead trees all round, swaying -----
   const bark = barkTexture();
@@ -370,6 +486,14 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     );
   };
   dispose.push(bark, barkMat);
+  photo("bark.webp", (t, n) => {
+    t.repeat.set(1, 2);
+    n.repeat.set(1, 2);
+    barkMat.map = t;
+    barkMat.normalMap = n;
+    barkMat.color.set(0xb8b0a8);
+    barkMat.needsUpdate = true;
+  });
   const variants = [11, 23, 37, 51, 67].map((s) => treeGeometry(s));
   const perVariant = [10, 10, 10, 10, 10];
   variants.forEach((geo, v) => {
@@ -424,6 +548,16 @@ export function theWake(scene: Scene, board: Board): CourtSet {
     const m = new MeshStandardMaterial({ map: stoneTexture("b", v), color: 0x7c8284, roughness: 0.95 });
     dispose.push(m);
     return m;
+  });
+  photo("stone.webp", (t, n) => {
+    t.repeat.set(1.1, 1.1);
+    n.repeat.set(1.1, 1.1);
+    for (const m of stoneMats) {
+      m.map = t;
+      m.normalMap = n;
+      m.color.set(0x9aa0a0);
+      m.needsUpdate = true;
+    }
   });
   HEAD_KINDS.forEach((kind, ki) => {
     const list = stones.get(kind);
